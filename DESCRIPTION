@@ -12,7 +12,7 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Depends: R (>= 2.10)
 Imports: 
-    Seurat 
+	Seurat 
 	Signac 
 	EnsDb.Mmusculus.v79 
 	dplyr 
