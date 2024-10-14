@@ -11,4 +11,13 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Depends: R (>= 2.10)
-Imports: Seurat (>= 5.1.0) Signac (>= 1.9.0.9000) EnsDb.Mmusculus.v79 (>= 2.99.0) dplyr (>= 1.1.2) readr (>= 2.1.4) ggplot2 (>= 3.4.4) stringr (>= 1.5.0) tidyr (>= 1.3.0) RANN (>= 2.6.1)
+Imports: 
+    Seurat 
+	Signac 
+	EnsDb.Mmusculus.v79 
+	dplyr 
+	readr 
+	ggplot2 
+	stringr 
+	tidyr 
+	RANN 
