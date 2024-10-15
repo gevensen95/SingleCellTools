@@ -10,7 +10,22 @@
 #' This can function can be run interactively to choose cutoffs without having
 #' to re-run it.
 #'
-#' @param data_dirs Path to the directories
+#' @param data_dirs Path to the directories with ATAC data
+#' @param add_treatment Whether to add a treatment column to metadata
+#' @param treatment Treatment metadata value (vector)
+#' @param interactive Whether to run the filtering step in interactive mode
+#' @param peak_region_fragments_min Min peak region fragments value for
+#' filtering
+#' @param peak_region_fragments_max Max peak region fragments value for
+#' filtering
+#' @param pct_reads_in_peaks_min Min percent reads in peaks value for filtering
+#' @param blacklist_ratio_max Max blacklist ratio for filtering
+#' @param nucleosome_signal_max Max nucleosome signal for filtering
+#' @param TSS.enrichment_min Min TSS enrichment for filtering
+#' @param peakwidths_max Max peak width for finding combined peaks
+#' @param peakwidths_min Min peak width for finding combined peaks
+#' @param passed_filters_value Min value for filtering cells based on
+#' passed_filters column
 #' @return A list of filtered Seurat objects
 #' @export
 CreateATACObjectsFilter <-

@@ -13,12 +13,19 @@ EdgeDetectionVisium(
 }
 \arguments{
 \item{coord_path}{Path to the directory with tissue coordinate file}
+
+\item{seurat.obj}{Seurat object that corresponds to coord_path to ensure
+barcodes are the same}
+
+\item{search}{Search type (see nn2)}
+
+\item{neighbors}{Number of neighbors to look for}
 }
 \value{
 A dataframe of with 4 iterations of filtering (Keep vs. Filter)
 }
 \description{
 This function takes coordinate data for all spots in the Visium data and
-determines which are at the edges of the cpature area, tissue boundary,
+determines which are at the edges of the capture area, tissue boundary,
 and tears within the tissue.
 }

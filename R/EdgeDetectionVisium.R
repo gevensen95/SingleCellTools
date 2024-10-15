@@ -5,6 +5,10 @@
 #' and tears within the tissue.
 #'
 #' @param coord_path Path to the directory with tissue coordinate file
+#' @param seurat.obj Seurat object that corresponds to coord_path to ensure
+#' barcodes are the same
+#' @param search Search type (see nn2)
+#' @param neighbors Number of neighbors to look for
 #' @return A dataframe of with 4 iterations of filtering (Keep vs. Filter)
 #' @export
 EdgeDetectionVisium <- function(coord_path, seurat.obj = NULL,

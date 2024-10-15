@@ -35,7 +35,64 @@ CreateAndIntegrateRNA(
 )
 }
 \arguments{
-\item{data_dirs}{Path to the directories}
+\item{data_dirs}{Path to directories containing matrix.mtx, features.tsv, and
+barcodes.tsv or .h5 files.}
+
+\item{cells}{Features must be expressed in at least this many cells}
+
+\item{features}{Cells must have at least this many features}
+
+\item{treatment}{Treatment metadata column (e.g., Age, chemical, etc.)}
+
+\item{use_quantile}{Use quantile filtering method for nFeature_RNA and
+percent.mt}
+
+\item{quantile_value_min}{Minimum percentile for filtering (max will be 1-min)}
+
+\item{feature_min}{Minimum cutoff for features}
+
+\item{feature_max}{Maximum cutoff for features}
+
+\item{percent_mt_max}{Maximum cutoff for percent.mt}
+
+\item{interactive}{Run filtering interactively to pick cutoffs. A figure will
+be shown of the the features and the percent.mt, or you can open the
+automatically saved file}
+
+\item{object_names}{Names for the Seurat objects}
+
+\item{cell_IDs}{Adds cell identities to the beginning of each barcode}
+
+\item{to_regress}{Variable to regress out in normalization}
+
+\item{cluster_resolution}{Resolution for cell clustering}
+
+\item{max_dims}{Maximum dimensions for FindNeighbors and UMAP}
+
+\item{use_SCT}{Use SCTransform method or LogNormalize (FALSE)}
+
+\item{save_rds_file}{Save final Seurat object}
+
+\item{file_name}{Name of files}
+
+\item{use_elbow_plot}{Use the ElbowPlot to determine number of componenets
+for FindNeighbors and UMAP}
+
+\item{spatial}{If your data is a spatial (i.e., Visium)}
+
+\item{integration}{Method for integrating data, see IntegrateLayers}
+
+\item{integration_normalization}{Normalization method used}
+
+\item{integration_assay}{Assay that has normalized data}
+
+\item{integration_reduction}{Reduction to use for integration}
+
+\item{new_reduction}{Name of new integrated reduction}
+
+\item{k_anchor}{How many neighbors (k) to use when picking anchors}
+
+\item{k_weight}{Number of neighbors to consider when weighting anchors}
 }
 \value{
 An integrated Seurat object

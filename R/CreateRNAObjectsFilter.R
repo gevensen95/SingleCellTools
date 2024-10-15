@@ -9,7 +9,22 @@
 #' and 85th percentile for nFeature_RNA and percent.mt. This can function can
 #' be run interactively to choose cutoffs without having to re-run it.
 #'
-#' @param data_dirs Path to the directories
+#' @param data_dirs Path to directories containing matrix.mtx, features.tsv, and
+#'  barcodes.tsv or .h5 files.
+#' @param cells Features must be expressed in at least this many cells
+#' @param features Cells must have at least this many features
+#' @param treatment Treatment metadata column (e.g., Age, chemical, etc.)
+#' @param use_quantile Use quantile filtering method for nFeature_RNA and
+#' percent.mt
+#' @param quantile_value_min Minimum percentile for filtering (max will be 1-min)
+#' @param feature_min Minimum cutoff for features
+#' @param feature_max Maximum cutoff for features
+#' @param percent_mt_max Maximum cutoff for percent.mt
+#' @param interactive Run filtering interactively to pick cutoffs. A figure will
+#' be shown of the the features and the percent.mt, or you can open the
+#' automatically saved file
+#' @param object_names Names for the Seurat objects
+#' @param cell_IDs Adds cell identities to the beginning of each barcode
 #' @return A list of filtered Seurat objects
 #' @export
 
@@ -17,7 +32,8 @@ CreateRNAObjectsFilter <-
   function(data_dirs, cells = 3, features = 200, treatment = NULL,
            use_quantile = TRUE, quantile_value_min = 0.15,
            feature_min = NA, feature_max = NA,
-           percent_mt_max = NA, interactive = FALSE) {
+           percent_mt_max = NA, interactive = FALSE,
+           object_names = NULL, cell_IDs = names(seurat_objects)) {
     # Ensure thresholds are specified if not using quantiles
     if (!use_quantile) {
       if (!is.numeric(feature_min)) stop("Error: Did not specify threshold for feature_min")
