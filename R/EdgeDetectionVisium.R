@@ -25,60 +25,60 @@ EdgeDetectionVisium <- function(coord_path, seurat.obj = NULL,
   }
 
   rownames(coords) <- coords$barcode
-  closest <- as.data.frame(nn2(data=coords[,c(3,4)], k=7, searchtype = 'radius',
+  closest <- as.data.frame(RANN::nn2(data=coords[,c(3,4)], k=7, searchtype = 'radius',
                                radius = 2)[[1]])
   closest[closest == 0] <- NA
 
   rownames(closest) <- coords$barcode
   closest$barcode <- rownames(closest)
-  closest2 <- closest %>% drop_na()
-  closest3 <- closest %>% filter(!barcode %in% closest2$barcode)
+  closest2 <- closest %>% tidyr::drop_na()
+  closest3 <- closest %>% dplyr::filterfilter(!barcode %in% closest2$barcode)
   coords$Filter <- coords$barcode
   coords[rownames(closest2),]$Filter <- 'Keep'
   coords[closest3$barcode,]$Filter <- 'Filter'
 
   #Now do it again
   coords$Filter2 <- coords$Filter
-  coords_red <- coords %>% filter(Filter == 'Keep')
+  coords_red <- coords %>% dplyr::filterfilter(Filter == 'Keep')
 
-  closest <- as.data.frame(nn2(data=coords_red[,c(3,4)], k=neighbors,
+  closest <- as.data.frame(RANN::nn2(data=coords_red[,c(3,4)], k=neighbors,
                                searchtype = search,
                                radius = 2)[[1]])
   closest[closest == 0] <- NA
 
   rownames(closest) <- coords_red$barcode
   closest$barcode <- rownames(closest)
-  closest2 <- closest %>% drop_na()
-  closest3 <- closest %>% filter(!barcode %in% closest2$barcode)
+  closest2 <- closest %>% tidyr::drop_na()
+  closest3 <- closest %>% dplyr::filterfilter(!barcode %in% closest2$barcode)
   coords[closest3$barcode,]$Filter2 <- 'Filter'
 
   # Now Again
   coords$Filter3 <- coords$Filter2
-  coords_red <- coords %>% filter(Filter2 == 'Keep')
+  coords_red <- coords %>% dplyr::filterfilter(Filter2 == 'Keep')
 
-  closest <- as.data.frame(nn2(data=coords_red[,c(3,4)], k=7, searchtype = 'radius',
+  closest <- as.data.frame(RANN::nn2(data=coords_red[,c(3,4)], k=7, searchtype = 'radius',
                                radius = 2)[[1]])
   closest[closest == 0] <- NA
 
   rownames(closest) <- coords_red$barcode
   closest$barcode <- rownames(closest)
-  closest2 <- closest %>% drop_na()
-  closest3 <- closest %>% filter(!barcode %in% closest2$barcode)
+  closest2 <- closest %>% tidyr::drop_na()
+  closest3 <- closest %>% dplyr::filterfilter(!barcode %in% closest2$barcode)
   coords[closest3$barcode,]$Filter3 <- 'Filter'
 
   # Last Time
   coords$Filter4 <- coords$Filter3
-  coords_red <- coords %>% filter(Filter3 == 'Keep')
+  coords_red <- coords %>% dplyr::filterfilter(Filter3 == 'Keep')
 
-  closest <- as.data.frame(nn2(data=coords_red[,c(3,4)], k=7,
+  closest <- as.data.frame(RANN::nn2(data=coords_red[,c(3,4)], k=7,
                                searchtype = 'radius',
                                radius = 2)[[1]])
   closest[closest == 0] <- NA
 
   rownames(closest) <- coords_red$barcode
   closest$barcode <- rownames(closest)
-  closest2 <- closest %>% drop_na()
-  closest3 <- closest %>% filter(!barcode %in% closest2$barcode)
+  closest2 <- closest %>% tidyr::drop_na()
+  closest3 <- closest %>% dplyr::filterfilter(!barcode %in% closest2$barcode)
   coords[closest3$barcode,]$Filter4 <- 'Filter'
 
   return(coords)
