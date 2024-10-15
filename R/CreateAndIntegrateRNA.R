@@ -43,15 +43,15 @@ CreateAndIntegrateRNA <-
     # Use lapply to read the data and create Seurat objects
 
     seurat_objects <- lapply(data_dirs, function(dir) {
-      if (is_empty(
+      if (rlang::is_empty(
         list.files(dir, 'barcodes.tsv.gz|features.tsv.gz|matrix.mtx.gz')) == FALSE) {
         # Read 10X data
         seurat_data <- Seurat::Read10X(data.dir = dir)
-        CreateSeuratObject(counts = seurat_data,
+        Seurat::CreateSeuratObject(counts = seurat_data,
                            min.cells = cells,
                            min.features = features,
                            project = basename(dir))
-      } else if (is_empty(
+      } else if (rlang::is_empty(
         list.files(paste(dir,'filtered_feature_bc_matrix', sep = '/'),
                    'barcodes.tsv.gz|features.tsv.gz|matrix.mtx.gz')) == FALSE) {
 
@@ -60,17 +60,17 @@ CreateAndIntegrateRNA <-
                                                sep = '/'))
 
         # Create Seurat object
-        CreateSeuratObject(counts = seurat_data,
+        Seurat::CreateSeuratObject(counts = seurat_data,
                            min.cells = cells,
                            min.features = features,
                            project = dirname(dir))
-      } else if (is_empty(
+      } else if (rlang::is_empty(
         list.files(paste(dir,'filtered_feature_bc_matrix', sep = '/'),
                    'barcodes.tsv.gz|features.tsv.gz|matrix.mtx.gz')) == FALSE) {
         seurat_data <- Seurat::Read10X(data.dir =
                                          paste(dir,'filtered_feature_bc_matrix',
                                                sep = '/'))
-        CreateSeuratObject(counts = seurat_data,
+        Seurat::CreateSeuratObject(counts = seurat_data,
                            min.cells = cells,
                            min.features = features,
                            project = dirname(dir))
@@ -83,11 +83,10 @@ CreateAndIntegrateRNA <-
                                                          grepl(".h5", x))))], sep = '/'))
 
         # Create Seurat object
-        CreateSeuratObject(counts = seurat_data,
+        Seurat::CreateSeuratObject(counts = seurat_data,
                            min.cells = cells,
                            min.features = features,
                            project = dirname(dir))
-
       }
 
     })
@@ -98,7 +97,7 @@ CreateAndIntegrateRNA <-
 
     # Add percent mitochondrial DNA to each Seurat object
     seurat_objects <- lapply(seurat_objects, function(obj) {
-      obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = "^mt-")
+      obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, pattern = "^mt-")
       return(obj)
     })
 
@@ -121,10 +120,10 @@ CreateAndIntegrateRNA <-
     obj <- merge(seurat_objects[[1]], seurat_objects[-1])
 
     # Create plots
-    gene.plot <- ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
-      geom_boxplot() + labs(title = 'Unfiltered')
-    mt.plot <- ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
-      geom_boxplot() + labs(title = 'Unfiltered')
+    gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
+      ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
+    mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
+      ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
     print(gene.plot + mt.plot)
 
     # Interactive mode
@@ -158,10 +157,10 @@ CreateAndIntegrateRNA <-
       }
 
       obj <- merge(seurat_objects[[1]], seurat_objects[-1])
-      gene.plot <- ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
-        geom_boxplot() + labs(title = 'Filtered')
-      mt.plot <- ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
-        geom_boxplot() + labs(title = 'Filtered')
+      gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
+        ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered')
+      mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
+        ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered')
       print(gene.plot + mt.plot)
 
     } else {
@@ -186,10 +185,10 @@ CreateAndIntegrateRNA <-
       names(seurat_objects) <- names(seurat_objects)
 
       obj <- merge(seurat_objects[[1]], seurat_objects[-1])
-      gene.plot <- ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
-        geom_boxplot() + labs(title = 'Filtered')
-      mt.plot <- ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
-        geom_boxplot() + labs(title = 'Filtered')
+      gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
+        ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered')
+      mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
+        ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered')
       print(gene.plot + mt.plot)
     }
 
@@ -225,39 +224,39 @@ CreateAndIntegrateRNA <-
 
     if (use_SCT){
       print('Normalizing Data')
-      obj <- SCTransform(obj, vars.to.regress = to_regress)
+      obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress)
     }
     else{
       print('Normalizing Data')
-      obj <- NormalizeData(obj)
-      obj <- FindVariableFeatures(obj)
-      obj <- ScaleData(obj, vars.to.regress = to_regress)
+      obj <- Seurat::NormalizeData(obj)
+      obj <- Seurat::FindVariableFeatures(obj)
+      obj <- Seurat::ScaleData(obj, vars.to.regress = to_regress)
     }
-    obj <- RunPCA(obj)
+    obj <- Seurat::RunPCA(obj)
     if (use_elbow_plot) {
 
-      elbow_plot <- ElbowPlot(obj)
+      elbow_plot <- Seurat::ElbowPlot(obj)
       print(elbow_plot)
 
       pcs <- as.numeric(readline(prompt = 'Enter # of PCs: '))
 
       print('Integrating Data')
-      obj <- IntegrateLayers(object = obj, method = integration,
+      obj <- Seurat::IntegrateLayers(object = obj, method = integration,
                              orig.reduction = integration_reduction,
                              assay = integration_assay,
                              normalization.method = integration_normalization,
                              new.reduction = new_reduction,
                              k.anchor = k_anchor, k.weight = k_weight)
       print('Running FindNeighbors')
-      obj <- FindNeighbors(obj, reduction = new_reduction, dims = 1:pcs)
+      obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:pcs)
       print('Running FindClusters')
-      obj <- FindClusters(obj, resolution = cluster_resolution)
-      print('Running RunUMAP')
-      obj <- RunUMAP(obj, reduction = new_reduction, dims = 1:pcs)
+      obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
+      print('Running FindClusters')
+      obj <- Seurat::FindClusters(obj, reduction = new_reduction, dims = 1:pcs)
 
       if (use_SCT){
         print('Running PrepSCTFindMarkers')
-        obj <- PrepSCTFindMarkers(obj)
+        obj <- Seurat::PrepSCTFindMarkers(obj)
       }
 
       if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
@@ -272,21 +271,21 @@ CreateAndIntegrateRNA <-
 
     } else {
       print('Integrating Data')
-      obj <- IntegrateLayers(object = obj, method = integration,
+      obj <- Seurat::IntegrateLayers(object = obj, method = integration,
                              orig.reduction = integration_reduction,
                              assay = integration_assay,
                              normalization.method = integration_normalization,
                              new.reduction = new_reduction,
                              k.anchor = k_anchor, k.weight = k_weight)
       print('Running FindNeighbors')
-      obj <- FindNeighbors(obj, reduction = new_reduction, dims = 1:max_dims)
+      obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:max_dims)
       print('Running FindClusters')
-      obj <- FindClusters(obj, resolution = cluster_resolution)
-      print('Running RunUMAP')
-      obj <- RunUMAP(obj, reduction = new_reduction, dims = 1:max_dims)
+      obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
+      print('Running FindClusters')
+      obj <- Seurat::FindClusters(obj, reduction = new_reduction, dims = 1:max_dims)
       if (use_SCT){
         print('Running PrepSCTFindMarkers')
-        obj <- PrepSCTFindMarkers(obj)
+        obj <- Seurat::PrepSCTFindMarkers(obj)
         if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
           print('Saving Integrated Object')
           saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
@@ -302,11 +301,11 @@ CreateAndIntegrateRNA <-
       }
     }
 
-    DimPlot(obj, label = T)
+    Seurat::DimPlot(obj, label = T)
     ggsave('plots/dimplot_seurat_clusters.pdf', height = 5, width = 7)
 
     print('Running FindAllMarkers')
-    markers <- FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
+    markers <- Seurat::FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
                               min.pct = 0.25)
     write.csv(markers, 'markers_all.csv')
     return(obj)

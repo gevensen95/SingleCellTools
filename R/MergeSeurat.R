@@ -43,33 +43,33 @@ MergeSeurat <-
     }
 
     if (use_SCT){
-      obj <- SCTransform(obj, vars.to.regress = to_regress)
+      obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress)
     }
     else{
-      obj <- NormalizeData(obj)
-      obj <- FindVariableFeatures(obj)
-      obj <- ScaleData(obj, vars.to.regress = to_regress)
+      obj <- Seurat::NormalizeData(obj)
+      obj <- Seurat::FindVariableFeatures(obj)
+      obj <- Seurat::ScaleData(obj, vars.to.regress = to_regress)
     }
-    obj <- RunPCA(obj)
+    obj <- Seurat::RunPCA(obj)
     if (use_elbow_plot) {
 
-      elbow_plot <- ElbowPlot(obj)
+      elbow_plot <- Seurat::ElbowPlot(obj)
       print(elbow_plot)
 
       pcs <- as.numeric(readline(prompt = 'Enter # of PCs: '))
 
-      obj <- IntegrateLayers(object = obj, method = integration,
+      obj <- Seurat::IntegrateLayers(object = obj, method = integration,
                              orig.reduction = integration_reduction,
                              assay = integration_assay,
                              normalization.method = integration_normalization,
                              new.reduction = new_reduction,
                              k.anchor = k_anchor, k.weight = k_weight)
-      obj <- FindNeighbors(obj, reduction = new_reduction, dims = 1:pcs)
-      obj <- FindClusters(obj, resolution = cluster_resolution)
-      obj <- RunUMAP(obj, reduction = new_reduction, dims = 1:pcs)
+      obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:pcs)
+      obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
+      obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:pcs)
 
       if (use_SCT){
-        obj <- PrepSCTFindMarkers(obj)
+        obj <- Seurat::PrepSCTFindMarkers(obj)
       }
 
       if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
@@ -81,17 +81,17 @@ MergeSeurat <-
       }
 
     } else {
-      obj <- IntegrateLayers(object = obj, method = integration,
+      obj <- Seurat::IntegrateLayers(object = obj, method = integration,
                              orig.reduction = integration_reduction,
                              assay = integration_assay,
                              normalization.method = integration_normalization,
                              new.reduction = new_reduction,
                              k.anchor = k_anchor, k.weight = k_weight)
-      obj <- FindNeighbors(obj, reduction = new_reduction, dims = 1:max_dims)
-      obj <- FindClusters(obj, resolution = cluster_resolution)
-      obj <- RunUMAP(obj, reduction = new_reduction, dims = 1:max_dims)
+      obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:max_dims)
+      obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
+      obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:max_dims)
       if (use_SCT){
-        obj <- PrepSCTFindMarkers(obj)
+        obj <- Seurat::PrepSCTFindMarkers(obj)
         if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
           saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
                              sep = '_'))
@@ -106,7 +106,7 @@ MergeSeurat <-
     }
 
     print('Running FindAllMarkers')
-    markers <- FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
+    markers <- Seurat::FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
                               min.pct = 0.25)
     write.csv(markers, 'markers_all.csv')
     return(obj)

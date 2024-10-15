@@ -32,18 +32,18 @@ CreateATACObjectsFilter <-
       peak_data <- read.table(file = paste(dir, '/outs/peaks.bed', sep = ''),
                               col.names = c("chr", "start", "end"))
       # Make GRanges objects
-      gr <- makeGRangesFromDataFrame(peak_data)
+      gr <- GenomicRanges::makeGRangesFromDataFrame(peak_data)
     })
 
     # Create combined peak set
     suppressWarnings(for (i in 2:length(peak_data_list)) {
-      combined.peaks <- reduce(c(peak_data_list[[1]], peak_data_list[[i]]))
+      combined.peaks <- purrr::reduce(c(peak_data_list[[1]], peak_data_list[[i]]))
     })
-    peakwidths <- width(combined.peaks)
+    peakwidths <- IRangeswidth(combined.peaks)
     combined.peaks <- combined.peaks[peakwidths < peakwidths_max &
                                        peakwidths > peakwidths_min]
     #remove scaffolds not in genome
-    main.chroms <- standardChromosomes(BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10)
+    main.chroms <- GenomeInfoDb::standardChromosomes(BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10)
     keep.peaks <- as.logical(seqnames(granges(combined.peaks)) %in% main.chroms)
     combined.peaks <- combined.peaks[keep.peaks, ]
 

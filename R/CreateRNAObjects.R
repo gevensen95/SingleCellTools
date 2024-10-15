@@ -17,15 +17,15 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
   # Use lapply to read the data and create Seurat objects
 
   seurat_objects <- lapply(data_dirs, function(dir) {
-    if (is_empty(
+    if (rlang::is_empty(
       list.files(dir, 'barcodes.tsv.gz|features.tsv.gz|matrix.mtx.gz')) == FALSE) {
       # Read 10X data
       seurat_data <- Seurat::Read10X(data.dir = dir)
-      CreateSeuratObject(counts = seurat_data,
-                         min.cells = cells,
-                         min.features = features,
-                         project = basename(dir))
-    } else if (is_empty(
+      Seurat::CreateSeuratObject(counts = seurat_data,
+                                 min.cells = cells,
+                                 min.features = features,
+                                 project = basename(dir))
+    } else if (rlang::is_empty(
       list.files(paste(dir,'filtered_feature_bc_matrix', sep = '/'),
                  'barcodes.tsv.gz|features.tsv.gz|matrix.mtx.gz')) == FALSE) {
 
@@ -34,20 +34,20 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                                              sep = '/'))
 
       # Create Seurat object
-      CreateSeuratObject(counts = seurat_data,
-                         min.cells = cells,
-                         min.features = features,
-                         project = dirname(dir))
-    } else if (is_empty(
+      Seurat::CreateSeuratObject(counts = seurat_data,
+                                 min.cells = cells,
+                                 min.features = features,
+                                 project = dirname(dir))
+    } else if (rlang::is_empty(
       list.files(paste(dir,'filtered_feature_bc_matrix', sep = '/'),
                  'barcodes.tsv.gz|features.tsv.gz|matrix.mtx.gz')) == FALSE) {
       seurat_data <- Seurat::Read10X(data.dir =
                                        paste(dir,'filtered_feature_bc_matrix',
                                              sep = '/'))
-      CreateSeuratObject(counts = seurat_data,
-                         min.cells = cells,
-                         min.features = features,
-                         project = dirname(dir))
+      Seurat::CreateSeuratObject(counts = seurat_data,
+                                 min.cells = cells,
+                                 min.features = features,
+                                 project = dirname(dir))
 
     } else if (sum(str_detect(list.files(dir), '.h5'))>0) {
       seurat_data <- Seurat::Read10X_h5(
@@ -57,11 +57,10 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                                                        grepl(".h5", x))))], sep = '/'))
 
       # Create Seurat object
-      CreateSeuratObject(counts = seurat_data,
-                         min.cells = cells,
-                         min.features = features,
-                         project = dirname(dir))
-
+      Seurat::CreateSeuratObject(counts = seurat_data,
+                                 min.cells = cells,
+                                 min.features = features,
+                                 project = dirname(dir))
     }
 
   })
@@ -71,19 +70,9 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
   } else {names(seurat_objects) <- object_names}
 
   seurat_objects <- lapply(seurat_objects, function(obj) {
-    obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = "^mt-")
+    obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, pattern = "^mt-")
     return(obj)
   })
-
-  obj <- merge(seurat_objects[[1]], seurat_objects[-1])
-  gene.plot <- ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
-    geom_boxplot() + labs(title = 'Unfiltered')
-  mt.plot <- ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
-    geom_boxplot() + labs(title = 'Unfiltered')
-  print(gene.plot + mt.plot)
-
-  # Name the list elements with the base names of the directories
-  names(seurat_objects) <- basename(data_dirs)
 
   # Add a to_regress to metadata to specify treatment
   if (is.null(treatment)==FALSE){
@@ -93,6 +82,13 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
       return(seurat_obj)
     }), names(seurat_objects))
   }
+
+  obj <- merge(seurat_objects[[1]], seurat_objects[-1])
+  gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
+    ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
+  mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
+    ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
+  print(gene.plot + mt.plot)
 
   return(seurat_objects)
 }
