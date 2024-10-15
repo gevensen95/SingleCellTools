@@ -15,8 +15,7 @@ CreateRNAObjectsFilter(
   feature_max = NA,
   percent_mt_max = NA,
   interactive = FALSE,
-  object_names = NULL,
-  cell_IDs = names(seurat_objects)
+  object_names = NULL
 )
 }
 \arguments{
@@ -45,8 +44,6 @@ be shown of the the features and the percent.mt, or you can open the
 automatically saved file}
 
 \item{object_names}{Names for the Seurat objects}
-
-\item{cell_IDs}{Adds cell identities to the beginning of each barcode}
 }
 \value{
 A list of filtered Seurat objects
