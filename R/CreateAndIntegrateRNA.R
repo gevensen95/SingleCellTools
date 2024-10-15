@@ -10,7 +10,35 @@
 #' This function also save multiple Seurat objects along the way and
 #' runs FindAllMarkers on the clusters.
 #'
-#' @param data_dirs Path to the directories
+#' @param data_dirs Path to directories containing matrix.mtx, features.tsv, and
+#'  barcodes.tsv or .h5 files.
+#' @param cells Features must be expressed in at least this many cells
+#' @param features Cells must have at least this many features
+#' @param treatment Treatment metadata column (e.g., Age, chemical, etc.)
+#' @param use_quantile Use quantile filtering method for nFeature_RNA and
+#' percent.mt
+#' @param quantile_value_min
+#' @param feature_min
+#' @param feature_max
+#' @param percent_mt_max
+#' @param interactive
+#' @param object_names
+#' @param cell_IDs
+#' @param to_regress
+#' @param cluster_resolution
+#' @param max_dims
+#' @param use_SCT
+#' @param save_rds_file
+#' @param file_name
+#' @param use_elbow_plot
+#' @param spatial
+#' @param integration
+#' @param integration_normalization
+#' @param integration_assay
+#' @param integration_reduction
+#' @param new_reduction
+#' @param k_anchor
+#' @param k_weight
 #' @return An integrated Seurat object
 #' @export
 CreateAndIntegrateRNA <-
