@@ -22,7 +22,34 @@ CreateATACObjectsFilter(
 )
 }
 \arguments{
-\item{data_dirs}{Path to the directories}
+\item{data_dirs}{Path to the directories with ATAC data}
+
+\item{treatment}{Treatment metadata value (vector)}
+
+\item{interactive}{Whether to run the filtering step in interactive mode}
+
+\item{peak_region_fragments_min}{Min peak region fragments value for
+filtering}
+
+\item{peak_region_fragments_max}{Max peak region fragments value for
+filtering}
+
+\item{pct_reads_in_peaks_min}{Min percent reads in peaks value for filtering}
+
+\item{blacklist_ratio_max}{Max blacklist ratio for filtering}
+
+\item{nucleosome_signal_max}{Max nucleosome signal for filtering}
+
+\item{TSS.enrichment_min}{Min TSS enrichment for filtering}
+
+\item{peakwidths_max}{Max peak width for finding combined peaks}
+
+\item{peakwidths_min}{Min peak width for finding combined peaks}
+
+\item{passed_filters_value}{Min value for filtering cells based on
+passed_filters column}
+
+\item{add_treatment}{Whether to add a treatment column to metadata}
 }
 \value{
 A list of filtered Seurat objects

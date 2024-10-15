@@ -17,28 +17,31 @@
 #' @param treatment Treatment metadata column (e.g., Age, chemical, etc.)
 #' @param use_quantile Use quantile filtering method for nFeature_RNA and
 #' percent.mt
-#' @param quantile_value_min
-#' @param feature_min
-#' @param feature_max
-#' @param percent_mt_max
-#' @param interactive
-#' @param object_names
-#' @param cell_IDs
-#' @param to_regress
-#' @param cluster_resolution
-#' @param max_dims
-#' @param use_SCT
-#' @param save_rds_file
-#' @param file_name
-#' @param use_elbow_plot
-#' @param spatial
-#' @param integration
-#' @param integration_normalization
-#' @param integration_assay
-#' @param integration_reduction
-#' @param new_reduction
-#' @param k_anchor
-#' @param k_weight
+#' @param quantile_value_min Minimum percentile for filtering (max will be 1-min)
+#' @param feature_min Minimum cutoff for features
+#' @param feature_max Maximum cutoff for features
+#' @param percent_mt_max Maximum cutoff for percent.mt
+#' @param interactive Run filtering interactively to pick cutoffs. A figure will
+#' be shown of the the features and the percent.mt, or you can open the
+#' automatically saved file
+#' @param object_names Names for the Seurat objects
+#' @param cell_IDs Adds cell identities to the beginning of each barcode
+#' @param to_regress Variable to regress out in normalization
+#' @param cluster_resolution Resolution for cell clustering
+#' @param max_dims Maximum dimensions for FindNeighbors and UMAP
+#' @param use_SCT Use SCTransform method or LogNormalize (FALSE)
+#' @param save_rds_file Save final Seurat object
+#' @param file_name Name of files
+#' @param use_elbow_plot Use the ElbowPlot to determine number of componenets
+#' for FindNeighbors and UMAP
+#' @param spatial If your data is a spatial (i.e., Visium)
+#' @param integration Method for integrating data, see IntegrateLayers
+#' @param integration_normalization Normalization method used
+#' @param integration_assay Assay that has normalized data
+#' @param integration_reduction Reduction to use for integration
+#' @param new_reduction Name of new integrated reduction
+#' @param k_anchor How many neighbors (k) to use when picking anchors
+#' @param k_weight Number of neighbors to consider when weighting anchors
 #' @return An integrated Seurat object
 #' @export
 CreateAndIntegrateRNA <-
@@ -153,6 +156,7 @@ CreateAndIntegrateRNA <-
     mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
       ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
     print(gene.plot + mt.plot)
+    ggplot2::ggsave('unfiltered_features_percentMT.pdf', height = 5, width = 7)
 
     # Interactive mode
     if (interactive) {

@@ -25,7 +25,41 @@ MergeSeurat(
 )
 }
 \arguments{
-\item{seurat_objects}{List of Seurat objects}
+\item{seurat_objects}{List of Seurat objects
+#' @param object_names Names for the Seurat objects}
+
+\item{cell_IDs}{Adds cell identities to the beginning of each barcode}
+
+\item{to_regress}{Variable to regress out in normalization}
+
+\item{cluster_resolution}{Resolution for cell clustering}
+
+\item{max_dims}{Maximum dimensions for FindNeighbors and UMAP}
+
+\item{use_SCT}{Use SCTransform method or LogNormalize (FALSE)}
+
+\item{save_rds_file}{Save final Seurat object}
+
+\item{file_name}{Name of files}
+
+\item{use_elbow_plot}{Use the ElbowPlot to determine number of componenets
+for FindNeighbors and UMAP}
+
+\item{spatial}{If your data is a spatial (i.e., Visium)}
+
+\item{integration}{Method for integrating data, see IntegrateLayers}
+
+\item{integration_normalization}{Normalization method used}
+
+\item{integration_assay}{Assay that has normalized data}
+
+\item{integration_reduction}{Reduction to use for integration}
+
+\item{new_reduction}{Name of new integrated reduction}
+
+\item{k_anchor}{How many neighbors (k) to use when picking anchors}
+
+\item{k_weight}{Number of neighbors to consider when weighting anchors}
 }
 \value{
 An integrated Seurat object.

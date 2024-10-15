@@ -7,7 +7,12 @@
 #' It will preferentially choose the filtered_feature_matrix folder.
 #'
 #'
-#' @param data_dirs Path to the directories
+#' @param data_dirs Path to directories containing matrix.mtx, features.tsv, and
+#'  barcodes.tsv or .h5 files.
+#' @param cells Features must be expressed in at least this many cells
+#' @param features Cells must have at least this many features
+#' @param treatment Treatment metadata column (e.g., Age, chemical, etc.)
+#' @param object_names Names for the Seurat objects
 #' @return A list of Seurat objects
 #' @export
 

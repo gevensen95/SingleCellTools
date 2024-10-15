@@ -13,7 +13,16 @@ CreateRNAObjects(
 )
 }
 \arguments{
-\item{data_dirs}{Path to the directories}
+\item{data_dirs}{Path to directories containing matrix.mtx, features.tsv, and
+barcodes.tsv or .h5 files.}
+
+\item{cells}{Features must be expressed in at least this many cells}
+
+\item{features}{Cells must have at least this many features}
+
+\item{treatment}{Treatment metadata column (e.g., Age, chemical, etc.)}
+
+\item{object_names}{Names for the Seurat objects}
 }
 \value{
 A list of Seurat objects

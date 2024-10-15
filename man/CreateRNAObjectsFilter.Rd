@@ -14,11 +14,39 @@ CreateRNAObjectsFilter(
   feature_min = NA,
   feature_max = NA,
   percent_mt_max = NA,
-  interactive = FALSE
+  interactive = FALSE,
+  object_names = NULL,
+  cell_IDs = names(seurat_objects)
 )
 }
 \arguments{
-\item{data_dirs}{Path to the directories}
+\item{data_dirs}{Path to directories containing matrix.mtx, features.tsv, and
+barcodes.tsv or .h5 files.}
+
+\item{cells}{Features must be expressed in at least this many cells}
+
+\item{features}{Cells must have at least this many features}
+
+\item{treatment}{Treatment metadata column (e.g., Age, chemical, etc.)}
+
+\item{use_quantile}{Use quantile filtering method for nFeature_RNA and
+percent.mt}
+
+\item{quantile_value_min}{Minimum percentile for filtering (max will be 1-min)}
+
+\item{feature_min}{Minimum cutoff for features}
+
+\item{feature_max}{Maximum cutoff for features}
+
+\item{percent_mt_max}{Maximum cutoff for percent.mt}
+
+\item{interactive}{Run filtering interactively to pick cutoffs. A figure will
+be shown of the the features and the percent.mt, or you can open the
+automatically saved file}
+
+\item{object_names}{Names for the Seurat objects}
+
+\item{cell_IDs}{Adds cell identities to the beginning of each barcode}
 }
 \value{
 A list of filtered Seurat objects

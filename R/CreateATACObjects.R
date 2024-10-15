@@ -8,7 +8,13 @@
 #' peaks on scaffolds and not the major chromosomes are removed.
 #'
 #'
-#' @param data_dirs Path to the directories
+#' @param data_dirs Path to the directories with ATAC data
+#' @param add_treatment Whether to add a treatment column to metadata
+#' @param treatment Treatment metadata value (vector)
+#' @param peakwidths_max Max peak width for finding combined peaks
+#' @param peakwidths_min Min peak width for finding combined peaks
+#' @param passed_filters_value Min value for filtering cells based on
+#' passed_filters column
 #' @return A list of Seurat objects
 #' @export
 
