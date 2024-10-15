@@ -42,18 +42,7 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
       Seurat::CreateSeuratObject(counts = seurat_data,
                                  min.cells = cells,
                                  min.features = features,
-                                 project = dirname(dir))
-    } else if (rlang::is_empty(
-      list.files(paste(dir,'filtered_feature_bc_matrix', sep = '/'),
-                 'barcodes.tsv.gz|features.tsv.gz|matrix.mtx.gz')) == FALSE) {
-      seurat_data <- Seurat::Read10X(data.dir =
-                                       paste(dir,'filtered_feature_bc_matrix',
-                                             sep = '/'))
-      Seurat::CreateSeuratObject(counts = seurat_data,
-                                 min.cells = cells,
-                                 min.features = features,
-                                 project = dirname(dir))
-
+                                 project = basename(dir))
     } else if (sum(str_detect(list.files(dir), '.h5'))>0) {
       seurat_data <- Seurat::Read10X_h5(
         paste(dir,
