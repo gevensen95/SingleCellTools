@@ -24,7 +24,6 @@
 #' be shown of the the features and the percent.mt, or you can open the
 #' automatically saved file
 #' @param object_names Names for the Seurat objects
-#' @param cell_IDs Adds cell identities to the beginning of each barcode
 #' @return A list of filtered Seurat objects
 #' @export
 
@@ -33,7 +32,7 @@ CreateRNAObjectsFilter <-
            use_quantile = TRUE, quantile_value_min = 0.15,
            feature_min = NA, feature_max = NA,
            percent_mt_max = NA, interactive = FALSE,
-           object_names = NULL, cell_IDs = names(seurat_objects)) {
+           object_names = NULL) {
     # Ensure thresholds are specified if not using quantiles
     if (!use_quantile) {
       if (!is.numeric(feature_min)) stop("Error: Did not specify threshold for feature_min")
