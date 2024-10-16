@@ -21,7 +21,8 @@ MergeSeurat(
   integration_reduction = "pca",
   new_reduction = "harmony",
   k_anchor = NULL,
-  k_weight = NULL
+  k_weight = NULL,
+  markers = TRUE
 )
 }
 \arguments{
@@ -60,6 +61,8 @@ for FindNeighbors and UMAP}
 \item{k_anchor}{How many neighbors (k) to use when picking anchors}
 
 \item{k_weight}{Number of neighbors to consider when weighting anchors}
+
+\item{markers}{Find all markers}
 }
 \value{
 An integrated Seurat object.

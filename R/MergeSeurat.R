@@ -131,5 +131,5 @@ MergeSeurat <-
                               min.pct = 0.25)
     write.csv(markers, 'markers_all.csv')
     return(obj)
-      } else {return(obj)
+      } else {return(obj)}
   }
