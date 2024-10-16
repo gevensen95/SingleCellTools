@@ -13,6 +13,7 @@
   - RANN
   - rlang
   - purrr
+  - Matrix - Make sure that v1.6-1.1 is loaded. Seurat assay5 doesn't workin later versions of Matrix 
 
 ## Purpose of SingleCellTools
 
