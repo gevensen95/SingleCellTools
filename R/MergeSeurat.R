@@ -24,6 +24,7 @@
 #' @param new_reduction Name of new integrated reduction
 #' @param k_anchor How many neighbors (k) to use when picking anchors
 #' @param k_weight Number of neighbors to consider when weighting anchors
+#' @param markers Find all markers
 #' @return An integrated Seurat object.
 #' @export
 
@@ -35,7 +36,8 @@ MergeSeurat <-
            integration = 'HarmonyIntegration',
            integration_normalization = 'SCT', integration_assay = 'SCT',
            integration_reduction = 'pca', new_reduction = 'harmony',
-           k_anchor = NULL, k_weight = NULL) {
+           k_anchor = NULL, k_weight = NULL,
+           markers = TRUE) {
     if(integration != 'HarmonyIntegration' & new_reduction == 'harmony') {
       stop('\n\n  Error: Integration method is not the default (HarmonyIntegration).\nChange new_reduction to match integration method')
     }
@@ -123,9 +125,11 @@ MergeSeurat <-
       }
     }
 
-    print('Running FindAllMarkers')
+    if (markers == TRUE){
+        print('Running FindAllMarkers')
     markers <- Seurat::FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
                               min.pct = 0.25)
     write.csv(markers, 'markers_all.csv')
     return(obj)
+      } else {return(obj)
   }
