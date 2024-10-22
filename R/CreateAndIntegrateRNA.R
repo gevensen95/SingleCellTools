@@ -95,6 +95,20 @@ CreateAndIntegrateRNA <-
                            min.cells = cells,
                            min.features = features,
                            project = basename(dir))
+      } else if (rlang::is_empty(
+        list.files(paste(paste(dir, 'outs', sep = '/'),
+                         'filtered_feature_bc_matrix', sep = '/'),
+                   'barcodes.tsv.gz|features.tsv.gz|matrix.mtx.gz')) == FALSE) {
+
+        seurat_data <- Seurat::Read10X(data.dir =
+                                         paste(paste(dir, 'outs', sep = '/'),
+                                               'filtered_feature_bc_matrix', sep = '/'))
+
+        # Create Seurat object
+        Seurat::CreateSeuratObject(counts = seurat_data,
+                                   min.cells = cells,
+                                   min.features = features,
+                                   project = basename(dir))
       } else if (sum(str_detect(list.files(dir), '.h5'))>0) {
         seurat_data <- Seurat::Read10X_h5(
           paste(dir,
