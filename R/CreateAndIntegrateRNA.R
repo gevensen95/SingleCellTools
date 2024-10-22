@@ -286,8 +286,8 @@ CreateAndIntegrateRNA <-
       obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:pcs)
       print('Running FindClusters')
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
-      print('Running FindClusters')
-      obj <- Seurat::FindClusters(obj, reduction = new_reduction, dims = 1:pcs)
+      print('Running RunUMAP')
+      obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:pcs)
 
       if (use_SCT){
         print('Running PrepSCTFindMarkers')
@@ -316,8 +316,8 @@ CreateAndIntegrateRNA <-
       obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:max_dims)
       print('Running FindClusters')
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
-      print('Running FindClusters')
-      obj <- Seurat::FindClusters(obj, reduction = new_reduction, dims = 1:max_dims)
+      print('Running RunUMAP')
+      obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:max_dims)
       if (use_SCT){
         print('Running PrepSCTFindMarkers')
         obj <- Seurat::PrepSCTFindMarkers(obj)
