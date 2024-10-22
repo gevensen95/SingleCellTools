@@ -56,7 +56,7 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
       Seurat::CreateSeuratObject(counts = seurat_data,
                                  min.cells = cells,
                                  min.features = features,
-                                 project = dirname(dir))
+                                 project = basename(dir))
     } else if (sum(str_detect(list.files(dir), '.h5'))>0) {
       seurat_data <- Seurat::Read10X_h5(
         paste(dir,
