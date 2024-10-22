@@ -337,7 +337,7 @@ CreateAndIntegrateRNA <-
     }
 
     Seurat::DimPlot(obj, label = T)
-    ggsave('plots/dimplot_seurat_clusters.pdf', height = 5, width = 7)
+    ggsave('dimplot_seurat_clusters.pdf', height = 5, width = 7)
 
     print('Running FindAllMarkers')
     markers <- Seurat::FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
