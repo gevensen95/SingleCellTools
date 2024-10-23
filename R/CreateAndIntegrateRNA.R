@@ -43,6 +43,7 @@
 #' @param k_anchor How many neighbors (k) to use when picking anchors
 #' @param k_weight Number of neighbors to consider when weighting anchors
 #' @return An integrated Seurat object
+#' @param markers Find all markers
 #' @export
 CreateAndIntegrateRNA <-
   function(data_dirs, cells = 3, features = 200, treatment = NULL,
@@ -57,7 +58,8 @@ CreateAndIntegrateRNA <-
            integration = 'HarmonyIntegration',
            integration_normalization = 'SCT', integration_assay = 'SCT',
            integration_reduction = 'pca', new_reduction = 'harmony',
-           k_anchor = NULL, k_weight = NULL) {
+           k_anchor = NULL, k_weight = NULL,
+           markers = TRUE) {
     # Ensure thresholds are specified if not using quantiles
     if (!use_quantile) {
       if (!is.numeric(feature_min)) stop("Error: Did not specify threshold for feature_min")
@@ -289,7 +291,7 @@ CreateAndIntegrateRNA <-
       print('Running RunUMAP')
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:pcs)
 
-      if (use_SCT){
+      if (use_SCT == TRUE & markers == TRUE){
         print('Running PrepSCTFindMarkers')
         obj <- Seurat::PrepSCTFindMarkers(obj)
       }
@@ -318,7 +320,7 @@ CreateAndIntegrateRNA <-
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
       print('Running RunUMAP')
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:max_dims)
-      if (use_SCT){
+      if (use_SCT == TRUE & markers == TRUE){
         print('Running PrepSCTFindMarkers')
         obj <- Seurat::PrepSCTFindMarkers(obj)
         if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
@@ -339,9 +341,11 @@ CreateAndIntegrateRNA <-
     Seurat::DimPlot(obj, label = T)
     ggsave('dimplot_seurat_clusters.pdf', height = 5, width = 7)
 
-    print('Running FindAllMarkers')
-    markers <- Seurat::FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
-                              min.pct = 0.25)
-    write.csv(markers, 'markers_all.csv')
-    return(obj)
+    if (markers == TRUE){
+      print('Running FindAllMarkers')
+      markers <- Seurat::FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
+                                        min.pct = 0.25)
+      write.csv(markers, 'markers_all.csv')
+      return(obj)
+    } else {return(obj)}
   }
