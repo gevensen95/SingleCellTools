@@ -110,7 +110,7 @@ MergeSeurat <-
       obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:max_dims)
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:max_dims)
-      if (use_SCT){
+      if (use_SCT == TRUE & markers == TRUE){
         obj <- Seurat::PrepSCTFindMarkers(obj)
         if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
           saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
@@ -121,6 +121,14 @@ MergeSeurat <-
         }
         else {
           return(obj)
+        }
+      } else {
+        if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
+          saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
+                             sep = '_'))
+        } else if (save_rds_file == TRUE & is.null(file_name) == FALSE) {
+          saveRDS(obj, paste(file_name, 'merged_seurat_objects.rds',
+                             sep = '_'))
         }
       }
     }
