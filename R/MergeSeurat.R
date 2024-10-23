@@ -88,7 +88,7 @@ MergeSeurat <-
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:pcs)
 
-      if (use_SCT){
+      if (use_SCT == TRUE & markers == TRUE){
         obj <- Seurat::PrepSCTFindMarkers(obj)
       }
 
@@ -124,6 +124,9 @@ MergeSeurat <-
         }
       }
     }
+
+    Seurat::DimPlot(obj, label = T)
+    ggsave('dimplot_seurat_clusters.pdf', height = 5, width = 7)
 
     if (markers == TRUE){
         print('Running FindAllMarkers')
