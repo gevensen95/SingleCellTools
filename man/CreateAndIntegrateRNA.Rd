@@ -21,6 +21,7 @@ CreateAndIntegrateRNA(
   cluster_resolution = 0.3,
   max_dims = 15,
   use_SCT = TRUE,
+  sct_assay = "RNA",
   save_rds_file = TRUE,
   file_name = NULL,
   use_elbow_plot = FALSE,
@@ -71,6 +72,8 @@ automatically saved file}
 \item{max_dims}{Maximum dimensions for FindNeighbors and UMAP}
 
 \item{use_SCT}{Use SCTransform method or LogNormalize (FALSE)}
+
+\item{sct_assay}{Assay for SCTransform normalization}
 
 \item{save_rds_file}{Save final Seurat object}
 
