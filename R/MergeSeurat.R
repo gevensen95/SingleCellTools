@@ -64,7 +64,7 @@ MergeSeurat <-
       obj <- suppressWarnings(merge(seurat_objects[[1]], seurat_objects[-1],
                                     add.cell.ids = cell_IDs))
       obj[["RNA"]] <- as(object = obj[["Xenium"]], Class = "Assay5")
-    } else {
+    } else if (is.null(spatial) == TRUE){
       obj <- merge(seurat_objects[[1]], seurat_objects[-1],
                    add.cell.ids = cell_IDs)
     }
