@@ -34,7 +34,7 @@ MergeSeurat <-
            cluster_resolution = 0.3, max_dims = 15, use_SCT = TRUE,
            sct_assay = 'RNA',
            save_rds_file = TRUE, file_name = NULL,
-           use_elbow_plot = FALSE, spatial = NULL,
+           use_elbow_plot = FALSE, spatial = 'no',
            integration = 'HarmonyIntegration',
            integration_normalization = 'SCT', integration_assay = 'SCT',
            integration_reduction = 'pca', new_reduction = 'harmony',
@@ -64,7 +64,7 @@ MergeSeurat <-
       obj <- suppressWarnings(merge(seurat_objects[[1]], seurat_objects[-1],
                                     add.cell.ids = cell_IDs))
       obj[["RNA"]] <- as(object = obj[["Xenium"]], Class = "Assay5")
-    } else if (is.null(spatial) == TRUE){
+    } else if (spatial == 'no'){
       obj <- merge(seurat_objects[[1]], seurat_objects[-1],
                    add.cell.ids = cell_IDs)
     }
