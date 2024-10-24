@@ -16,7 +16,7 @@
 #' @param file_name Name of files
 #' @param use_elbow_plot Use the ElbowPlot to determine number of componenets
 #' for FindNeighbors and UMAP
-#' @param spatial If your data is a spatial (i.e., Visium)
+#' @param spatial If your data is a spatial (i.e., Visium, Xenium)
 #' @param sct_assay Assay for SCTransform normalization
 #' @param integration Method for integrating data, see IntegrateLayers
 #' @param integration_normalization Normalization method used
@@ -34,7 +34,7 @@ MergeSeurat <-
            cluster_resolution = 0.3, max_dims = 15, use_SCT = TRUE,
            sct_assay = 'RNA',
            save_rds_file = TRUE, file_name = NULL,
-           use_elbow_plot = FALSE, spatial = FALSE,
+           use_elbow_plot = FALSE, spatial = NULL,
            integration = 'HarmonyIntegration',
            integration_normalization = 'SCT', integration_assay = 'SCT',
            integration_reduction = 'pca', new_reduction = 'harmony',
@@ -56,9 +56,14 @@ MergeSeurat <-
       stop('\n\n  Error: Integration method is RPCAIntegration.\nSpecifiy k_weight to an integar value (recommend 100)')
     }
 
-    if (spatial){
+    if (spatial == 'Visium'){
       obj <- suppressWarnings(merge(seurat_objects[[1]], seurat_objects[-1],
                                     add.cell.ids = cell_IDs))
+      obj[["RNA"]] <- as(object = obj[["Spatial"]], Class = "Assay5")
+    } else if (spatial == 'Xenium') {
+      obj <- suppressWarnings(merge(seurat_objects[[1]], seurat_objects[-1],
+                                    add.cell.ids = cell_IDs))
+      obj[["RNA"]] <- as(object = obj[["Xenium"]], Class = "Assay5")
     } else {
       obj <- merge(seurat_objects[[1]], seurat_objects[-1],
                    add.cell.ids = cell_IDs)
