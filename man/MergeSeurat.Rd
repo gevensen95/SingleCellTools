@@ -15,7 +15,7 @@ MergeSeurat(
   save_rds_file = TRUE,
   file_name = NULL,
   use_elbow_plot = FALSE,
-  spatial = FALSE,
+  spatial = NULL,
   integration = "HarmonyIntegration",
   integration_normalization = "SCT",
   integration_assay = "SCT",
@@ -49,7 +49,7 @@ MergeSeurat(
 \item{use_elbow_plot}{Use the ElbowPlot to determine number of componenets
 for FindNeighbors and UMAP}
 
-\item{spatial}{If your data is a spatial (i.e., Visium)}
+\item{spatial}{If your data is a spatial (i.e., Visium, Xenium)}
 
 \item{integration}{Method for integrating data, see IntegrateLayers}
 
