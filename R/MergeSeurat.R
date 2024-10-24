@@ -17,6 +17,7 @@
 #' @param use_elbow_plot Use the ElbowPlot to determine number of componenets
 #' for FindNeighbors and UMAP
 #' @param spatial If your data is a spatial (i.e., Visium)
+#' @param sct_assay Assay for SCTransform normalization
 #' @param integration Method for integrating data, see IntegrateLayers
 #' @param integration_normalization Normalization method used
 #' @param integration_assay Assay that has normalized data
@@ -31,6 +32,7 @@
 MergeSeurat <-
   function(seurat_objects, cell_IDs = names(seurat_objects), to_regress = 'percent.mt',
            cluster_resolution = 0.3, max_dims = 15, use_SCT = TRUE,
+           sct_assay = 'RNA',
            save_rds_file = TRUE, file_name = NULL,
            use_elbow_plot = FALSE, spatial = FALSE,
            integration = 'HarmonyIntegration',
@@ -63,7 +65,8 @@ MergeSeurat <-
     }
 
     if (use_SCT){
-      obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress)
+      obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress,
+                                 assay = sct_assay)
     }
     else{
       obj <- Seurat::NormalizeData(obj)

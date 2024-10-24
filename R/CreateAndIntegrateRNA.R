@@ -30,6 +30,7 @@
 #' @param cluster_resolution Resolution for cell clustering
 #' @param max_dims Maximum dimensions for FindNeighbors and UMAP
 #' @param use_SCT Use SCTransform method or LogNormalize (FALSE)
+#' @param sct_assay Assay for SCTransform normalization
 #' @param save_rds_file Save final Seurat object
 #' @param file_name Name of files
 #' @param use_elbow_plot Use the ElbowPlot to determine number of componenets
@@ -53,6 +54,7 @@ CreateAndIntegrateRNA <-
            object_names = NULL,
            cell_IDs = names(seurat_objects), to_regress = 'percent.mt',
            cluster_resolution = 0.3, max_dims = 15, use_SCT = TRUE,
+           sct_assay = 'RNA',
            save_rds_file = TRUE, file_name = NULL,
            use_elbow_plot = FALSE, spatial = FALSE,
            integration = 'HarmonyIntegration',
@@ -261,7 +263,8 @@ CreateAndIntegrateRNA <-
 
     if (use_SCT){
       print('Normalizing Data')
-      obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress)
+      obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress,
+                                 assay = sct_assay)
     }
     else{
       print('Normalizing Data')
