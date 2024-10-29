@@ -15,7 +15,7 @@ MergeSeurat(
   save_rds_file = TRUE,
   file_name = NULL,
   use_elbow_plot = FALSE,
-  spatial = NULL,
+  spatial = "no",
   integration = "HarmonyIntegration",
   integration_normalization = "SCT",
   integration_assay = "SCT",
