@@ -55,7 +55,7 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
   seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {
     obj <- seurat_objects[[i]]
     obj[["barcode"]] <- colnames(obj)
-    path_seurat <- names(seurat_objects[i])
+    path_seurat <- paste(names(seurat_objects[i]), 'spatial', sep = '/')
     detected <- EdgeDetectionVisium(path_seurat, obj)
     obj$Filter <- detected$Filter
     obj$Filter2 <- detected$Filter2
