@@ -6,7 +6,7 @@
 #' Seurat objects along the way and runs FindAllMarkers on the clusters.
 #'
 #' @param seurat_objects List of Seurat objects
-#' #' @param object_names Names for the Seurat objects
+#' @param object_names Names for the Seurat objects
 #' @param cell_IDs Adds cell identities to the beginning of each barcode
 #' @param to_regress Variable to regress out in normalization
 #' @param cluster_resolution Resolution for cell clustering
@@ -14,8 +14,7 @@
 #' @param use_SCT Use SCTransform method or LogNormalize (FALSE)
 #' @param save_rds_file Save final Seurat object
 #' @param file_name Name of files
-#' @param use_elbow_plot Use the ElbowPlot to determine number of componenets
-#' for FindNeighbors and UMAP
+#' @param use_elbow_plot Use the ElbowPlot to determine number of componenets for FindNeighbors and UMAP
 #' @param spatial If your data is a spatial (i.e., Visium, Xenium)
 #' @param sct_assay Assay for SCTransform normalization
 #' @param integration Method for integrating data, see IntegrateLayers
