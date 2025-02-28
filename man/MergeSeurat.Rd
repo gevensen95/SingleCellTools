@@ -27,8 +27,7 @@ MergeSeurat(
 )
 }
 \arguments{
-\item{seurat_objects}{List of Seurat objects
-#' @param object_names Names for the Seurat objects}
+\item{seurat_objects}{List of Seurat objects}
 
 \item{cell_IDs}{Adds cell identities to the beginning of each barcode}
 
@@ -46,8 +45,7 @@ MergeSeurat(
 
 \item{file_name}{Name of files}
 
-\item{use_elbow_plot}{Use the ElbowPlot to determine number of componenets
-for FindNeighbors and UMAP}
+\item{use_elbow_plot}{Use the ElbowPlot to determine number of componenets for FindNeighbors and UMAP}
 
 \item{spatial}{If your data is a spatial (i.e., Visium, Xenium)}
 
@@ -66,6 +64,8 @@ for FindNeighbors and UMAP}
 \item{k_weight}{Number of neighbors to consider when weighting anchors}
 
 \item{markers}{Find all markers}
+
+\item{object_names}{Names for the Seurat objects}
 }
 \value{
 An integrated Seurat object.
