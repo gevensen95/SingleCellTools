@@ -13,6 +13,7 @@
 #' @param niches.k.range Number of clusters to return based on the niche assay.  provide a range
 #' @param batch_size Number of mini-batches for ClusterR::MiniBatchKmeans
 #' @param num_init  Number of times the algorithm will be run with different centroid seeds for ClusterR::MiniBatchKmeans
+#' @param type Spatial Techology (specify "visium" if not true single, otherwise NULL is sufficient)
 #' @return Seurat object containing a new assay
 #' @export
 #'
@@ -23,135 +24,142 @@ BuildNicheAssay.multiple_FOVs.MiniBatchKmeans <- function(
     assay = "niche",
     cluster.name = "niches",
     neighbors.k = 20,
-    niches.k.range = 2:30 ,
+    niches.k.range = 2:30,
     batch_size = 20,
-    num_init = 20
+    num_init = 20,
+    type = NULL
 ) {
-  # check for fov in sample set
-  # remove if not found in object
-  remove = NULL # init list of indices to remove
-  for ( i in seq_along(list.object) ){ # message(i)
-    # get object and fov for each object
-    object = list.object[[i]]
-    fov = list.fov[[i]]
-
-    if( !fov %in%  names(object@images) ){
-      warning( "fov is not found in the i-th object.  Removing the object from the list.object and list.fov.  i =", i)
-      remove = c(remove, i)
+  # Remove objects if the fov is not found in the images slot
+  remove_indices <- c()  # initialize list of indices to remove
+  for (i in seq_along(list.object)) {
+    object <- list.object[[i]]
+    fov <- list.fov[[i]]
+    if (!fov %in% names(object@images)) {
+      warning("fov is not found in the ", i, "-th object. Removing the object from list.object and list.fov. i = ", i)
+      remove_indices <- c(remove_indices, i)
     }
   }
-  for (i in rev(remove) ){
-    list.object[[i]] = NULL
-    list.fov[[i]] = NULL
+  if (length(remove_indices) > 0) {
+    for (i in rev(remove_indices)) {
+      list.object[[i]] <- NULL
+      list.fov[[i]] <- NULL
+    }
   }
 
+  # Process each object to create a niche assay
+  for (i in seq_along(list.object)) {
+    message("Processing object ", i)
+    object <- list.object[[i]]
+    fov <- list.fov[[i]]
 
-  for ( i in seq_along(list.object) ){ message(i)
-    # get object and fov for each object
-    object = list.object[[i]]
-    fov = list.fov[[i]]
-
-    # initialize an empty cells x groups binary matrix
-    cells <- Cells( object[[fov]] )
-    group.labels <- unlist(object[[group.by]][cells, ] )
-    groups <- sort( unique(group.labels) )
-    cell.type.mtx <- matrix(
-      "data" = 0
-      , "nrow" = length(cells)
-      , "ncol" = length(groups)
-    )
+    # Initialize a binary matrix (cells x groups) based on group.by annotation
+    cells <- Cells(object[[fov]])
+    group.labels <- unlist(object[[group.by]][cells, ])
+    groups <- sort(unique(group.labels))
+    cell.type.mtx <- matrix(0, nrow = length(cells), ncol = length(groups))
     rownames(cell.type.mtx) <- cells
     colnames(cell.type.mtx) <- groups
 
-    # populate the binary matrix
+    # Populate the matrix (each row gets a 1 in the column for its group)
     cells.idx <- seq_along(cells)
     group.idx <- match(group.labels, groups)
     cell.type.mtx[cbind(cells.idx, group.idx)] <- 1
 
-    # find neighbors based on tissue position
-    coords <- Seurat::GetTissueCoordinates( object[[fov]], "which" = "centroids" )
-    rownames(coords) <- coords[["cell"]]
-    coords <- as.matrix(coords[ , c("x", "y")])
-    neighbors <- Seurat::FindNeighbors(
-      "object" = coords
-      , "k.param" = neighbors.k # Defines k for the k-nearest neighbor algorithm
-      , "compute.SNN" = F
-    )
+    # Retrieve tissue coordinates based on type
+    if (!is.null(type) && type == "visium") {
+      coords <- Seurat::GetTissueCoordinates(object[[fov]], which = "centroids")
+      coords <- as.matrix(coords[, c("imagecol", "imagerow")])
+      colnames(coords) <- c("x", "y")
+    } else {
+      coords <- Seurat::GetTissueCoordinates(object[[fov]], which = "centroids")
+      rownames(coords) <- coords[["cell"]]
+      coords <- as.matrix(coords[, c("x", "y")])
+    }
 
-    # create niche assay
-    sum.mtx <- as.matrix( neighbors[["nn"]] %*% cell.type.mtx )
-    niche.assay <- CreateAssayObject( "counts" = t(sum.mtx) )
+    # Find neighbors using tissue coordinates
+    neighbors <- Seurat::FindNeighbors(object = coords,
+                                       k.param = neighbors.k,
+                                       compute.SNN = FALSE)
+
+    # Create the niche assay using the neighbors information
+    sum.mtx <- as.matrix(neighbors[["nn"]] %*% cell.type.mtx)
+    niche.assay <- CreateAssayObject(counts = t(sum.mtx))
     object[[assay]] <- niche.assay
     DefaultAssay(object) <- assay
 
-    # scale data
+    # Scale the data in the niche assay
     object <- ScaleData(object)
 
-    # return edited object to list
-    list.object[[i]] = object
-
-
+    # Replace the object in the list with the modified object
+    list.object[[i]] <- object
   }
 
-  # get aggregate data for ClusterR::MiniBatchKmeans
-  # columns = features
-  # rows = cells
-  # cells = values
-  DAT = lapply( seq_along(list.object), function(i){
-    t( list.object[[i]][[assay]]@scale.data )
-  }  )
+  # ----------------------------------------
+  # Aggregate scaled data for MiniBatchKmeans
+  # ----------------------------------------
+  # Each element: rows = cells, columns = features
+  DAT <- lapply(seq_along(list.object), function(i) {
+    t(list.object[[i]][[assay]]@scale.data)
+  })
+
+  # Compute the union of all features (columns) across objects
+  all_features <- sort(unique(unlist(lapply(DAT, colnames))))
+
+  # For each matrix, add any missing features as columns of zeros and reorder columns
+  DAT <- lapply(DAT, function(mat) {
+    missing_features <- setdiff(all_features, colnames(mat))
+    if (length(missing_features) > 0) {
+      add <- matrix(0, nrow = nrow(mat), ncol = length(missing_features))
+      colnames(add) <- missing_features
+      mat <- cbind(mat, add)
+    }
+    mat <- mat[, all_features, drop = FALSE]
+    return(mat)
+  })
+
   DAT <- do.call("rbind", DAT)
 
-
-
-  res.clusters = data.frame(row.names = rownames(DAT))
-
-  for ( k in niches.k.range ){ message("k=", k)
-    # new column name
-    newCol = paste0("kmeans_", k)
-    # get centroids
-    km_mb = ClusterR::MiniBatchKmeans(
-      "data" = DAT
-      , "clusters" = k # the number of clusters
-      , "batch_size" = batch_size # the size of the mini batches
-      , "num_init" = num_init # number of times the algorithm will be run with different centroid seeds
-      , "max_iters" = 100 # the maximum number of clustering iterations.
-      , "init_fraction" = 0.2 # percentage of data to use for the initialization centroids (applies if initializer is kmeans++ or optimal_init). Should be a float number between 0.0 and 1.0.
-      , "initializer" = "kmeans++" # the method of initialization. One of, optimal_init, quantile_init, kmeans++ and random. See details for more information
-      , "early_stop_iter" = 10 # continue that many iterations after calculation of the best within-cluster-sum-of-squared-error
-      , "verbose" = F
-      , "CENTROIDS" = NULL
-      , "tol" = 1e-04
-      , "tol_optimal_init" = 0.3
-      , "seed" = 1
+  # ----------------------------
+  # Run MiniBatchKmeans clustering
+  # ----------------------------
+  res.clusters <- data.frame(row.names = rownames(DAT))
+  for (k in niches.k.range) {
+    message("k=", k)
+    newCol <- paste0("kmeans_", k)
+    km_mb <- ClusterR::MiniBatchKmeans(
+      data = DAT,
+      clusters = k,
+      batch_size = batch_size,
+      num_init = num_init,
+      max_iters = 100,
+      init_fraction = 0.2,
+      initializer = "kmeans++",
+      early_stop_iter = 10,
+      verbose = FALSE,
+      CENTROIDS = NULL,
+      tol = 1e-04,
+      tol_optimal_init = 0.3,
+      seed = 1
     )
 
-    # use centroids to get clusters
-
-    res.clusters[,newCol] = ClusterR::predict_MBatchKMeans( # This function takes the data and the output centroids and returns the clusters.
-      "data" = DAT
-      , "CENTROIDS" = km_mb$centroids
+    # Predict clusters using the centroids
+    res.clusters[, newCol] <- ClusterR::predict_MBatchKMeans(
+      data = DAT,
+      CENTROIDS = km_mb$centroids
     )
-    res.clusters[,newCol] = as.factor( res.clusters[,newCol] ) # change clusters to factors
-
+    res.clusters[, newCol] <- as.factor(res.clusters[, newCol])
   }
 
-  # get clusters back onto the objects
-  colnames(res.clusters) = paste0(cluster.name,".", colnames(res.clusters))
-  for ( i in seq_along(list.object) ){ message(i)
-    # get object and fov for each object
-    object = list.object[[i]]
+  colnames(res.clusters) <- paste0(cluster.name, ".", colnames(res.clusters))
 
-    # get clusters in correct cell row order into metadata of object
-    object[[]] = res.clusters[rownames(object[[]]),]
-
-    # return edited object to list
-    list.object[[i]] = object
+  # Assign the clusters back to each object (in the cell metadata)
+  for (i in seq_along(list.object)) {
+    message("Assigning clusters to object ", i)
+    object <- list.object[[i]]
+    object[[]] <- res.clusters[rownames(object[[]]), ]
+    list.object[[i]] <- object
   }
-
 
   return(list.object)
 }
-
-
 

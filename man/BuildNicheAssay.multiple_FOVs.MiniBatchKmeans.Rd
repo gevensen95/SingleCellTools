@@ -13,7 +13,8 @@ BuildNicheAssay.multiple_FOVs.MiniBatchKmeans(
   neighbors.k = 20,
   niches.k.range = 2:30,
   batch_size = 20,
-  num_init = 20
+  num_init = 20,
+  type = NULL
 )
 }
 \arguments{
@@ -34,6 +35,8 @@ BuildNicheAssay.multiple_FOVs.MiniBatchKmeans(
 \item{batch_size}{Number of mini-batches for ClusterR::MiniBatchKmeans}
 
 \item{num_init}{Number of times the algorithm will be run with different centroid seeds for ClusterR::MiniBatchKmeans}
+
+\item{type}{Spatial Techology (specify "visium" if not true single, otherwise NULL is sufficient)}
 }
 \value{
 Seurat object containing a new assay
