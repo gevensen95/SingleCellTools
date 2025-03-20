@@ -69,8 +69,17 @@ MergeSeurat <-
     }
 
     if (use_SCT){
+      calculate_median <- function(data, column_name) {
+                        data %>%
+                          group_by(orig.ident) %>%
+                          summarise(Median = median(.data[[column_name]], na.rm = TRUE)) %>%
+                          arrange(Median)
+}
+        med_counts <- calculate_median(visium@meta.data, colnames(visium@meta.data)[stringr::str_detect(colnames(visium@meta.data),
+                                                                                                        'nCount')][1])
+
       obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress,
-                                 assay = sct_assay)
+                                 assay = sct_assay, scale_factor = med_counts$Median[1])
     }
     else{
       obj <- Seurat::NormalizeData(obj)
@@ -95,10 +104,6 @@ MergeSeurat <-
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:pcs)
 
-      if (use_SCT == TRUE & markers == TRUE){
-        obj <- Seurat::PrepSCTFindMarkers(obj)
-      }
-
       if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
         saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
                            sep = '_'))
@@ -118,7 +123,6 @@ MergeSeurat <-
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:max_dims)
       if (use_SCT == TRUE & markers == TRUE){
-        obj <- Seurat::PrepSCTFindMarkers(obj)
         if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
           saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
                              sep = '_'))
