@@ -75,7 +75,7 @@ MergeSeurat <-
                           summarise(Median = median(.data[[column_name]], na.rm = TRUE)) %>%
                           arrange(Median)
 }
-        med_counts <- calculate_median(visium@meta.data, colnames(visium@meta.data)[stringr::str_detect(colnames(visium@meta.data),
+        med_counts <- calculate_median(obj@meta.data, colnames(obj@meta.data)[stringr::str_detect(colnames(obj@meta.data),
                                                                                                         'nCount')][1])
 
       obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress,
