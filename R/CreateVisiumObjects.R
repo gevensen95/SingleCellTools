@@ -11,7 +11,7 @@
 #' @export
 
 CreateVisiumObjects <- function(data_dirs, treatment = NULL,
-                                 object_names = NULL, file_type = 'h5') {
+                                object_names = NULL, file_type = 'h5') {
   seurat_objects <- lapply(data_dirs, function(dir) {
     if (file_type == 'h5') {
       seurat_object <- Seurat::Read10X_h5(
@@ -55,7 +55,9 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
   seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {
     obj <- seurat_objects[[i]]
     obj[["barcode"]] <- colnames(obj)
-    path_seurat <- paste(names(seurat_objects[i]), 'spatial', sep = '/')
+    path_seurat <- paste(names(seurat_objects[i]),
+                         list.dirs(names(seurat_objects[i]), full.names = F)[stringr::str_detect(list.dirs(names(seurat_objects[i]), full.names = F),
+                                                                                                 pattern = 'spatial')], sep = '/')
     detected <- EdgeDetectionVisium(path_seurat, obj)
     obj$Filter <- detected$Filter
     obj$Filter2 <- detected$Filter2
@@ -72,9 +74,4 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
 
   return(seurat_objects)
 }
-
-
-
-
-
 
