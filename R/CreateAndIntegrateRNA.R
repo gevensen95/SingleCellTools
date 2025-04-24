@@ -263,8 +263,17 @@ CreateAndIntegrateRNA <-
 
     if (use_SCT){
       print('Normalizing Data')
+       calculate_median <- function(data, column_name) {
+                        data %>%
+                          group_by(orig.ident) %>%
+                          summarise(Median = median(.data[[column_name]], na.rm = TRUE)) %>%
+                          arrange(Median)
+}
+        med_counts <- calculate_median(obj@meta.data, colnames(obj@meta.data)[stringr::str_detect(colnames(obj@meta.data),
+                                                                                                        'nCount')][1])
+
       obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress,
-                                 assay = sct_assay)
+                                 assay = sct_assay, scale_factor = med_counts$Median[1])
     }
     else{
       print('Normalizing Data')
@@ -294,11 +303,6 @@ CreateAndIntegrateRNA <-
       print('Running RunUMAP')
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:pcs)
 
-      if (use_SCT == TRUE & markers == TRUE){
-        print('Running PrepSCTFindMarkers')
-        obj <- Seurat::PrepSCTFindMarkers(obj)
-      }
-
       if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
         print('Saving Integrated Object')
         saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
@@ -324,8 +328,6 @@ CreateAndIntegrateRNA <-
       print('Running RunUMAP')
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:max_dims)
       if (use_SCT == TRUE & markers == TRUE){
-        print('Running PrepSCTFindMarkers')
-        obj <- Seurat::PrepSCTFindMarkers(obj)
         if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
           print('Saving Integrated Object')
           saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
