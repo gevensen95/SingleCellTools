@@ -16,7 +16,7 @@
 #' @return A list of filtered Seurat objects
 #' @export
 
-LoadXenium2 <- function(data_dir, sample_name = sample,
+LoadXenium2 <- function(data_dir, sample_name,
                         outs = c("matrix", "microns"),
                         type = c("centroids", "segmentations"),
                         mols.qv.threshold = 20)
@@ -75,11 +75,11 @@ LoadXenium2 <- function(data_dir, sample_name = sample,
     assay = "Xenium")
   xenium.obj <- CreateSeuratObject(
     counts = data$matrix[["Gene Expression"]],
-    assay = "Xenium")
+    assay = "Xenium",
+    project = sample_name)
   xenium.obj[["ControlCodeword"]] <- CreateAssayObject(counts = data$matrix[["Negative Control Codeword"]])
   xenium.obj[["ControlProbe"]] <- CreateAssayObject(counts = data$matrix[["Negative Control Probe"]])
   xenium.obj[["fov"]] <- coords
-  xenium.obj[['orig.ident']] <- sample
 
   return(xenium.obj)
 }
