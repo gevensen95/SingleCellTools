@@ -79,7 +79,7 @@ LoadXenium2 <- function(data_dir, sample_name = sample,
   xenium.obj[["ControlCodeword"]] <- CreateAssayObject(counts = data$matrix[["Negative Control Codeword"]])
   xenium.obj[["ControlProbe"]] <- CreateAssayObject(counts = data$matrix[["Negative Control Probe"]])
   xenium.obj[["fov"]] <- coords
-  xenium.obj$orig.ident <- sample
+  xenium.obj[['orig.ident']] <- sample
 
   return(xenium.obj)
 }
