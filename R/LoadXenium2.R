@@ -4,6 +4,7 @@
 #' original function cannot use the new output of Xenium.
 #'
 #' @param data_dir Path to the directory containing all Xenium data
+#' @param sample_name Name of Sample
 #' @param outs Molecular outputs to read
 #'  - "matrix": counts matrix
 #'  - "microns": molecule coordinates
@@ -15,7 +16,8 @@
 #' @return A list of filtered Seurat objects
 #' @export
 
-LoadXenium2 <- function(data_dir, outs = c("matrix", "microns"),
+LoadXenium2 <- function(data_dir, sample_name = sample,
+                        outs = c("matrix", "microns"),
                         type = c("centroids", "segmentations"),
                         mols.qv.threshold = 20)
   {
@@ -77,6 +79,7 @@ LoadXenium2 <- function(data_dir, outs = c("matrix", "microns"),
   xenium.obj[["ControlCodeword"]] <- CreateAssayObject(counts = data$matrix[["Negative Control Codeword"]])
   xenium.obj[["ControlProbe"]] <- CreateAssayObject(counts = data$matrix[["Negative Control Probe"]])
   xenium.obj[["fov"]] <- coords
+  xenium.obj$orig.ident <- sample
 
   return(xenium.obj)
 }
