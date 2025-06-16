@@ -144,7 +144,7 @@ MergeSeurat <-
       }
     }
 
-    Seurat::DimPlot(obj, label = T)
+    Seurat::DimPlot(obj, label = T, raster = F)
     ggsave('dimplot_seurat_clusters.pdf', height = 5, width = 7)
 
     if (markers == TRUE){
