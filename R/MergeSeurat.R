@@ -150,7 +150,7 @@ MergeSeurat <-
     if (markers == TRUE){
         print('Running FindAllMarkers')
     markers <- Seurat::FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
-                              min.pct = 0.25)
+                              min.pct = 0.25, recorrect_umi = F)
     write.csv(markers, 'markers_all.csv')
     return(obj)
       } else {return(obj)}
