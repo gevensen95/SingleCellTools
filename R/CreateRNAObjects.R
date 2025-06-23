@@ -93,9 +93,11 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
 
   obj <- merge(seurat_objects[[1]], seurat_objects[-1])
   gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
-    ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
+    ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') +
+                              ggplot2::theme(axis.text.x = element_text(angle = 45, hjust = 1))
   mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
-    ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
+    ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') +
+                              ggplot2::theme(axis.text.x = element_text(angle = 45, hjust = 1))
   print(gene.plot + mt.plot)
 
   return(seurat_objects)
