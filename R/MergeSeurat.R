@@ -25,6 +25,7 @@
 #' @param k_anchor How many neighbors (k) to use when picking anchors
 #' @param k_weight Number of neighbors to consider when weighting anchors
 #' @param markers Find all markers
+#' @param group_column Grouping variable for calculating median counts
 #' @return An integrated Seurat object.
 #' @export
 
@@ -38,7 +39,7 @@ MergeSeurat <-
            integration_normalization = 'SCT', integration_assay = 'SCT',
            integration_reduction = 'pca', new_reduction = 'harmony',
            k_anchor = NULL, k_weight = NULL,
-           markers = TRUE) {
+           markers = TRUE, group_column = 'orig.ident') {
     if(integration != 'HarmonyIntegration' & new_reduction == 'harmony') {
       stop('\n\n  Error: Integration method is not the default (HarmonyIntegration).\nChange new_reduction to match integration method')
     }
@@ -75,7 +76,9 @@ MergeSeurat <-
                           summarise(Median = median(.data[[column_name]], na.rm = TRUE)) %>%
                           arrange(Median)
 }
-        med_counts <- calculate_median(obj@meta.data, colnames(obj@meta.data)[stringr::str_detect(colnames(obj@meta.data),
+        med_counts <- calculate_median(data = obj@meta.data,
+                                       group_column = group_column,
+                                       column_name = colnames(obj@meta.data)[stringr::str_detect(colnames(obj@meta.data),
                                                                                                         'nCount')][1])
 
       obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress,
