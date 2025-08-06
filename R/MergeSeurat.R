@@ -69,9 +69,9 @@ MergeSeurat <-
     }
 
     if (use_SCT){
-      calculate_median <- function(data, column_name) {
+      calculate_median <- function(data, group_column, column_name) {
                         data %>%
-                          group_by(orig.ident) %>%
+                          group_by(.data[[group_column]]) %>%
                           summarise(Median = median(.data[[column_name]], na.rm = TRUE)) %>%
                           arrange(Median)
 }
