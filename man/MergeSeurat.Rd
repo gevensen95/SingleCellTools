@@ -23,7 +23,8 @@ MergeSeurat(
   new_reduction = "harmony",
   k_anchor = NULL,
   k_weight = NULL,
-  markers = TRUE
+  markers = TRUE,
+  group_column = "orig.ident"
 )
 }
 \arguments{
@@ -64,6 +65,8 @@ MergeSeurat(
 \item{k_weight}{Number of neighbors to consider when weighting anchors}
 
 \item{markers}{Find all markers}
+
+\item{group_column}{Grouping variable for calculating median counts}
 
 \item{object_names}{Names for the Seurat objects}
 }

@@ -6,6 +6,7 @@
 \usage{
 LoadXenium2(
   data_dir,
+  sample_name,
   outs = c("matrix", "microns"),
   type = c("centroids", "segmentations"),
   mols.qv.threshold = 20
@@ -13,6 +14,8 @@ LoadXenium2(
 }
 \arguments{
 \item{data_dir}{Path to the directory containing all Xenium data}
+
+\item{sample_name}{Name of Sample}
 
 \item{outs}{Molecular outputs to read
 \itemize{
