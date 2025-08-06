@@ -38,7 +38,7 @@ CreateATACObjects <-
 
     # Create combined peak set
     suppressWarnings(for (i in 2:length(peak_data_list)) {
-      combined.peaks <- reduce(c(peak_data_list[[1]], peak_data_list[[i]]))
+      combined.peaks <- GenomicRanges::reduce(c(peak_data_list[[1]], peak_data_list[[i]]))
     })
     peakwidths <- width(combined.peaks)
     combined.peaks <- combined.peaks[peakwidths < peakwidths_max &

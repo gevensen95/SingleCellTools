@@ -25,6 +25,7 @@
 #' @param k_anchor How many neighbors (k) to use when picking anchors
 #' @param k_weight Number of neighbors to consider when weighting anchors
 #' @param markers Find all markers
+#' @param group_column Grouping variable for calculating median counts
 #' @return An integrated Seurat object.
 #' @export
 
@@ -38,7 +39,7 @@ MergeSeurat <-
            integration_normalization = 'SCT', integration_assay = 'SCT',
            integration_reduction = 'pca', new_reduction = 'harmony',
            k_anchor = NULL, k_weight = NULL,
-           markers = TRUE) {
+           markers = TRUE, group_column = 'orig.ident') {
     if(integration != 'HarmonyIntegration' & new_reduction == 'harmony') {
       stop('\n\n  Error: Integration method is not the default (HarmonyIntegration).\nChange new_reduction to match integration method')
     }
@@ -69,8 +70,19 @@ MergeSeurat <-
     }
 
     if (use_SCT){
+      calculate_median <- function(data, group_column, column_name) {
+                        data %>%
+                          group_by(.data[[group_column]]) %>%
+                          summarise(Median = median(.data[[column_name]], na.rm = TRUE)) %>%
+                          arrange(Median)
+}
+        med_counts <- calculate_median(data = obj@meta.data,
+                                       group_column = group_column,
+                                       column_name = colnames(obj@meta.data)[stringr::str_detect(colnames(obj@meta.data),
+                                                                                                        'nCount')][1])
+
       obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress,
-                                 assay = sct_assay)
+                                 assay = sct_assay, scale_factor = med_counts$Median[1])
     }
     else{
       obj <- Seurat::NormalizeData(obj)
@@ -95,10 +107,6 @@ MergeSeurat <-
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:pcs)
 
-      if (use_SCT == TRUE & markers == TRUE){
-        obj <- Seurat::PrepSCTFindMarkers(obj)
-      }
-
       if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
         saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
                            sep = '_'))
@@ -118,7 +126,6 @@ MergeSeurat <-
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:max_dims)
       if (use_SCT == TRUE & markers == TRUE){
-        obj <- Seurat::PrepSCTFindMarkers(obj)
         if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
           saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
                              sep = '_'))
@@ -140,13 +147,13 @@ MergeSeurat <-
       }
     }
 
-    Seurat::DimPlot(obj, label = T)
+    Seurat::DimPlot(obj, label = T, raster = F)
     ggsave('dimplot_seurat_clusters.pdf', height = 5, width = 7)
 
     if (markers == TRUE){
         print('Running FindAllMarkers')
     markers <- Seurat::FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
-                              min.pct = 0.25)
+                              min.pct = 0.25, recorrect_umi = F)
     write.csv(markers, 'markers_all.csv')
     return(obj)
       } else {return(obj)}
