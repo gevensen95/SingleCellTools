@@ -47,6 +47,7 @@ CleanMolSlot <- function(obj){
 #' Seurat objects. It has the same parameters as subset.
 #'
 #' @param object Seurat object
+#' @param cleanMolecules Clean molecules slot
 #' @return A dataframe of with 4 iterations of filtering (Keep vs. Filter)
 #' @export
 
@@ -58,6 +59,7 @@ subset_opt <- function(
     features = NULL,
     Update.slots = TRUE,
     Update.object = TRUE,
+    cleanMolecules = TRUE,
     ...)
 {
 
@@ -168,9 +170,13 @@ subset_opt <- function(
     message("Updating object..")
     obj_subset %<>% UpdateSeuratObject() }
 
-  message("Cleaning Molecule Slot")
-  obj_subset <- CleanMolSlot(obj_subset)
-  message("Object is ready!")
-  return(obj_subset)
-
+  if (cleanMolecules == TRUE) {
+    message("Cleaning Molecule Slot")
+    obj_subset <- CleanMolSlot(obj_subset)
+    message("Object is ready!")
+    return(obj_subset)
+  } else {
+    message("Object is ready!")
+    return(obj_subset)
+  }
 }
