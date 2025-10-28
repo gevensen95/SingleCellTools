@@ -12,11 +12,14 @@ subset_opt(
   features = NULL,
   Update.slots = TRUE,
   Update.object = TRUE,
+  cleanMolecules = TRUE,
   ...
 )
 }
 \arguments{
 \item{object}{Seurat object}
+
+\item{cleanMolecules}{Clean molecules slot}
 }
 \value{
 A dataframe of with 4 iterations of filtering (Keep vs. Filter)
