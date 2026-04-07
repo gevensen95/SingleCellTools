@@ -15,5 +15,5 @@ SetImageBoundary(seurat_obj, boundary)
 a Seurat object
 }
 \description{
-This function changes the default boundary of a spatial Seurat object.
+This function changes the default boundary of a spatial Seurat object with multiple images.
 }

@@ -1,6 +1,6 @@
 #' Set Boudnary of Images
 #'
-#' This function changes the default boundary of a spatial Seurat object.
+#' This function changes the default boundary of a spatial Seurat object with multiple images.
 #'
 #' @param obj Seurat object (spatial)
 #' @param boundary Boundry (segmentation or centroids)
