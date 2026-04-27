@@ -7,7 +7,11 @@
 #' @return a Seurat object
 #' @export
 SetImageBoundary <- function(seurat_obj, boundary) {
-  for (fov in Images(seurat_obj)) {
+  fovs <- Images(seurat_obj)
+  message(sprintf('--- Setting default boundary to "%s" across %d FOVs ---',
+                  boundary, length(fovs)))
+
+  for (fov in fovs) {
     img <- seurat_obj@images[[fov]]
     available <- Boundaries(img)
 

@@ -19,6 +19,8 @@
 CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                              treatment = NULL,
                              object_names = NULL) {
+  message(sprintf('--- Reading data and creating Seurat objects (%d directories) ---',
+                  length(data_dirs)))
   # Use lapply to read the data and create Seurat objects
 
   seurat_objects <- lapply(data_dirs, function(dir) {
@@ -77,6 +79,7 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
     names(seurat_objects) <- basename(data_dirs)
   } else {names(seurat_objects) <- object_names}
 
+  message('--- Calculating percent mitochondrial reads ---')
   seurat_objects <- lapply(seurat_objects, function(obj) {
     obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, pattern = "^mt-")
     return(obj)
@@ -84,6 +87,7 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
 
   # Add a to_regress to metadata to specify treatment
   if (is.null(treatment)==FALSE){
+    message('--- Adding Treatment metadata column ---')
     seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {
       seurat_obj <- seurat_objects[[i]]
       seurat_obj[["Treatment"]] <- treatment[i]
@@ -91,6 +95,7 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
     }), names(seurat_objects))
   }
 
+  message('--- Generating unfiltered QC plots ---')
   obj <- merge(seurat_objects[[1]], seurat_objects[-1])
   gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') +

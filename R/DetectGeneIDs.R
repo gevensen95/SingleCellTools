@@ -13,7 +13,6 @@
 #' @param seurat_obj A Seurat object.
 #' @param assay Assay whose rownames should be inspected. Defaults to
 #'   \code{DefaultAssay(seurat_obj)}.
-#' @param verbose If TRUE (default), print stage messages.
 #' @return A list with three elements:
 #'   \describe{
 #'     \item{\code{guess}}{Single string: one of \code{"symbol"},
@@ -24,10 +23,8 @@
 #'   }
 #' @export
 
-detect_gene_id_type <- function(seurat_obj, assay = NULL, verbose = TRUE) {
+detect_gene_id_type <- function(seurat_obj, assay = NULL) {
   if (is.null(assay)) assay <- Seurat::DefaultAssay(seurat_obj)
-  if (verbose) message(sprintf('--- Detecting gene ID type (assay: %s) ---', assay))
-
   ids <- rownames(seurat_obj[[assay]])
 
   # Sample a chunk to keep this cheap on large objects
@@ -49,12 +46,8 @@ detect_gene_id_type <- function(seurat_obj, assay = NULL, verbose = TRUE) {
     symbol  = mean(symbol_like)
   )
 
-  guess <- names(which.max(fracs))
-  if (verbose) message(sprintf('  Best guess: %s (%.1f%% of sampled IDs)',
-                               guess, 100 * max(fracs)))
-
   list(
-    guess     = guess,
+    guess     = names(which.max(fracs)),
     fractions = fracs,
     examples  = utils::head(ids, 5)
   )
@@ -76,7 +69,6 @@ detect_gene_id_type <- function(seurat_obj, assay = NULL, verbose = TRUE) {
 #' @param seurat_list A list of Seurat objects.
 #' @param assay Assay whose rownames should be inspected in each object.
 #'   Defaults to \code{DefaultAssay()} of each object.
-#' @param verbose If TRUE (default), print stage messages.
 #' @return A list with two elements:
 #'   \describe{
 #'     \item{\code{per_object}}{List of per-object results from
@@ -87,21 +79,11 @@ detect_gene_id_type <- function(seurat_obj, assay = NULL, verbose = TRUE) {
 #' @seealso \code{\link{detect_gene_id_type}}
 #' @export
 
-check_gene_ids_across_objects <- function(seurat_list, assay = NULL, verbose = TRUE) {
-  if (verbose) message(sprintf('--- Checking gene ID types across %d objects ---',
-                               length(seurat_list)))
-
-  results <- lapply(seq_along(seurat_list), function(i) {
-    if (verbose) message(sprintf('  Inspecting object %d of %d',
-                                 i, length(seurat_list)))
-    detect_gene_id_type(seurat_list[[i]], assay = assay, verbose = FALSE)
-  })
-  names(results) <- names(seurat_list)
-
+check_gene_ids_across_objects <- function(seurat_list, assay = NULL) {
+  results <- lapply(seurat_list, detect_gene_id_type, assay = assay)
   nms <- names(seurat_list)
   if (is.null(nms)) nms <- paste0("obj_", seq_along(seurat_list))
 
-  if (verbose) message('--- Building summary table ---')
   summary_df <- do.call(rbind, lapply(seq_along(results), function(i) {
     r <- results[[i]]
     data.frame(

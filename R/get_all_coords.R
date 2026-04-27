@@ -7,6 +7,7 @@
 #' @export
 get_all_coords <- function(seurat_obj, meta_cols = NULL) {
   fov_names <- Images(seurat_obj)
+  message(sprintf('--- Collecting tissue coordinates from %d FOVs ---', length(fov_names)))
 
   coords_list <- lapply(fov_names, function(fov) {
     coords <- GetTissueCoordinates(seurat_obj, image = fov)
@@ -21,5 +22,6 @@ get_all_coords <- function(seurat_obj, meta_cols = NULL) {
     coords
   })
 
+  message('--- Combining coordinates into single data frame ---')
   do.call(rbind, coords_list)
 }

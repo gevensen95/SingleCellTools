@@ -40,6 +40,8 @@ CreateRNAObjectsFilter <-
       if (!is.numeric(percent_mt_max)) stop("Error: Did not specify threshold for percent_mt_max")
     }
 
+    message(sprintf('--- Reading data and creating Seurat objects (%d directories) ---',
+                    length(data_dirs)))
     # Use lapply to read the data and create Seurat objects
 
     seurat_objects <- lapply(data_dirs, function(dir) {
@@ -98,18 +100,17 @@ CreateRNAObjectsFilter <-
       names(seurat_objects) <- basename(data_dirs)
     } else {names(seurat_objects) <- object_names}
 
+    message('--- Calculating percent mitochondrial reads ---')
     # Add percent mitochondrial DNA to each Seurat object
     seurat_objects <- lapply(seurat_objects, function(obj) {
       obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, pattern = "^mt-")
       return(obj)
     })
 
-    print('Seurat Objects Made')
-
+    message('--- Saving unfiltered Seurat objects ---')
     saveRDS(seurat_objects, 'seurat_objects_unfiltered.rds')
 
-    print('Unfiltered Seurat Objects Saved')
-
+    message('--- Generating unfiltered QC plots ---')
     # Merge Seurat objects
     obj <- merge(seurat_objects[[1]], seurat_objects[-1])
 
@@ -120,8 +121,10 @@ CreateRNAObjectsFilter <-
       ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
     print(gene.plot + mt.plot)
 
+    message('--- Filtering cells ---')
     # Interactive mode
     if (interactive) {
+      message('  Mode: interactive')
       # Ask user for thresholds interactively
       for (param in c("min nFeature_RNA", "max nFeature_RNA", "max percent.mt")) {
         use_quantile <- readline(prompt = paste("Do you want to use quantile for subsetting", param, "? (yes/no): "))
@@ -150,6 +153,7 @@ CreateRNAObjectsFilter <-
         }
       }
 
+      message('--- Generating filtered QC plots ---')
       obj <- merge(seurat_objects[[1]], seurat_objects[-1])
       gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
         ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered')
@@ -157,13 +161,13 @@ CreateRNAObjectsFilter <-
         ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered')
       print(gene.plot + mt.plot)
 
-      print('Saving Filtered Objects')
-
+      message('--- Saving filtered Seurat objects ---')
       saveRDS(seurat_objects, 'seurat_objects_filtered.rds')
 
       return(seurat_objects)
 
     } else {
+      message(sprintf('  Mode: non-interactive (use_quantile = %s)', use_quantile))
       # Non-interactive mode
       subsetted_objs <- lapply(seurat_objects, function(obj) {
         if (use_quantile) {
@@ -184,6 +188,7 @@ CreateRNAObjectsFilter <-
       # Name the subsetted list with original names for clarity
       names(subsetted_objs) <- names(seurat_objects)
 
+      message('--- Generating filtered QC plots ---')
       obj <- merge(subsetted_objs[[1]], subsetted_objs[-1])
       gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
         ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered')
@@ -191,8 +196,7 @@ CreateRNAObjectsFilter <-
         ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered')
       print(gene.plot + mt.plot)
 
-      print('Saving Filtered Objects')
-
+      message('--- Saving filtered Seurat objects ---')
       saveRDS(subsetted_objs, 'seurat_objects_filtered.rds')
 
       return(subsetted_objs)

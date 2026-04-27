@@ -87,6 +87,6 @@ An integrated Seurat object.
 \description{
 This function merges and integrates a list of Seurat objects. By default, it
 assumes the objects are SCT normalized and will be integrated using Harmony.
-This function also save multiple Seurat objects along the way and runs
-FindAllMarkers on the clusters.
+It can integrate ATAC objects, as well. This function also save multiple
+Seurat objects along the way and runs FindAllMarkers on the clusters.
 }

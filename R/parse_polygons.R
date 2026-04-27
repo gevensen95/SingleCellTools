@@ -7,6 +7,8 @@
 #' @export
 #'
 parse_polygons <- function(df) {
+  message(sprintf('--- Parsing %d polygon geometries ---', nrow(df)))
+
   # Clean geometry column
   df$geometry <- substr(df$geometry, 11, nchar(df$geometry))
   df$geometry <- substr(df$geometry, 1, nchar(df$geometry) - 2)

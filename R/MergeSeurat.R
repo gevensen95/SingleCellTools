@@ -2,8 +2,8 @@
 #'
 #' This function merges and integrates a list of Seurat objects. By default, it
 #' assumes the objects are SCT normalized and will be integrated using Harmony.
-#' This function also save multiple Seurat objects along the way and runs
-#' FindAllMarkers on the clusters.
+#' It can integrate ATAC objects, as well. This function also save multiple
+#' Seurat objects along the way and runs FindAllMarkers on the clusters.
 #'
 #' @param seurat_objects List of Seurat objects
 #' @param object_names Names for the Seurat objects
@@ -66,6 +66,8 @@ MergeSeurat <-
 
     # --- Optional: restrict to genes common to every object before merging ---
     if (isTRUE(common_genes_only)) {
+      message('--- Computing common genes across objects ---')
+
       # Pick the assay we'll inspect for gene names
       if (is.null(common_genes_assay)) {
         common_genes_assay <- switch(
@@ -80,7 +82,14 @@ MergeSeurat <-
         rownames(Seurat::GetAssayData(o, assay = common_genes_assay,
                                       slot = 'counts'))
       })
-      common <- Reduce(intersect, gene_lists)
+
+      # Per-object gene counts (for context)
+      per_object_n <- vapply(gene_lists, length, integer(1))
+      obj_labels <- names(seurat_objects)
+      if (is.null(obj_labels)) obj_labels <- paste0('obj_', seq_along(seurat_objects))
+
+      union_genes <- Reduce(union, gene_lists)
+      common      <- Reduce(intersect, gene_lists)
 
       if (length(common) == 0) {
         stop('\n\n  Error: No genes are common across all objects in assay "',
@@ -88,13 +97,26 @@ MergeSeurat <-
              '(symbols vs Ensembl IDs) are harmonized across objects.')
       }
 
-      message(sprintf('common_genes_only = TRUE: keeping %d genes shared across all %d objects (assay: %s)',
-                      length(common), length(seurat_objects), common_genes_assay))
+      # Report per-object counts
+      message(sprintf('  Genes per object (assay: %s):', common_genes_assay))
+      for (i in seq_along(per_object_n)) {
+        message(sprintf('    %s: %d genes', obj_labels[i], per_object_n[i]))
+      }
+
+      # Report union, intersection, and the % of the union retained
+      pct_kept <- round(100 * length(common) / length(union_genes), 1)
+      message(sprintf('  Total unique genes across all objects (union): %d',
+                      length(union_genes)))
+      message(sprintf('  Genes shared across all objects (intersection): %d (%.1f%% of union)',
+                      length(common), pct_kept))
+      message(sprintf('  common_genes_only = TRUE: subsetting all %d objects to the %d shared genes.',
+                      length(seurat_objects), length(common)))
 
       seurat_objects <- lapply(seurat_objects, function(o) o[common, ])
     }
     # --------------------------------------------------------------------------
 
+    message('--- Merging Seurat objects ---')
     if (spatial == 'Visium'){
       obj <- suppressWarnings(merge(seurat_objects[[1]], seurat_objects[-1],
                                     add.cell.ids = cell_IDs))
@@ -108,26 +130,31 @@ MergeSeurat <-
                    add.cell.ids = cell_IDs)
     }
 
+    message('--- Normalizing data ---')
     if (use_SCT){
       calculate_median <- function(data, group_column, column_name) {
-        data %>%
-          group_by(.data[[group_column]]) %>%
-          summarise(Median = median(.data[[column_name]], na.rm = TRUE)) %>%
-          arrange(Median)
-      }
-      med_counts <- calculate_median(data = obj@meta.data,
-                                     group_column = group_column,
-                                     column_name = colnames(obj@meta.data)[stringr::str_detect(colnames(obj@meta.data),
-                                                                                               'nCount')][1])
+                        data %>%
+                          group_by(.data[[group_column]]) %>%
+                          summarise(Median = median(.data[[column_name]], na.rm = TRUE)) %>%
+                          arrange(Median)
+}
+        med_counts <- calculate_median(data = obj@meta.data,
+                                       group_column = group_column,
+                                       column_name = colnames(obj@meta.data)[stringr::str_detect(colnames(obj@meta.data),
+                                                                                                        'nCount')][1])
 
+      message('  Running SCTransform')
       obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress,
                                  assay = sct_assay, scale_factor = med_counts$Median[1])
     }
     else{
+      message('  Running NormalizeData / FindVariableFeatures / ScaleData')
       obj <- Seurat::NormalizeData(obj)
       obj <- Seurat::FindVariableFeatures(obj)
       obj <- Seurat::ScaleData(obj, vars.to.regress = to_regress)
     }
+
+    message('--- Running PCA ---')
     obj <- Seurat::RunPCA(obj)
     if (use_elbow_plot) {
 
@@ -136,39 +163,49 @@ MergeSeurat <-
 
       pcs <- as.numeric(readline(prompt = 'Enter # of PCs: '))
 
+      message(sprintf('--- Integrating layers (method: %s) ---', integration))
       obj <- Seurat::IntegrateLayers(object = obj, method = integration,
-                                     orig.reduction = integration_reduction,
-                                     assay = integration_assay,
-                                     normalization.method = integration_normalization,
-                                     new.reduction = new_reduction,
-                                     k.anchor = k_anchor, k.weight = k_weight)
+                             orig.reduction = integration_reduction,
+                             assay = integration_assay,
+                             normalization.method = integration_normalization,
+                             new.reduction = new_reduction,
+                             k.anchor = k_anchor, k.weight = k_weight)
+      message('--- Finding neighbors and clusters ---')
       obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:pcs)
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
+      message('--- Running UMAP ---')
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:pcs)
 
       if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
+        message('--- Saving merged Seurat object to RDS ---')
         saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
                            sep = '_'))
       } else if (save_rds_file == TRUE & is.null(file_name) == FALSE) {
+        message('--- Saving merged Seurat object to RDS ---')
         saveRDS(obj, paste(file_name, 'merged_seurat_objects.rds',
                            sep = '_'))
       }
 
     } else {
+      message(sprintf('--- Integrating layers (method: %s) ---', integration))
       obj <- Seurat::IntegrateLayers(object = obj, method = integration,
-                                     orig.reduction = integration_reduction,
-                                     assay = integration_assay,
-                                     normalization.method = integration_normalization,
-                                     new.reduction = new_reduction,
-                                     k.anchor = k_anchor, k.weight = k_weight)
+                             orig.reduction = integration_reduction,
+                             assay = integration_assay,
+                             normalization.method = integration_normalization,
+                             new.reduction = new_reduction,
+                             k.anchor = k_anchor, k.weight = k_weight)
+      message('--- Finding neighbors and clusters ---')
       obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:max_dims)
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
+      message('--- Running UMAP ---')
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:max_dims)
       if (use_SCT == TRUE & markers == TRUE){
         if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
+          message('--- Saving merged Seurat object to RDS ---')
           saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
                              sep = '_'))
         } else if (save_rds_file == TRUE & is.null(file_name) == FALSE) {
+          message('--- Saving merged Seurat object to RDS ---')
           saveRDS(obj, paste(file_name, 'merged_seurat_objects.rds',
                              sep = '_'))
         }
@@ -177,23 +214,26 @@ MergeSeurat <-
         }
       } else {
         if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
+          message('--- Saving merged Seurat object to RDS ---')
           saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
                              sep = '_'))
         } else if (save_rds_file == TRUE & is.null(file_name) == FALSE) {
+          message('--- Saving merged Seurat object to RDS ---')
           saveRDS(obj, paste(file_name, 'merged_seurat_objects.rds',
                              sep = '_'))
         }
       }
     }
 
+    message('--- Saving cluster DimPlot ---')
     Seurat::DimPlot(obj, label = T, raster = F)
     ggsave('dimplot_seurat_clusters.pdf', height = 5, width = 7)
 
     if (markers == TRUE){
-      print('Running FindAllMarkers')
-      markers <- Seurat::FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
-                                        min.pct = 0.25, recorrect_umi = F)
-      write.csv(markers, 'markers_all.csv')
-      return(obj)
-    } else {return(obj)}
+        message('--- Running FindAllMarkers ---')
+    markers <- Seurat::FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
+                              min.pct = 0.25, recorrect_umi = F)
+    write.csv(markers, 'markers_all.csv')
+    return(obj)
+      } else {return(obj)}
   }

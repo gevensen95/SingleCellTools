@@ -41,6 +41,7 @@ CreateATACObjectsFilter <-
   interactive=FALSE to skip filtering")
     }
 
+    message(sprintf('--- Reading peak sets (%d directories) ---', length(data_dirs)))
     # Use lapply to read the peak sets for each sample
     peak_data_list <- lapply(data_dirs, function(dir) {
       # Read peaks
@@ -50,6 +51,7 @@ CreateATACObjectsFilter <-
       gr <- GenomicRanges::makeGRangesFromDataFrame(peak_data)
     })
 
+    message('--- Building combined peak set ---')
     # Create combined peak set
     suppressWarnings(for (i in 2:length(peak_data_list)) {
       combined.peaks <- purrr::reduce(c(peak_data_list[[1]], peak_data_list[[i]]))
@@ -57,11 +59,17 @@ CreateATACObjectsFilter <-
     peakwidths <- IRangeswidth(combined.peaks)
     combined.peaks <- combined.peaks[peakwidths < peakwidths_max &
                                        peakwidths > peakwidths_min]
+    message(sprintf('  Peaks within width range [%d, %d]: %d',
+                    peakwidths_min, peakwidths_max, length(combined.peaks)))
+
+    message('--- Removing peaks on scaffolds (keeping main chromosomes) ---')
     #remove scaffolds not in genome
     main.chroms <- GenomeInfoDb::standardChromosomes(BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10)
     keep.peaks <- as.logical(seqnames(granges(combined.peaks)) %in% main.chroms)
     combined.peaks <- combined.peaks[keep.peaks, ]
+    message(sprintf('  Peaks after scaffold removal: %d', length(combined.peaks)))
 
+    message('--- Loading gene annotations from EnsDb ---')
     # extract gene annotations from EnsDb
     annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
 
@@ -69,8 +77,12 @@ CreateATACObjectsFilter <-
     seqlevels(annotations) <- paste0('chr', seqlevels(annotations))
     genome(annotations) <- "mm10"
 
+    message('--- Building Seurat ATAC objects per sample ---')
     # Create Seurat objects
-    seurat_objects <- lapply(data_dirs, function(dir) {
+    seurat_objects <- lapply(seq_along(data_dirs), function(idx) {
+      dir <- data_dirs[[idx]]
+      message(sprintf('  Building object %d of %d: %s',
+                      idx, length(data_dirs), basename(dir)))
 
       # Load metadata for each sample
       md <- read.table(file = paste(dir, "/outs/singlecell.csv", sep = ''), sep = ",", header = TRUE, row.names = 1)[-1, ] # remove the first row
@@ -109,6 +121,7 @@ CreateATACObjectsFilter <-
 
     names(seurat_objects) <- basename(data_dirs)
 
+    message('--- Generating unfiltered ATAC QC plots ---')
     obj <- merge(seurat_objects[[1]], seurat_objects[-1])
 
     pct_reads_in_peaks.plot <- ggplot(obj@meta.data,
@@ -129,6 +142,7 @@ CreateATACObjectsFilter <-
 
     # Add a column to metadata to specify treatment
     if (is.null(treatment) == FALSE) {
+      message('--- Adding Treatment metadata column ---')
       seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {
         seurat_obj <- seurat_objects[[i]]
         seurat_obj[["Treatment"]] <- treatment[i]
@@ -137,6 +151,7 @@ CreateATACObjectsFilter <-
     }
 
     if (filter == TRUE & interactive == FALSE) {
+      message('--- Filtering ATAC objects (non-interactive) ---')
       subsetted_objs <- lapply(seurat_objects, function(obj) {
         # Subset based on the threshold
         subset(obj, subset =
@@ -148,6 +163,7 @@ CreateATACObjectsFilter <-
                  TSS.enrichment > TSS.enrichment_min)
       })
 
+      message('--- Generating filtered ATAC QC plots ---')
       obj <- merge(subsetted_objs[[1]], subsetted_objs[-1])
 
       pct_reads_in_peaks.plot <- ggplot(obj@meta.data,
@@ -169,6 +185,7 @@ CreateATACObjectsFilter <-
       return(subsetted_objs)
 
     } else if (filter == TRUE & interactive == TRUE) {
+      message('--- Filtering ATAC objects (interactive) ---')
       # Ask user for thresholds interactively
       for (param in c("min pct_reads_in_peaks", "min peak_region_fragments", "max peak_region_fragments", "min TSS.enrichment", "max blacklist_ratio", "max nucleosome_signal")) {
         use_quantile <- readline(prompt = paste("Do you want to use quantile for subsetting", param, "? (yes/no): "))
@@ -210,6 +227,7 @@ CreateATACObjectsFilter <-
       }
 
 
+      message('--- Generating filtered ATAC QC plots ---')
       pct_reads_in_peaks.plot <- ggplot(obj@meta.data,
                                         aes(orig.ident, pct_reads_in_peaks)) + geom_boxplot()
       peak_region_fragments.plot <- ggplot(obj@meta.data,
@@ -226,8 +244,7 @@ CreateATACObjectsFilter <-
               blacklist_ratio.plot + nucleosome_signal.plot +
               patchwork::plot_layout(ncol = 3))
 
-      print('Saving Filtered Objects')
-
+      message('--- Saving filtered Seurat objects ---')
       saveRDS(seurat_objects, 'seurat_objects_filtered.rds')
 
       return(seurat_objects)

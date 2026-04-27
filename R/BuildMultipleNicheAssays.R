@@ -17,7 +17,7 @@
 #' @return Seurat object containing a new assay
 #' @export
 #'
-BuildNicheAssay.multiple_FOVs.MiniBatchKmeans <- function(
+BuildMultipleNicheAssays <- function(
     list.object,
     list.fov,
     group.by,
@@ -29,6 +29,7 @@ BuildNicheAssay.multiple_FOVs.MiniBatchKmeans <- function(
     num_init = 20,
     type = NULL
 ) {
+  message('--- Validating FOVs across input objects ---')
   # Remove objects if the fov is not found in the images slot
   remove_indices <- c()  # initialize list of indices to remove
   for (i in seq_along(list.object)) {
@@ -46,9 +47,10 @@ BuildNicheAssay.multiple_FOVs.MiniBatchKmeans <- function(
     }
   }
 
+  message(sprintf('--- Building niche assay for %d objects ---', length(list.object)))
   # Process each object to create a niche assay
   for (i in seq_along(list.object)) {
-    message("Processing object ", i)
+    message(sprintf('  Processing object %d of %d', i, length(list.object)))
     object <- list.object[[i]]
     fov <- list.fov[[i]]
 
@@ -97,6 +99,7 @@ BuildNicheAssay.multiple_FOVs.MiniBatchKmeans <- function(
   # ----------------------------------------
   # Aggregate scaled data for MiniBatchKmeans
   # ----------------------------------------
+  message('--- Aggregating scaled niche data across objects ---')
   # Each element: rows = cells, columns = features
   DAT <- lapply(seq_along(list.object), function(i) {
     t(list.object[[i]][[assay]]@scale.data)
@@ -104,6 +107,7 @@ BuildNicheAssay.multiple_FOVs.MiniBatchKmeans <- function(
 
   # Compute the union of all features (columns) across objects
   all_features <- sort(unique(unlist(lapply(DAT, colnames))))
+  message(sprintf('  Union of niche features across all objects: %d', length(all_features)))
 
   # For each matrix, add any missing features as columns of zeros and reorder columns
   DAT <- lapply(DAT, function(mat) {
@@ -118,13 +122,16 @@ BuildNicheAssay.multiple_FOVs.MiniBatchKmeans <- function(
   })
 
   DAT <- do.call("rbind", DAT)
+  message(sprintf('  Combined matrix: %d cells x %d features', nrow(DAT), ncol(DAT)))
 
   # ----------------------------
   # Run MiniBatchKmeans clustering
   # ----------------------------
+  message(sprintf('--- Running MiniBatchKmeans across k = %d:%d ---',
+                  min(niches.k.range), max(niches.k.range)))
   res.clusters <- data.frame(row.names = rownames(DAT))
   for (k in niches.k.range) {
-    message("k=", k)
+    message(sprintf('  k = %d', k))
     newCol <- paste0("kmeans_", k)
     km_mb <- ClusterR::MiniBatchKmeans(
       data = DAT,
@@ -153,8 +160,9 @@ BuildNicheAssay.multiple_FOVs.MiniBatchKmeans <- function(
   colnames(res.clusters) <- paste0(cluster.name, ".", colnames(res.clusters))
 
   # Assign the clusters back to each object (in the cell metadata)
+  message('--- Writing cluster assignments back to each object ---')
   for (i in seq_along(list.object)) {
-    message("Assigning clusters to object ", i)
+    message(sprintf('  Assigning clusters to object %d of %d', i, length(list.object)))
     object <- list.object[[i]]
     object[[]] <- res.clusters[rownames(object[[]]), ]
     list.object[[i]] <- object
@@ -162,4 +170,3 @@ BuildNicheAssay.multiple_FOVs.MiniBatchKmeans <- function(
 
   return(list.object)
 }
-

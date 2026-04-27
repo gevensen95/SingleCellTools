@@ -28,12 +28,18 @@ LoadXenium2 <- function(data_dir, sample_name,
   outs <- c(outs, type)
   has_dt <- requireNamespace("data.table", quietly = TRUE) &&
     requireNamespace("R.utils", quietly = TRUE)
+
+  message(sprintf('--- Loading Xenium sample "%s" from %s ---', sample_name, data_dir))
+  message(sprintf('  Outputs requested: %s', paste(outs, collapse = ', ')))
+
   data <- sapply(outs, function(otype) {
     switch(EXPR = otype, matrix = {
+      message('  Reading counts matrix (cell_feature_matrix/)')
       matrix <- suppressWarnings(Read10X(data.dir = file.path(data_dir,
                                                               "cell_feature_matrix/")))
       matrix
     }, centroids = {
+      message('  Reading cell centroids (cells.csv.gz)')
       if (has_dt) {
         cell_info <- as.data.frame(data.table::fread(file.path(data_dir,
                                                                "cells.csv.gz")))
@@ -45,6 +51,7 @@ LoadXenium2 <- function(data_dir, sample_name,
                                      stringsAsFactors = FALSE)
       cell_centroid_df
     }, segmentations = {
+      message('  Reading cell segmentations (cell_boundaries.csv.gz)')
       if (has_dt) {
         cell_boundaries_df <- as.data.frame(data.table::fread(file.path(data_dir,
                                                                         "cell_boundaries.csv.gz")))
@@ -55,7 +62,8 @@ LoadXenium2 <- function(data_dir, sample_name,
       names(cell_boundaries_df) <- c("cell", "x", "y")
       cell_boundaries_df
     }, microns = {
-
+      message(sprintf('  Reading transcripts (transcripts.parquet, qv >= %g)',
+                      mols.qv.threshold))
       transcripts <- arrow::read_parquet(file.path(data_dir, "transcripts.parquet"))
       transcripts <- subset(transcripts, qv >= mols.qv.threshold)
 
@@ -65,6 +73,7 @@ LoadXenium2 <- function(data_dir, sample_name,
     }, stop("Unknown Xenium input type: ", otype))
   }, USE.NAMES = TRUE)
 
+  message('--- Building FOV (centroids + segmentations + molecules) ---')
   segmentations.data <- list(
     centroids = CreateCentroids(data$centroids),
     segmentation = CreateSegmentation(data$segmentations))
@@ -73,6 +82,8 @@ LoadXenium2 <- function(data_dir, sample_name,
     type = c("segmentation", "centroids"),
     molecules = data$microns,
     assay = "Xenium")
+
+  message('--- Building Seurat object and attaching control assays ---')
   xenium.obj <- CreateSeuratObject(
     counts = data$matrix[["Gene Expression"]],
     assay = "Xenium",
