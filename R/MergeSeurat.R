@@ -2,8 +2,8 @@
 #'
 #' This function merges and integrates a list of Seurat objects. By default, it
 #' assumes the objects are SCT normalized and will be integrated using Harmony.
-#' It can integrate ATAC objects, as well. This function also save multiple
-#' Seurat objects along the way and runs FindAllMarkers on the clusters.
+#' This function also save multiple Seurat objects along the way and runs
+#' FindAllMarkers on the clusters.
 #'
 #' @param seurat_objects List of Seurat objects
 #' @param object_names Names for the Seurat objects
@@ -26,6 +26,13 @@
 #' @param k_weight Number of neighbors to consider when weighting anchors
 #' @param markers Find all markers
 #' @param group_column Grouping variable for calculating median counts
+#' @param common_genes_only If TRUE, restrict every object to the intersection
+#'   of gene names (rownames of the counts slot of the relevant assay) before
+#'   merging. Useful when objects come from different reference annotations and
+#'   the default union-of-genes merge would pad large blocks of zeros.
+#' @param common_genes_assay Assay to use when computing the common-gene set.
+#'   Defaults to the appropriate assay for the chosen `spatial` mode
+#'   ("Spatial" for Visium, "Xenium" for Xenium, otherwise the DefaultAssay).
 #' @return An integrated Seurat object.
 #' @export
 
@@ -39,7 +46,8 @@ MergeSeurat <-
            integration_normalization = 'SCT', integration_assay = 'SCT',
            integration_reduction = 'pca', new_reduction = 'harmony',
            k_anchor = NULL, k_weight = NULL,
-           markers = TRUE, group_column = 'orig.ident') {
+           markers = TRUE, group_column = 'orig.ident',
+           common_genes_only = FALSE, common_genes_assay = NULL) {
     if(integration != 'HarmonyIntegration' & new_reduction == 'harmony') {
       stop('\n\n  Error: Integration method is not the default (HarmonyIntegration).\nChange new_reduction to match integration method')
     }
@@ -56,6 +64,37 @@ MergeSeurat <-
       stop('\n\n  Error: Integration method is RPCAIntegration.\nSpecifiy k_weight to an integar value (recommend 100)')
     }
 
+    # --- Optional: restrict to genes common to every object before merging ---
+    if (isTRUE(common_genes_only)) {
+      # Pick the assay we'll inspect for gene names
+      if (is.null(common_genes_assay)) {
+        common_genes_assay <- switch(
+          spatial,
+          'Visium' = 'Spatial',
+          'Xenium' = 'Xenium',
+          Seurat::DefaultAssay(seurat_objects[[1]])
+        )
+      }
+
+      gene_lists <- lapply(seurat_objects, function(o) {
+        rownames(Seurat::GetAssayData(o, assay = common_genes_assay,
+                                      slot = 'counts'))
+      })
+      common <- Reduce(intersect, gene_lists)
+
+      if (length(common) == 0) {
+        stop('\n\n  Error: No genes are common across all objects in assay "',
+             common_genes_assay, '". Check that gene identifiers ',
+             '(symbols vs Ensembl IDs) are harmonized across objects.')
+      }
+
+      message(sprintf('common_genes_only = TRUE: keeping %d genes shared across all %d objects (assay: %s)',
+                      length(common), length(seurat_objects), common_genes_assay))
+
+      seurat_objects <- lapply(seurat_objects, function(o) o[common, ])
+    }
+    # --------------------------------------------------------------------------
+
     if (spatial == 'Visium'){
       obj <- suppressWarnings(merge(seurat_objects[[1]], seurat_objects[-1],
                                     add.cell.ids = cell_IDs))
@@ -71,15 +110,15 @@ MergeSeurat <-
 
     if (use_SCT){
       calculate_median <- function(data, group_column, column_name) {
-                        data %>%
-                          group_by(.data[[group_column]]) %>%
-                          summarise(Median = median(.data[[column_name]], na.rm = TRUE)) %>%
-                          arrange(Median)
-}
-        med_counts <- calculate_median(data = obj@meta.data,
-                                       group_column = group_column,
-                                       column_name = colnames(obj@meta.data)[stringr::str_detect(colnames(obj@meta.data),
-                                                                                                        'nCount')][1])
+        data %>%
+          group_by(.data[[group_column]]) %>%
+          summarise(Median = median(.data[[column_name]], na.rm = TRUE)) %>%
+          arrange(Median)
+      }
+      med_counts <- calculate_median(data = obj@meta.data,
+                                     group_column = group_column,
+                                     column_name = colnames(obj@meta.data)[stringr::str_detect(colnames(obj@meta.data),
+                                                                                               'nCount')][1])
 
       obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress,
                                  assay = sct_assay, scale_factor = med_counts$Median[1])
@@ -98,11 +137,11 @@ MergeSeurat <-
       pcs <- as.numeric(readline(prompt = 'Enter # of PCs: '))
 
       obj <- Seurat::IntegrateLayers(object = obj, method = integration,
-                             orig.reduction = integration_reduction,
-                             assay = integration_assay,
-                             normalization.method = integration_normalization,
-                             new.reduction = new_reduction,
-                             k.anchor = k_anchor, k.weight = k_weight)
+                                     orig.reduction = integration_reduction,
+                                     assay = integration_assay,
+                                     normalization.method = integration_normalization,
+                                     new.reduction = new_reduction,
+                                     k.anchor = k_anchor, k.weight = k_weight)
       obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:pcs)
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:pcs)
@@ -117,11 +156,11 @@ MergeSeurat <-
 
     } else {
       obj <- Seurat::IntegrateLayers(object = obj, method = integration,
-                             orig.reduction = integration_reduction,
-                             assay = integration_assay,
-                             normalization.method = integration_normalization,
-                             new.reduction = new_reduction,
-                             k.anchor = k_anchor, k.weight = k_weight)
+                                     orig.reduction = integration_reduction,
+                                     assay = integration_assay,
+                                     normalization.method = integration_normalization,
+                                     new.reduction = new_reduction,
+                                     k.anchor = k_anchor, k.weight = k_weight)
       obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:max_dims)
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:max_dims)
@@ -151,10 +190,10 @@ MergeSeurat <-
     ggsave('dimplot_seurat_clusters.pdf', height = 5, width = 7)
 
     if (markers == TRUE){
-        print('Running FindAllMarkers')
-    markers <- Seurat::FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
-                              min.pct = 0.25, recorrect_umi = F)
-    write.csv(markers, 'markers_all.csv')
-    return(obj)
-      } else {return(obj)}
+      print('Running FindAllMarkers')
+      markers <- Seurat::FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
+                                        min.pct = 0.25, recorrect_umi = F)
+      write.csv(markers, 'markers_all.csv')
+      return(obj)
+    } else {return(obj)}
   }
