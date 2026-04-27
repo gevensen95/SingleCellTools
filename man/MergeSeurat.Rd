@@ -24,7 +24,9 @@ MergeSeurat(
   k_anchor = NULL,
   k_weight = NULL,
   markers = TRUE,
-  group_column = "orig.ident"
+  group_column = "orig.ident",
+  common_genes_only = FALSE,
+  common_genes_assay = NULL
 )
 }
 \arguments{
@@ -68,6 +70,15 @@ MergeSeurat(
 
 \item{group_column}{Grouping variable for calculating median counts}
 
+\item{common_genes_only}{If TRUE, restrict every object to the intersection
+of gene names (rownames of the counts slot of the relevant assay) before
+merging. Useful when objects come from different reference annotations and
+the default union-of-genes merge would pad large blocks of zeros.}
+
+\item{common_genes_assay}{Assay to use when computing the common-gene set.
+Defaults to the appropriate assay for the chosen \code{spatial} mode
+("Spatial" for Visium, "Xenium" for Xenium, otherwise the DefaultAssay).}
+
 \item{object_names}{Names for the Seurat objects}
 }
 \value{
@@ -76,6 +87,6 @@ An integrated Seurat object.
 \description{
 This function merges and integrates a list of Seurat objects. By default, it
 assumes the objects are SCT normalized and will be integrated using Harmony.
-It can integrate ATAC objects, as well. This function also save multiple
-Seurat objects along the way and runs FindAllMarkers on the clusters.
+This function also save multiple Seurat objects along the way and runs
+FindAllMarkers on the clusters.
 }
