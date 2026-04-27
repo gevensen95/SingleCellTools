@@ -11,19 +11,21 @@
 #'
 assign_cell_cycle_phase <- function(seurat_obj, s_genes, g2m_genes,
                                     threshold_quantile = 0.5) {
-  # Calculate UCell scores
+  message('--- Scoring S phase genes with UCell ---')
   seurat_obj <- AddModuleScore_UCell(seurat_obj, features = list(s_genes), name = "_S.Score_UCell")
+
+  message('--- Scoring G2M phase genes with UCell ---')
   seurat_obj <- AddModuleScore_UCell(seurat_obj, features = list(g2m_genes), name = "_G2M.Score_UCell")
 
   # Extract column names created by UCell
   s_col <- grep("_S.Score_UCell$", colnames(seurat_obj@meta.data), value = TRUE)
   g2m_col <- grep("_G2M.Score_UCell$", colnames(seurat_obj@meta.data), value = TRUE)
 
-  # Calculate thresholds
+  message(sprintf('--- Computing score thresholds (quantile = %.2f) ---', threshold_quantile))
   s_thresh <- quantile(seurat_obj[[s_col]][,1], threshold_quantile)
   g2m_thresh <- quantile(seurat_obj[[g2m_col]][,1], threshold_quantile)
 
-  # Assign cell cycle phase
+  message('--- Assigning cell cycle phase (G1 / S / G2M) ---')
   seurat_obj$Phase <- with(seurat_obj@meta.data, ifelse(
     get(s_col) < s_thresh & get(g2m_col) < g2m_thresh, "G1",
     ifelse(get(s_col) > get(g2m_col), "S",

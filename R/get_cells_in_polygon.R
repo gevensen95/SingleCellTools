@@ -21,6 +21,7 @@ get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
   }
 
   # ---- 1) Polygon (ensure closed ring) ----
+  message('--- Building polygon (ensuring closed ring) ---')
   polygon_matrix <- as.matrix(poly_df)
   if (!all(polygon_matrix[1, ] == polygon_matrix[nrow(polygon_matrix), ])) {
     polygon_matrix <- rbind(polygon_matrix, polygon_matrix[1, ])
@@ -28,6 +29,7 @@ get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
   poly_sf <- sf::st_sfc(sf::st_polygon(list(polygon_matrix)))
 
   # ---- 2) Cell coordinates from Seurat ----
+  message(sprintf('--- Pulling tissue coordinates (image: %s) ---', image_name))
   coords <- Seurat::GetTissueCoordinates(seurat.obj, image = image_name)
   coords <- as.data.frame(coords)
 
@@ -42,6 +44,7 @@ get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
   cells_sf <- sf::st_as_sf(coords, coords = c("x", "y"), crs = NA)
 
   # ---- 3) Point-in-polygon ----
+  message('--- Running point-in-polygon test ---')
   inside <- sf::st_within(cells_sf, poly_sf, sparse = FALSE)[, 1]
 
   # Map back to Seurat metadata (logical vector aligned to Cells(seurat.obj))
@@ -49,5 +52,7 @@ get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
 
   # Helpful return values
   cells_inside <- inside_named[inside_named==TRUE]
+  message(sprintf('  Cells inside polygon: %d of %d',
+                  length(cells_inside), length(inside_named)))
   return(cells_inside)
 }

@@ -14,6 +14,7 @@
 EdgeDetectionVisium <- function(coord_path, seurat.obj = NULL,
                                 search = 'radius', neighbors = 7) {
 
+  message('--- Reading tissue coordinates ---')
   #finds and reads in the data
   coords <- read.delim(paste(coord_path,
                              list.files(coord_path)[which(str_detect(
@@ -29,6 +30,8 @@ EdgeDetectionVisium <- function(coord_path, seurat.obj = NULL,
   }
 
   rownames(coords) <- coords$barcode
+
+  message('--- Edge detection iteration 1 of 4 ---')
   closest <- as.data.frame(RANN::nn2(data=coords[,c(3,4)], k=7, searchtype = 'radius',
                                radius = 2)[[1]])
   closest[closest == 0] <- NA
@@ -41,6 +44,7 @@ EdgeDetectionVisium <- function(coord_path, seurat.obj = NULL,
   coords[rownames(closest2),]$Filter <- 'Keep'
   coords[closest3$barcode,]$Filter <- 'Filter'
 
+  message('--- Edge detection iteration 2 of 4 ---')
   #Now do it again
   coords$Filter2 <- coords$Filter
   coords_red <- coords %>% dplyr::filter(Filter == 'Keep')
@@ -56,6 +60,7 @@ EdgeDetectionVisium <- function(coord_path, seurat.obj = NULL,
   closest3 <- closest %>% dplyr::filter(!barcode %in% closest2$barcode)
   coords[closest3$barcode,]$Filter2 <- 'Filter'
 
+  message('--- Edge detection iteration 3 of 4 ---')
   # Now Again
   coords$Filter3 <- coords$Filter2
   coords_red <- coords %>% dplyr::filter(Filter2 == 'Keep')
@@ -70,6 +75,7 @@ EdgeDetectionVisium <- function(coord_path, seurat.obj = NULL,
   closest3 <- closest %>% dplyr::filter(!barcode %in% closest2$barcode)
   coords[closest3$barcode,]$Filter3 <- 'Filter'
 
+  message('--- Edge detection iteration 4 of 4 ---')
   # Last Time
   coords$Filter4 <- coords$Filter3
   coords_red <- coords %>% dplyr::filter(Filter3 == 'Keep')

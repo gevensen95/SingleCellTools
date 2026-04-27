@@ -12,6 +12,8 @@
 
 CreateVisiumObjects <- function(data_dirs, treatment = NULL,
                                 object_names = NULL, file_type = 'h5') {
+  message(sprintf('--- Reading Visium data and creating Seurat objects (%d directories, file_type = %s) ---',
+                  length(data_dirs), file_type))
   seurat_objects <- lapply(data_dirs, function(dir) {
     if (file_type == 'h5') {
       seurat_object <- Seurat::Read10X_h5(
@@ -38,6 +40,7 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
   } else {names(seurat_objects) <- object_names}
   # Add to metadata to specify treatment
   if (is.null(treatment)==FALSE){
+    message('--- Adding Treatment metadata column ---')
     seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {
       seurat_obj <- seurat_objects[[i]]
       seurat_obj[["Treatment"]] <- treatment[i]
@@ -45,6 +48,7 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
     }), names(seurat_objects))
   }
 
+  message('--- Generating unfiltered QC plots ---')
   obj <- merge(seurat_objects[[1]], seurat_objects[-1])
   gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_Spatial)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
@@ -52,7 +56,10 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
   print(gene.plot + count.plot)
 
+  message('--- Running edge detection and attaching tissue images ---')
   seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {
+    message(sprintf('  Processing object %d of %d: %s',
+                    i, length(seurat_objects), names(seurat_objects)[i]))
     obj <- seurat_objects[[i]]
     obj[["barcode"]] <- colnames(obj)
     path_seurat <- paste(names(seurat_objects[i]),
@@ -74,4 +81,3 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
 
   return(seurat_objects)
 }
-

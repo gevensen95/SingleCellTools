@@ -4,10 +4,16 @@
 \alias{get_all_children}
 \title{Recursive function to get all child terms for a given GO term}
 \usage{
-get_all_children(go_term)
+get_all_children(go_term, verbose = FALSE)
 }
 \arguments{
 \item{go_term}{Parent GO term}
+
+\item{verbose}{If TRUE, print a single high-level message at the top of the
+recursion. Defaults to FALSE because the function calls itself; emitting
+a message in every recursive call would flood the console. The wrapper
+below \code{get_all_children_verbose} sets verbose=TRUE on the outer call
+and FALSE on the inner calls.}
 }
 \value{
 Vector containing child GO terms

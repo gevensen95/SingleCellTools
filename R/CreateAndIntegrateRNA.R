@@ -75,6 +75,8 @@ CreateAndIntegrateRNA <-
       if (is.numeric(percent_mt_max)) stop("Error: Set quantile=TRUE and specificed hard cut off for percent.mt. Pick only one.")
     }
 
+    message(sprintf('--- Reading data and creating Seurat objects (%d directories) ---',
+                    length(data_dirs)))
     # Use lapply to read the data and create Seurat objects
 
     seurat_objects <- lapply(data_dirs, function(dir) {
@@ -133,6 +135,7 @@ CreateAndIntegrateRNA <-
       names(seurat_objects) <- basename(data_dirs)
     } else {names(seurat_objects) <- object_names}
 
+    message('--- Calculating percent mitochondrial reads ---')
     # Add percent mitochondrial DNA to each Seurat object
     seurat_objects <- lapply(seurat_objects, function(obj) {
       obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, pattern = "^mt-")
@@ -141,6 +144,7 @@ CreateAndIntegrateRNA <-
 
     # Add a to_regress to metadata to specify treatment
     if (is.null(treatment) == FALSE){
+      message('--- Adding Treatment metadata column ---')
       seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {
         seurat_obj <- seurat_objects[[i]]
         seurat_obj[["Treatment"]] <- treatment[i]
@@ -148,12 +152,10 @@ CreateAndIntegrateRNA <-
       }), names(seurat_objects))
     }
 
-    print('Seurat Objects Made')
-
+    message('--- Saving unfiltered Seurat objects ---')
     saveRDS(seurat_objects, file = 'seurat_objects_unfiltered.rds')
 
-    print('Unfiltered Objects Saved')
-
+    message('--- Generating unfiltered QC plots ---')
     # Merge Seurat objects
     obj <- merge(seurat_objects[[1]], seurat_objects[-1])
 
@@ -165,8 +167,10 @@ CreateAndIntegrateRNA <-
     print(gene.plot + mt.plot)
     ggplot2::ggsave('unfiltered_features_percentMT.pdf', height = 5, width = 7)
 
+    message('--- Filtering cells ---')
     # Interactive mode
     if (interactive) {
+      message('  Mode: interactive')
       # Ask user for thresholds interactively
       for (param in c("min nFeature_RNA", "max nFeature_RNA", "max percent.mt")) {
         use_quantile <- readline(prompt = paste("Do you want to use quantile for subsetting", param, "? (yes/no): "))
@@ -203,6 +207,7 @@ CreateAndIntegrateRNA <-
       print(gene.plot + mt.plot)
 
     } else {
+      message(sprintf('  Mode: non-interactive (use_quantile = %s)', use_quantile))
       # Non-interactive mode
       seurat_objects <- lapply(seurat_objects, function(obj) {
         if (use_quantile) {
@@ -231,11 +236,8 @@ CreateAndIntegrateRNA <-
       print(gene.plot + mt.plot)
     }
 
-    print('Seurat Objects Filtered')
-
+    message('--- Saving filtered Seurat objects ---')
     saveRDS(seurat_objects, file = 'seurat_objects_filtered.rds')
-
-    print('Filtered Objects Saved')
 
     if(integration != 'HarmonyIntegration' & new_reduction == 'harmony') {
       stop('\n\n  Error: Integration method is not the default (HarmonyIntegration).\nChange new_reduction to match integration method')
@@ -253,6 +255,7 @@ CreateAndIntegrateRNA <-
       stop('\n\n  Error: Integration method is RPCAIntegration.\nSpecifiy k_weight to an integar value (recommend 100)')
     }
 
+    message('--- Merging Seurat objects ---')
     if (spatial){
       obj <- suppressWarnings(merge(seurat_objects[[1]], seurat_objects[-1],
                                     add.cell.ids = cell_IDs))
@@ -261,8 +264,9 @@ CreateAndIntegrateRNA <-
                    add.cell.ids = cell_IDs)
     }
 
+    message('--- Normalizing data ---')
     if (use_SCT){
-      print('Normalizing Data')
+      message('  Running SCTransform')
        calculate_median <- function(data, column_name) {
                         data %>%
                           group_by(orig.ident) %>%
@@ -276,11 +280,13 @@ CreateAndIntegrateRNA <-
                                  assay = sct_assay, scale_factor = med_counts$Median[1])
     }
     else{
-      print('Normalizing Data')
+      message('  Running NormalizeData / FindVariableFeatures / ScaleData')
       obj <- Seurat::NormalizeData(obj)
       obj <- Seurat::FindVariableFeatures(obj)
       obj <- Seurat::ScaleData(obj, vars.to.regress = to_regress)
     }
+
+    message('--- Running PCA ---')
     obj <- Seurat::RunPCA(obj)
     if (use_elbow_plot) {
 
@@ -289,51 +295,49 @@ CreateAndIntegrateRNA <-
 
       pcs <- as.numeric(readline(prompt = 'Enter # of PCs: '))
 
-      print('Integrating Data')
+      message(sprintf('--- Integrating layers (method: %s) ---', integration))
       obj <- Seurat::IntegrateLayers(object = obj, method = integration,
                              orig.reduction = integration_reduction,
                              assay = integration_assay,
                              normalization.method = integration_normalization,
                              new.reduction = new_reduction,
                              k.anchor = k_anchor, k.weight = k_weight)
-      print('Running FindNeighbors')
+      message('--- Finding neighbors and clusters ---')
       obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:pcs)
-      print('Running FindClusters')
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
-      print('Running RunUMAP')
+      message('--- Running UMAP ---')
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:pcs)
 
       if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
-        print('Saving Integrated Object')
+        message('--- Saving integrated Seurat object to RDS ---')
         saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
                            sep = '_'))
       } else if (save_rds_file == TRUE & is.null(file_name) == FALSE) {
-        print('Saving Integrated Object')
+        message('--- Saving integrated Seurat object to RDS ---')
         saveRDS(obj, paste(file_name, 'merged_seurat_objects.rds',
                            sep = '_'))
       }
 
     } else {
-      print('Integrating Data')
+      message(sprintf('--- Integrating layers (method: %s) ---', integration))
       obj <- Seurat::IntegrateLayers(object = obj, method = integration,
                              orig.reduction = integration_reduction,
                              assay = integration_assay,
                              normalization.method = integration_normalization,
                              new.reduction = new_reduction,
                              k.anchor = k_anchor, k.weight = k_weight)
-      print('Running FindNeighbors')
+      message('--- Finding neighbors and clusters ---')
       obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:max_dims)
-      print('Running FindClusters')
       obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
-      print('Running RunUMAP')
+      message('--- Running UMAP ---')
       obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:max_dims)
       if (use_SCT == TRUE & markers == TRUE){
         if (save_rds_file == TRUE & is.null(file_name) == TRUE) {
-          print('Saving Integrated Object')
+          message('--- Saving integrated Seurat object to RDS ---')
           saveRDS(obj, paste(new_reduction, 'merged_seurat_objects.rds',
                              sep = '_'))
         } else if (save_rds_file == TRUE & is.null(file_name) == FALSE) {
-          print('Saving Integrated Object')
+          message('--- Saving integrated Seurat object to RDS ---')
           saveRDS(obj, paste(file_name, 'merged_seurat_objects.rds',
                              sep = '_'))
         }
@@ -343,11 +347,12 @@ CreateAndIntegrateRNA <-
       }
     }
 
+    message('--- Saving cluster DimPlot ---')
     Seurat::DimPlot(obj, label = T)
     ggsave('dimplot_seurat_clusters.pdf', height = 5, width = 7)
 
     if (markers == TRUE){
-      print('Running FindAllMarkers')
+      message('--- Running FindAllMarkers ---')
       markers <- Seurat::FindAllMarkers(obj, logfc.threshold = 1, only.pos = TRUE,
                                         min.pct = 0.25)
       write.csv(markers, 'markers_all.csv')

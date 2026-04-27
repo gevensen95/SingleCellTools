@@ -7,9 +7,12 @@
 #' @export
 CleanMolSlot <- function(obj){
 
+  message(sprintf('--- Cleaning molecules slot across %d FOVs ---',
+                  length(names(obj@images))))
+
   # for each image...
   for(img in names(obj@images)){
-    message(paste("Fixing", img, "FOV..."))
+    message(paste("  Fixing", img, "FOV..."))
 
 
     # convert the molecules slot to a df:
@@ -30,7 +33,7 @@ CleanMolSlot <- function(obj){
     orig <- nrow(test)
     test <- subset(test, x >= xmin & x <= xmax & y >= ymin & y <= ymax)
     new <- nrow(test)
-    message(paste0("Removed ", formatC((orig-new)/orig*100, digits=3), "% of molecules from image slot (", orig-new, ")!\n"))
+    message(paste0("    Removed ", formatC((orig-new)/orig*100, digits=3), "% of molecules from image slot (", orig-new, ")"))
 
 
     fov <- obj@images[[img]]
@@ -64,11 +67,11 @@ subset_opt <- function(
 {
 
   if (Update.slots) {
-    message("Updating object slots..")
+    message('--- Updating object slots ---')
     object %<>% UpdateSlots()
   }
 
-  message("Cloing object..")
+  message('--- Cloning object ---')
   obj_subset <- object
 
   # sanity check - use only cell ids (no indices)
@@ -77,11 +80,11 @@ subset_opt <- function(
   }
 
   if (!missing(subset) || !is.null(idents)) {
-    message("Extracting cells matched to `subset` and/or `idents`")
+    message('--- Extracting cells matched to `subset` and/or `idents` ---')
   }
 
   if (class(obj_subset) == "FOV") {
-    message("object class is `FOV` ")
+    message("  Object class is `FOV`")
     cells <- Cells(obj_subset)
   } else if (!class(obj_subset) == "FOV" && !missing(subset)) {
     subset <- enquo(arg = subset)
@@ -103,12 +106,12 @@ subset_opt <- function(
   }
 
   # added support for object class `FOV`
+  message('--- Matching cells in FOVs ---')
   if (class(obj_subset) == "FOV") {
-    message("Matching cells for object class `FOV`..")
+    message("  Matching cells for object class `FOV`")
     cells_check <- any(obj_subset %>% Cells %in% cells)
   } else {
     # check if cells are present in all FOV
-    message("Matching cells in FOVs..")
     cells_check <-
       lapply(Images(obj_subset) %>% seq,
              function(i) {
@@ -117,14 +120,13 @@ subset_opt <- function(
   }
 
   if (all(cells_check)) {
-    message("Cell subsets are found in all FOVs!", "\n",
-            "Subsetting object..")
+    message('--- Subsetting object (cells found in all FOVs) ---')
     obj_subset %<>% base::subset(cells = cells,
                                  idents = idents,
                                  features = features,
                                  ...)
     # subset FOVs
-    message("Subsetting FOVs..")
+    message('--- Subsetting FOVs ---')
     fovs <-
       lapply(Images(obj_subset) %>% seq, function(i) {
         base::subset(x = obj_subset[[Images(obj_subset)[i]]],
@@ -137,13 +139,14 @@ subset_opt <- function(
     for (i in fovs %>% seq) { obj_subset[[Images(object)[i]]] <- fovs[[i]] }
 
   } else {
+    message('--- Subsetting FOVs (cells found in only some FOVs) ---')
     # if cells are present only in one or several FOVs:
     # subset FOVs
     fovs <-
       lapply(Images(obj_subset) %>% seq, function(i) {
         if (any(obj_subset[[Images(obj_subset)[i]]][["centroids"]] %>% Cells %in% cells)) {
-          message("Cell subsets are found only in FOV: ", "\n", Images(obj_subset)[i])
-          message("Subsetting Centroids..")
+          message("  Cell subsets are found only in FOV: ", Images(obj_subset)[i])
+          message("  Subsetting Centroids")
           base::subset(x = obj_subset[[Images(obj_subset)[i]]],
                        cells = cells,
                        idents = idents,
@@ -152,13 +155,13 @@ subset_opt <- function(
         }
       })
     # remove FOVs with no matching cells
-    message("Removing FOVs where cells are NOT found: ", "\n",
-            paste0(Images(object)[which(!cells_check == TRUE)], "\n"))
+    message("  Removing FOVs where cells are NOT found: ",
+            paste0(Images(object)[which(!cells_check == TRUE)], collapse = ', '))
     # replace subsetted FOVs
     for (i in fovs %>% seq) { obj_subset[[Images(object)[i]]] <- fovs[[i]] }
 
     # subset final object
-    message("..subset final object")
+    message('--- Subsetting final object ---')
     obj_subset %<>%
       base::subset(cells = cells,
                    idents = idents,
@@ -167,16 +170,15 @@ subset_opt <- function(
   }
 
   if (Update.object && !class(obj_subset) == "FOV") {
-    message("Updating object..")
+    message('--- Updating Seurat object ---')
     obj_subset %<>% UpdateSeuratObject() }
 
   if (cleanMolecules == TRUE) {
-    message("Cleaning Molecule Slot")
     obj_subset <- CleanMolSlot(obj_subset)
-    message("Object is ready!")
+    message('--- Object is ready ---')
     return(obj_subset)
   } else {
-    message("Object is ready!")
+    message('--- Object is ready ---')
     return(obj_subset)
   }
 }

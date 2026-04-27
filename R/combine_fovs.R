@@ -26,7 +26,11 @@ combine_fovs = function(obj,
   final_centroids = NULL
   final_molecules = NULL
 
+  message(sprintf('--- Combining %d FOVs into a %d-column grid (offset = %d) ---',
+                  n_fovs, n_cols, offset))
+
   for (image in 1:length(obj@images)) {
+    message(sprintf('  Stitching FOV %d of %d', image, n_fovs))
 
     # --- Centroids ---
     if (image == 1) {
@@ -83,6 +87,7 @@ combine_fovs = function(obj,
     }
   }
 
+  message('--- Building combined FOV ---')
   combined_fov = CreateFOV(
     coords    = final_centroids,
     molecules = final_molecules,
@@ -90,7 +95,10 @@ combine_fovs = function(obj,
     key       = paste0(assay, "_")
   )
 
-  if (append == FALSE) obj@images[1:length(obj@images)] = NULL
+  if (append == FALSE) {
+    message('  Removing original FOVs (append = FALSE)')
+    obj@images[1:length(obj@images)] = NULL
+  }
   obj@images[[fov_name]] = combined_fov
   return(obj)
 }
