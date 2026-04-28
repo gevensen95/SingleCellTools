@@ -2,7 +2,7 @@
 % Please edit documentation in R/MergeSeurat.R
 \name{MergeSeurat}
 \alias{MergeSeurat}
-\title{Merge Seurat RNA Objects}
+\title{Merge and Integrate Seurat Objects}
 \usage{
 MergeSeurat(
   seurat_objects,
@@ -30,63 +30,55 @@ MergeSeurat(
 )
 }
 \arguments{
-\item{seurat_objects}{List of Seurat objects}
+\item{seurat_objects}{A named list of Seurat objects.}
 
-\item{cell_IDs}{Adds cell identities to the beginning of each barcode}
+\item{cell_IDs}{Character vector of cell ID prefixes (defaults to
+\code{names(seurat_objects)}).}
 
-\item{to_regress}{Variable to regress out in normalization}
+\item{to_regress}{Variables to regress out during normalization.}
 
-\item{cluster_resolution}{Resolution for cell clustering}
+\item{cluster_resolution}{Resolution for \code{FindClusters}.}
 
-\item{max_dims}{Maximum dimensions for FindNeighbors and UMAP}
+\item{max_dims}{Number of PCs to use when \code{use_elbow_plot = FALSE}.}
 
-\item{use_SCT}{Use SCTransform method or LogNormalize (FALSE)}
+\item{use_SCT}{Logical; use SCTransform (TRUE) or LogNormalize pipeline (FALSE).}
 
-\item{sct_assay}{Assay for SCTransform normalization}
+\item{sct_assay}{Assay to pass to \code{SCTransform}.}
 
-\item{save_rds_file}{Save final Seurat object}
+\item{save_rds_file}{Logical; save merged object to disk.}
 
-\item{file_name}{Name of files}
+\item{file_name}{Optional prefix for the saved RDS (defaults to
+\code{new_reduction}).}
 
-\item{use_elbow_plot}{Use the ElbowPlot to determine number of componenets for FindNeighbors and UMAP}
+\item{use_elbow_plot}{Logical; show elbow plot and prompt for number of PCs.}
 
-\item{spatial}{If your data is a spatial (i.e., Visium, Xenium)}
+\item{spatial}{One of \code{'no'}, \code{'Visium'}, \code{'Xenium'}.}
 
-\item{integration}{Method for integrating data, see IntegrateLayers}
+\item{integration}{Integration method (e.g. \code{'HarmonyIntegration'},
+\code{'RPCAIntegration'}, \code{'CCAIntegration'}, \code{'JointPCAIntegration'}).}
 
-\item{integration_normalization}{Normalization method used}
+\item{integration_normalization, integration_assay, integration_reduction}{Arguments passed through to \code{IntegrateLayers}.}
 
-\item{integration_assay}{Assay that has normalized data}
+\item{new_reduction}{Name of the reduction created by integration.}
 
-\item{integration_reduction}{Reduction to use for integration}
+\item{k_anchor, k_weight}{Arguments required for RPCA/CCA/JointPCA integration.}
 
-\item{new_reduction}{Name of new integrated reduction}
+\item{markers}{Logical; if TRUE, run \code{FindAllMarkers} and save outputs.}
 
-\item{k_anchor}{How many neighbors (k) to use when picking anchors}
+\item{group_column}{Metadata column used to compute median nCount per group
+for \code{SCTransform}'s scale_factor.}
 
-\item{k_weight}{Number of neighbors to consider when weighting anchors}
+\item{common_genes_only}{Logical; if TRUE, subset all input objects to genes
+present in every object before merging.}
 
-\item{markers}{Find all markers}
-
-\item{group_column}{Grouping variable for calculating median counts}
-
-\item{common_genes_only}{If TRUE, restrict every object to the intersection
-of gene names (rownames of the counts slot of the relevant assay) before
-merging. Useful when objects come from different reference annotations and
-the default union-of-genes merge would pad large blocks of zeros.}
-
-\item{common_genes_assay}{Assay to use when computing the common-gene set.
-Defaults to the appropriate assay for the chosen \code{spatial} mode
-("Spatial" for Visium, "Xenium" for Xenium, otherwise the DefaultAssay).}
-
-\item{object_names}{Names for the Seurat objects}
+\item{common_genes_assay}{Assay to inspect for gene names when
+\code{common_genes_only = TRUE}.}
 }
 \value{
-An integrated Seurat object.
+A merged, integrated, clustered Seurat object.
 }
 \description{
-This function merges and integrates a list of Seurat objects. By default, it
-assumes the objects are SCT normalized and will be integrated using Harmony.
-It can integrate ATAC objects, as well. This function also save multiple
-Seurat objects along the way and runs FindAllMarkers on the clusters.
+Merges a list of Seurat objects, normalizes (SCT or LogNormalize), runs PCA,
+integrates layers, finds neighbors/clusters, runs UMAP, and (optionally)
+computes per-cluster markers.
 }
