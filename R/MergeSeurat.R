@@ -107,6 +107,30 @@ MergeSeurat <- function(seurat_objects,
     message(sprintf('  common_genes_only = TRUE: subsetting all %d objects to the %d shared genes.',
                     length(seurat_objects), length(common)))
     seurat_objects <- lapply(seurat_objects, function(o) o[common, ])
+
+    # After dropping non-common genes, some cells may now have zero total
+    # counts. Recompute per-cell totals on the shared-gene set and drop those
+    # empty cells, then clean up the temporary metadata column.
+    message('--- Recomputing per-cell counts on shared genes and dropping empty cells ---')
+    seurat_objects <- lapply(seq_along(seurat_objects), function(i) {
+      o <- seurat_objects[[i]]
+      lab <- obj_labels[i]
+
+      o$Counts <- colSums(SeuratObject::LayerData(o,
+                                                  assay = common_genes_assay,
+                                                  layer = 'counts'))
+      n_before <- ncol(o)
+      n_drop   <- sum(o$Counts == 0)
+      if (n_drop > 0) {
+        o <- subset(o, subset = Counts > 0)
+      }
+      o$Counts <- NULL
+
+      message(sprintf('    %s: dropped %d / %d cells with 0 counts on shared genes (%d remaining)',
+                      lab, n_drop, n_before, ncol(o)))
+      o
+    })
+    names(seurat_objects) <- obj_labels
   }
 
   # ---- Merge --------------------------------------------------------------
@@ -208,7 +232,7 @@ MergeSeurat <- function(seurat_objects,
       dplyr::filter(p_val_adj < 0.05) %>%
       dplyr::arrange(-avg_log2FC) %>%
       dplyr::group_by(cluster) %>%
-      dplyr::slice_max(avg_log2FC, n = 5)
+      dplyr::slice_max(avg_log2FC, n = 10)
 
     Seurat::DotPlot(obj, features = unique(markers_filtered$gene)) +
       ggplot2::coord_flip() +
