@@ -79,8 +79,8 @@ MergeSeurat <-
       }
 
       gene_lists <- lapply(seurat_objects, function(o) {
-        rownames(Seurat::GetAssayData(o, assay = common_genes_assay,
-                                      slot = 'counts'))
+        rownames(SeuratObject::LayerData(o, assay = common_genes_assay,
+                                         layer = 'counts'))
       })
 
       # Per-object gene counts (for context)
