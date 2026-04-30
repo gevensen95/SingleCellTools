@@ -116,15 +116,24 @@ MergeSeurat <- function(seurat_objects,
       o <- seurat_objects[[i]]
       lab <- obj_labels[i]
 
-      o$Counts <- colSums(SeuratObject::LayerData(o,
-                                                  assay = common_genes_assay,
-                                                  layer = 'counts'))
-      n_before <- ncol(o)
-      n_drop   <- sum(o$Counts == 0)
+      # Per-cell totals on the shared-gene set
+      cell_counts <- colSums(SeuratObject::LayerData(o,
+                                                     assay = common_genes_assay,
+                                                     layer = 'counts'))
+      n_before   <- ncol(o)
+      keep_cells <- names(cell_counts)[cell_counts > 0]
+      n_drop     <- n_before - length(keep_cells)
+
       if (n_drop > 0) {
-        o <- subset(o, subset = Counts > 0)
+        # Use cells = ... rather than subset = Counts > 0 so Seurat reconciles
+        # FOVs / images against an explicit cell list. The expression form can
+        # leave stale images attached on spatial objects.
+        if (spatial %in% c('Visium', 'Xenium') && exists('subset_opt', mode = 'function')) {
+          o <- subset_opt(o, cells = keep_cells)
+        } else {
+          o <- subset(o, cells = keep_cells)
+        }
       }
-      o$Counts <- NULL
 
       message(sprintf('    %s: dropped %d / %d cells with 0 counts on shared genes (%d remaining)',
                       lab, n_drop, n_before, ncol(o)))
