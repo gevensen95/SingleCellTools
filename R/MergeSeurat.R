@@ -112,14 +112,57 @@ MergeSeurat <- function(seurat_objects,
     # counts. Recompute per-cell totals on the shared-gene set and drop those
     # empty cells, then clean up the temporary metadata column.
     message('--- Recomputing per-cell counts on shared genes and dropping empty cells ---')
+
+    # Helper: robust per-cell count summation that tolerates the quirks of
+    # SeuratObject::LayerData() in v5. Specifically:
+    #   * If the assay still has split layers (e.g. 'counts.1', 'counts.2'
+    #     left over from a previous merge), `layer = 'counts'` may not match
+    #     anything and return NULL, *or* it may return a joined matrix with
+    #     unexpected dim. Iterate over every counts-like layer instead.
+    #   * If the result is reduced to a single row (one shared gene), the
+    #     v5 method drops the matrix dimension and returns a plain numeric
+    #     vector — base::colSums then errors with
+    #     "'x' must be an array of at least two dimensions".
+    .cell_counts_on_assay <- function(o, assay) {
+      lyrs <- tryCatch(SeuratObject::Layers(o, assay = assay),
+                       error = function(e) NULL)
+      if (is.null(lyrs) || !length(lyrs)) lyrs <- 'counts'
+      counts_lyrs <- grep('^counts(\\.|$)', lyrs, value = TRUE)
+      if (!length(counts_lyrs)) counts_lyrs <- 'counts'
+
+      cells <- colnames(o)
+      totals <- setNames(numeric(length(cells)), cells)
+
+      for (lyr in counts_lyrs) {
+        m <- tryCatch(
+          SeuratObject::LayerData(o, assay = assay, layer = lyr),
+          error = function(e) NULL
+        )
+        if (is.null(m)) next
+
+        # Coerce 1D returns (single-feature subset) back to a 1-row matrix
+        if (is.null(dim(m))) {
+          if (length(m) != length(cells)) next
+          m <- matrix(as.numeric(m), nrow = 1,
+                      dimnames = list(NULL, cells))
+        }
+
+        # Matrix::colSums dispatches correctly for both dense and sparse
+        cs <- Matrix::colSums(m)
+        if (is.null(names(cs))) names(cs) <- colnames(m)
+        # Layers in v5 can be cell-subsets of the assay; only add overlap
+        idx <- intersect(names(cs), names(totals))
+        totals[idx] <- totals[idx] + cs[idx]
+      }
+      totals
+    }
+
     seurat_objects <- lapply(seq_along(seurat_objects), function(i) {
-      o <- seurat_objects[[i]]
+      o   <- seurat_objects[[i]]
       lab <- obj_labels[i]
 
-      # Per-cell totals on the shared-gene set
-      cell_counts <- colSums(SeuratObject::LayerData(o,
-                                                     assay = common_genes_assay,
-                                                     layer = 'counts'))
+      cell_counts <- .cell_counts_on_assay(o, common_genes_assay)
+
       n_before   <- ncol(o)
       keep_cells <- names(cell_counts)[cell_counts > 0]
       n_drop     <- n_before - length(keep_cells)
