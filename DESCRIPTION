@@ -1,6 +1,6 @@
 Package: SingleCellTools
 Title: Wrapper and analysis functions for single cell data
-Version: 2.201
+Version: 2.202
 Authors@R: 
     person("K. Garrett", "Evensen", , "kgsevensen@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-6720-2526"))
