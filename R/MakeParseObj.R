@@ -26,6 +26,14 @@
 #' @param mincellfeat Integer. Minimum number of features a cell must express
 #'   to be retained. Passed to \code{min.features} in
 #'   \code{\link[SeuratObject]{CreateAssayObject}}. Default \code{50}.
+#' @param mt_pattern Optional regex passed to
+#'   \code{\link[Seurat]{PercentageFeatureSet}} to identify mitochondrial
+#'   genes. \code{NULL} (default) skips the calculation entirely. Pass a
+#'   pattern such as \code{"^MT-"} (human), \code{"^mt-"} (mouse), or
+#'   \code{"^[Mm][Tt]-"} (either) to add a \code{percent.mt} column.
+#' @param mt_col Name of the metadata column in which to store the
+#'   mitochondrial percentage when \code{mt_pattern} is supplied. Default
+#'   \code{"percent.mt"}.
 #'
 #' @return If \code{length(paths) == 1}, a single \code{Seurat} object.
 #'   Otherwise, a named list of \code{Seurat} objects, one per input path,
@@ -78,9 +86,11 @@
 MakeParseObj <- function(paths,
                          sample_names  = NULL,
                          treatments    = NULL,
-                         treatment_col = "treatment",
+                         treatment_col = "Treatment",
                          mincellfrac   = 0.0005,
-                         mincellfeat   = 50) {
+                         mincellfeat   = 50,
+                         mt_pattern    = NULL,
+                         mt_col        = "percent.mt") {
 
   # ---- Argument checks -----------------------------------------------------
   if (!is.character(paths) || length(paths) < 1) {
@@ -151,7 +161,22 @@ MakeParseObj <- function(paths,
       meta[[treatment_col]] <- treatment
     }
 
-    SeuratObject::CreateSeuratObject(assay, meta.data = meta)
+    obj <- SeuratObject::CreateSeuratObject(assay, meta.data = meta)
+
+    # Compute mitochondrial percentage. Done after object creation so the
+    # pattern is matched against the post-filter feature set and the result
+    # is automatically aligned to the surviving cells.
+    if (!is.null(mt_pattern)) {
+      n_mt <- sum(grepl(mt_pattern, rownames(obj)))
+      if (n_mt > 0) {
+        obj[[mt_col]] <- Seurat::PercentageFeatureSet(obj, pattern = mt_pattern)
+      } else {
+        warning("No mitochondrial features matched pattern '", mt_pattern,
+                "' in '", path, "'; ", mt_col, " not added.")
+      }
+    }
+
+    obj
   }
 
   # ---- Build object(s) -----------------------------------------------------
