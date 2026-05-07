@@ -86,7 +86,7 @@
 MakeParseObj <- function(paths,
                          sample_names  = NULL,
                          treatments    = NULL,
-                         treatment_col = "treatment",
+                         treatment_col = "Treatment",
                          mincellfrac   = 0.0005,
                          mincellfeat   = 50,
                          mt_pattern    = NULL,

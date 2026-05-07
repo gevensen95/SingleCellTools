@@ -8,7 +8,7 @@ MakeParseObj(
   paths,
   sample_names = NULL,
   treatments = NULL,
-  treatment_col = "treatment",
+  treatment_col = "Treatment",
   mincellfrac = 5e-04,
   mincellfeat = 50,
   mt_pattern = NULL,
