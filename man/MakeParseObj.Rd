@@ -10,7 +10,9 @@ MakeParseObj(
   treatments = NULL,
   treatment_col = "treatment",
   mincellfrac = 5e-04,
-  mincellfeat = 50
+  mincellfeat = 50,
+  mt_pattern = NULL,
+  mt_col = "percent.mt"
 )
 }
 \arguments{
@@ -40,6 +42,16 @@ multiplication by the number of cells. Default \code{0.0005}.}
 \item{mincellfeat}{Integer. Minimum number of features a cell must express
 to be retained. Passed to \code{min.features} in
 \code{\link[SeuratObject]{CreateAssayObject}}. Default \code{50}.}
+
+\item{mt_pattern}{Optional regex passed to
+\code{\link[Seurat]{PercentageFeatureSet}} to identify mitochondrial
+genes. \code{NULL} (default) skips the calculation entirely. Pass a
+pattern such as \code{"^MT-"} (human), \code{"^mt-"} (mouse), or
+\code{"^[Mm][Tt]-"} (either) to add a \code{percent.mt} column.}
+
+\item{mt_col}{Name of the metadata column in which to store the
+mitochondrial percentage when \code{mt_pattern} is supplied. Default
+\code{"percent.mt"}.}
 }
 \value{
 If \code{length(paths) == 1}, a single \code{Seurat} object.
