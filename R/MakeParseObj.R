@@ -163,6 +163,10 @@ MakeParseObj <- function(paths,
 
     obj <- SeuratObject::CreateSeuratObject(assay, meta.data = meta)
 
+    # Convert the RNA assay to Seurat v5's Assay5 class so downstream code
+    # (e.g. multi-layer merges, IntegrateLayers) operates on the v5 API.
+    obj[["RNA"]] <- methods::as(obj[["RNA"]], Class = "Assay5")
+
     # Compute mitochondrial percentage. Done after object creation so the
     # pattern is matched against the post-filter feature set and the result
     # is automatically aligned to the surviving cells.
