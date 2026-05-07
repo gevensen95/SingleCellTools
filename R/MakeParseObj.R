@@ -12,6 +12,13 @@
 #' @param sample_names Optional character vector of names to assign to the
 #'   resulting Seurat objects. Must be the same length as \code{paths}. If
 #'   \code{NULL} (default), \code{basename(paths)} is used.
+#' @param treatments Optional vector of treatment labels, one per path, in the
+#'   same order as \code{paths}. When supplied, a metadata column (named by
+#'   \code{treatment_col}) is added to every cell of the corresponding object
+#'   with that treatment label. May be a character, factor, or other atomic
+#'   vector. Default \code{NULL} (no treatment column added).
+#' @param treatment_col Name of the metadata column used to store treatment
+#'   labels. Default \code{"treatment"}.
 #' @param mincellfrac Numeric in \code{[0, 1]}. Minimum fraction of cells in
 #'   which a feature must be detected to be retained. Passed to
 #'   \code{min.cells} in \code{\link[SeuratObject]{CreateAssayObject}} after
@@ -37,7 +44,7 @@
 #'   \item Builds an RNA assay with \code{\link[SeuratObject]{CreateAssayObject}},
 #'     applying the \code{mincellfeat} and \code{mincellfrac} filters.
 #'   \item Wraps the assay in a \code{Seurat} object with the cell metadata
-#'     attached.
+#'     attached, optionally tagging every cell with a treatment label.
 #' }
 #'
 #' @examples
@@ -54,6 +61,12 @@
 #'   sample_paths,
 #'   sample_names = paste0("Sample", 1:16)
 #' )
+#'
+#' # With treatments tagged in metadata
+#' obj_list <- MakeParseObj(
+#'   sample_paths,
+#'   treatments = rep(c("Vehicle", "DrugA", "DrugB", "DrugC"), each = 4)
+#' )
 #' }
 #'
 #' @importFrom Matrix readMM t
@@ -63,9 +76,11 @@
 #' @importFrom SeuratObject CreateAssayObject CreateSeuratObject
 #' @export
 MakeParseObj <- function(paths,
-                         sample_names = NULL,
-                         mincellfrac = 0.0005,
-                         mincellfeat = 50) {
+                         sample_names  = NULL,
+                         treatments    = NULL,
+                         treatment_col = "treatment",
+                         mincellfrac   = 0.0005,
+                         mincellfeat   = 50) {
 
   # ---- Argument checks -----------------------------------------------------
   if (!is.character(paths) || length(paths) < 1) {
@@ -83,8 +98,23 @@ MakeParseObj <- function(paths,
     stop("`sample_names` must be the same length as `paths`.")
   }
 
+  if (!is.null(treatments)) {
+    if (!is.atomic(treatments)) {
+      stop("`treatments` must be an atomic vector (character, factor, etc.).")
+    }
+    if (length(treatments) != length(paths)) {
+      stop("`treatments` must be the same length as `paths` ",
+           "(got ", length(treatments), " treatments for ",
+           length(paths), " paths).")
+    }
+    if (!is.character(treatment_col) || length(treatment_col) != 1L ||
+        !nzchar(treatment_col)) {
+      stop("`treatment_col` must be a single non-empty string.")
+    }
+  }
+
   # ---- Helper: build a single Seurat object from one path ------------------
-  .make_one <- function(path) {
+  .make_one <- function(path, treatment) {
     dge_dir <- file.path(path, "DGE_filtered")
     if (!dir.exists(dge_dir)) {
       stop("No 'DGE_filtered' directory found at: ", path)
@@ -112,14 +142,24 @@ MakeParseObj <- function(paths,
       min.features = mincellfeat,
       min.cells    = ceiling(nrow(cells) * mincellfrac)
     )
-    SeuratObject::CreateSeuratObject(
-      assay,
-      meta.data = tibble::column_to_rownames(cells, "bc_wells")
-    )
+
+    meta <- tibble::column_to_rownames(cells, "bc_wells")
+    # Tag every cell with the treatment label, if provided. Done on the full
+    # cell metadata so that any cells dropped by the assay filters are
+    # automatically dropped here too when CreateSeuratObject reconciles them.
+    if (!is.null(treatment)) {
+      meta[[treatment_col]] <- treatment
+    }
+
+    SeuratObject::CreateSeuratObject(assay, meta.data = meta)
   }
 
   # ---- Build object(s) -----------------------------------------------------
-  objs <- lapply(paths, .make_one)
+  # Iterate by index so we can pair each path with its treatment label.
+  objs <- lapply(seq_along(paths), function(i) {
+    .make_one(paths[[i]],
+              treatment = if (is.null(treatments)) NULL else treatments[[i]])
+  })
   names(objs) <- sample_names
 
   if (length(objs) == 1L) {

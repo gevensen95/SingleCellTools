@@ -4,7 +4,14 @@
 \alias{MakeParseObj}
 \title{Create Seurat Objects from Parse Biosciences Pipeline Output}
 \usage{
-MakeParseObj(paths, sample_names = NULL, mincellfrac = 5e-04, mincellfeat = 50)
+MakeParseObj(
+  paths,
+  sample_names = NULL,
+  treatments = NULL,
+  treatment_col = "treatment",
+  mincellfrac = 5e-04,
+  mincellfeat = 50
+)
 }
 \arguments{
 \item{paths}{Character vector of paths to Parse Biosciences sample
@@ -15,6 +22,15 @@ with \code{count_matrix.mtx}, \code{all_genes.csv}, and
 \item{sample_names}{Optional character vector of names to assign to the
 resulting Seurat objects. Must be the same length as \code{paths}. If
 \code{NULL} (default), \code{basename(paths)} is used.}
+
+\item{treatments}{Optional vector of treatment labels, one per path, in the
+same order as \code{paths}. When supplied, a metadata column (named by
+\code{treatment_col}) is added to every cell of the corresponding object
+with that treatment label. May be a character, factor, or other atomic
+vector. Default \code{NULL} (no treatment column added).}
+
+\item{treatment_col}{Name of the metadata column used to store treatment
+labels. Default \code{"treatment"}.}
 
 \item{mincellfrac}{Numeric in \code{[0, 1]}. Minimum fraction of cells in
 which a feature must be detected to be retained. Passed to
@@ -49,7 +65,7 @@ rows and cells are columns.
 \item Builds an RNA assay with \code{\link[SeuratObject]{CreateAssayObject}},
 applying the \code{mincellfeat} and \code{mincellfrac} filters.
 \item Wraps the assay in a \code{Seurat} object with the cell metadata
-attached.
+attached, optionally tagging every cell with a treatment label.
 }
 }
 \examples{
@@ -65,6 +81,12 @@ obj_list <- MakeParseObj(sample_paths)
 obj_list <- MakeParseObj(
   sample_paths,
   sample_names = paste0("Sample", 1:16)
+)
+
+# With treatments tagged in metadata
+obj_list <- MakeParseObj(
+  sample_paths,
+  treatments = rep(c("Vehicle", "DrugA", "DrugB", "DrugC"), each = 4)
 )
 }
 
