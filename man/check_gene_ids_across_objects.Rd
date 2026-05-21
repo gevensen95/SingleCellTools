@@ -57,6 +57,4 @@ If the input list is unnamed, objects are labeled \code{obj_1},
 }
 \seealso{
 \code{\link{detect_gene_id_type}}
-
-\code{\link{detect_gene_id_type}}
 }

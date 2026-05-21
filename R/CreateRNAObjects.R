@@ -11,12 +11,14 @@
 #'  barcodes.tsv or .h5 files.
 #' @param cells Features must be expressed in at least this many cells
 #' @param features Cells must have at least this many features
+#' @param mt_pattern Pattern for calculating percent mtDNA
 #' @param treatment Treatment metadata column (e.g., Age, chemical, etc.)
 #' @param object_names Names for the Seurat objects
 #' @return A list of Seurat objects
 #' @export
 
 CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
+                             mt_pattern = '^mt-',
                              treatment = NULL,
                              object_names = NULL) {
   message(sprintf('--- Reading data and creating Seurat objects (%d directories) ---',
@@ -81,7 +83,7 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
 
   message('--- Calculating percent mitochondrial reads ---')
   seurat_objects <- lapply(seurat_objects, function(obj) {
-    obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, pattern = "^mt-")
+    obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, pattern = mt_pattern)
     return(obj)
   })
 
