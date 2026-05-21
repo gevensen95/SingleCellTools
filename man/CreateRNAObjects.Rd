@@ -8,6 +8,7 @@ CreateRNAObjects(
   data_dirs,
   cells = 3,
   features = 200,
+  mt_pattern = "^mt-",
   treatment = NULL,
   object_names = NULL
 )
@@ -19,6 +20,8 @@ barcodes.tsv or .h5 files.}
 \item{cells}{Features must be expressed in at least this many cells}
 
 \item{features}{Cells must have at least this many features}
+
+\item{mt_pattern}{Pattern for calculating percent mtDNA}
 
 \item{treatment}{Treatment metadata column (e.g., Age, chemical, etc.)}
 

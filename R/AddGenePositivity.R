@@ -7,10 +7,10 @@
 #' Behavior:
 #' * `seurat_objects` may be a single Seurat object OR a list of them — the
 #'   return type matches the input shape.
-#' * `genes` is pre-filtered to the genes actually present in at least one of
-#'   the supplied objects; genes missing from every object are dropped with a
-#'   warning. Within an individual object, any remaining genes that don't exist
-#'   in that particular object are filled with `NA` in its metadata.
+#' * `genes` is pre-filtered to the genes present in **every** supplied object
+#'   (the intersection of feature names across the chosen assay). Any gene
+#'   missing from even one object is dropped with a warning, so the resulting
+#'   metadata schema is consistent across the list.
 #'
 #' @param seurat_objects A Seurat object, or a (optionally named) list of them.
 #' @param genes Character vector of gene symbols to score.
@@ -44,49 +44,34 @@ AddGenePositivity <- function(seurat_objects,
 
   resolved_assay <- function(o) if (is.null(assay)) Seurat::DefaultAssay(o) else assay
 
-  # ---- Filter `genes` to those present in at least one object ------------
-  all_features <- unique(unlist(lapply(seurat_objects, function(o) {
+  # ---- Filter `genes` to those present in EVERY object -------------------
+  # Intersection across all objects' feature sets so the resulting metadata
+  # schema is consistent across the list.
+  feature_sets <- lapply(seurat_objects, function(o) {
     rownames(o[[resolved_assay(o)]])
-  })))
-  kept    <- intersect(genes, all_features)
-  dropped <- setdiff(genes, all_features)
+  })
+  shared_features <- Reduce(intersect, feature_sets)
+  kept    <- intersect(genes, shared_features)
+  dropped <- setdiff(genes, kept)
   if (length(dropped)) {
-    warning(sprintf("Dropping %d gene(s) not found in any object: %s",
+    warning(sprintf("Dropping %d gene(s) not present in every object: %s",
                     length(dropped), paste(dropped, collapse = ', ')))
   }
   if (!length(kept)) {
-    warning("None of the requested genes were found; returning input unchanged.")
+    warning("No requested genes are present in every object; ",
+            "returning input unchanged.")
     return(if (single_input) seurat_objects[[1]] else seurat_objects)
   }
   genes <- kept
 
   # ---- Add positivity columns to each object -----------------------------
   out <- lapply(seurat_objects, function(o) {
-    a <- resolved_assay(o)
-
-    have    <- intersect(genes, rownames(o[[a]]))
-    missing <- setdiff(genes, have)
-    if (length(missing)) {
-      warning(sprintf("Genes not found in assay '%s' for this object: %s",
-                      a, paste(missing, collapse = ', ')))
-    }
-
-    if (length(have)) {
-      # FetchData handles v5 split layers and returns a cells x genes data.frame
-      expr <- Seurat::FetchData(o, vars = have, layer = layer, assay = a)
-      pos  <- as.data.frame(expr > threshold)
-      colnames(pos) <- paste0(have, suffix)
-      o <- SeuratObject::AddMetaData(o, metadata = pos)
-    }
-
-    if (length(missing)) {
-      na_df <- as.data.frame(matrix(
-        NA, nrow = ncol(o), ncol = length(missing),
-        dimnames = list(colnames(o), paste0(missing, suffix))
-      ))
-      o <- SeuratObject::AddMetaData(o, metadata = na_df)
-    }
-    o
+    a    <- resolved_assay(o)
+    # FetchData handles v5 split layers and returns a cells x genes data.frame
+    expr <- Seurat::FetchData(o, vars = genes, layer = layer, assay = a)
+    pos  <- as.data.frame(expr > threshold)
+    colnames(pos) <- paste0(genes, suffix)
+    SeuratObject::AddMetaData(o, metadata = pos)
   })
 
   if (single_input) out[[1]] else out

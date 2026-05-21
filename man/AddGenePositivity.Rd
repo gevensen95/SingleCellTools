@@ -42,9 +42,9 @@ Behavior:
 \itemize{
 \item \code{seurat_objects} may be a single Seurat object OR a list of them — the
 return type matches the input shape.
-\item \code{genes} is pre-filtered to the genes actually present in at least one of
-the supplied objects; genes missing from every object are dropped with a
-warning. Within an individual object, any remaining genes that don't exist
-in that particular object are filled with \code{NA} in its metadata.
+\item \code{genes} is pre-filtered to the genes present in \strong{every} supplied object
+(the intersection of feature names across the chosen assay). Any gene
+missing from even one object is dropped with a warning, so the resulting
+metadata schema is consistent across the list.
 }
 }
