@@ -10,7 +10,12 @@ CreateRNAObjects(
   features = 200,
   mt_pattern = "^mt-",
   treatment = NULL,
-  object_names = NULL
+  object_names = NULL,
+  run_doublet_finder = TRUE,
+  doublet_normalization = c("LogNormalize", "SCT"),
+  doublet_vars_to_regress = "percent.mt",
+  doublet_cluster_resolution = 0.1,
+  filter_doublets = FALSE
 )
 }
 \arguments{
@@ -26,6 +31,23 @@ barcodes.tsv or .h5 files.}
 \item{treatment}{Treatment metadata column (e.g., Age, chemical, etc.)}
 
 \item{object_names}{Names for the Seurat objects}
+
+\item{run_doublet_finder}{Logical; if TRUE (default), run \code{calldoublet}
+on every object and add a \code{doublet_finder} metadata column.}
+
+\item{doublet_normalization}{Passed to \code{calldoublet}: one of
+\code{"LogNormalize"} (default) or \code{"SCT"}.}
+
+\item{doublet_vars_to_regress}{Passed to \code{calldoublet} as
+\code{vars.to.regress}. Default \code{"percent.mt"} because percent.mt
+has already been computed above; set to \code{NULL} to skip regression.}
+
+\item{doublet_cluster_resolution}{Passed to \code{calldoublet} as
+\code{cluster_resolution}. Default \code{0.1}.}
+
+\item{filter_doublets}{Logical; if TRUE, subset each object to
+\code{doublet_finder == "Singlet"} after doublet calling. Default
+\code{FALSE} so the doublet labels are preserved for downstream review.}
 }
 \value{
 A list of Seurat objects
