@@ -12,7 +12,12 @@ MakeParseObj(
   mincellfrac = 5e-04,
   mincellfeat = 50,
   mt_pattern = NULL,
-  mt_col = "percent.mt"
+  mt_col = "percent.mt",
+  run_doublet_finder = TRUE,
+  doublet_normalization = c("LogNormalize", "SCT"),
+  doublet_vars_to_regress = NULL,
+  doublet_cluster_resolution = 0.1,
+  filter_doublets = FALSE
 )
 }
 \arguments{
@@ -32,7 +37,7 @@ with that treatment label. May be a character, factor, or other atomic
 vector. Default \code{NULL} (no treatment column added).}
 
 \item{treatment_col}{Name of the metadata column used to store treatment
-labels. Default \code{"treatment"}.}
+labels. Default \code{"Treatment"}.}
 
 \item{mincellfrac}{Numeric in \code{[0, 1]}. Minimum fraction of cells in
 which a feature must be detected to be retained. Passed to
@@ -52,6 +57,25 @@ pattern such as \code{"^MT-"} (human), \code{"^mt-"} (mouse), or
 \item{mt_col}{Name of the metadata column in which to store the
 mitochondrial percentage when \code{mt_pattern} is supplied. Default
 \code{"percent.mt"}.}
+
+\item{run_doublet_finder}{Logical; if TRUE (default), run \code{calldoublet}
+on every object and add a \code{doublet_finder} metadata column.}
+
+\item{doublet_normalization}{Passed to \code{calldoublet}: one of
+\code{"LogNormalize"} (default) or \code{"SCT"}.}
+
+\item{doublet_vars_to_regress}{Passed to \code{calldoublet} as
+\code{vars.to.regress}. Default \code{NULL}; set to \code{mt_col} (e.g.
+\code{"percent.mt"}) if you supplied \code{mt_pattern} and want to
+regress mitochondrial content out during the doublet workflow's
+normalization step.}
+
+\item{doublet_cluster_resolution}{Passed to \code{calldoublet} as
+\code{cluster_resolution}. Default \code{0.1}.}
+
+\item{filter_doublets}{Logical; if TRUE, subset each object to
+\code{doublet_finder == "Singlet"} after doublet calling. Default
+\code{FALSE} so the doublet labels are preserved for downstream review.}
 }
 \value{
 If \code{length(paths) == 1}, a single \code{Seurat} object.
@@ -78,6 +102,8 @@ rows and cells are columns.
 applying the \code{mincellfeat} and \code{mincellfrac} filters.
 \item Wraps the assay in a \code{Seurat} object with the cell metadata
 attached, optionally tagging every cell with a treatment label.
+\item Optionally runs \code{calldoublet} to add a \code{doublet_finder}
+metadata column (and, if requested, drops doublets).
 }
 }
 \examples{
@@ -99,6 +125,13 @@ obj_list <- MakeParseObj(
 obj_list <- MakeParseObj(
   sample_paths,
   treatments = rep(c("Vehicle", "DrugA", "DrugB", "DrugC"), each = 4)
+)
+
+# With doublet calling that regresses out percent.mt
+obj_list <- MakeParseObj(
+  sample_paths,
+  mt_pattern              = "^[Mm][Tt]-",
+  doublet_vars_to_regress = "percent.mt"
 )
 }
 

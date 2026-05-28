@@ -14,13 +14,32 @@
 #' @param mt_pattern Pattern for calculating percent mtDNA
 #' @param treatment Treatment metadata column (e.g., Age, chemical, etc.)
 #' @param object_names Names for the Seurat objects
+#' @param run_doublet_finder Logical; if TRUE (default), run \code{calldoublet}
+#'   on every object and add a \code{doublet_finder} metadata column.
+#' @param doublet_normalization Passed to \code{calldoublet}: one of
+#'   \code{"LogNormalize"} (default) or \code{"SCT"}.
+#' @param doublet_vars_to_regress Passed to \code{calldoublet} as
+#'   \code{vars.to.regress}. Default \code{"percent.mt"} because percent.mt
+#'   has already been computed above; set to \code{NULL} to skip regression.
+#' @param doublet_cluster_resolution Passed to \code{calldoublet} as
+#'   \code{cluster_resolution}. Default \code{0.1}.
+#' @param filter_doublets Logical; if TRUE, subset each object to
+#'   \code{doublet_finder == "Singlet"} after doublet calling. Default
+#'   \code{FALSE} so the doublet labels are preserved for downstream review.
 #' @return A list of Seurat objects
 #' @export
 
 CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                              mt_pattern = '^mt-',
                              treatment = NULL,
-                             object_names = NULL) {
+                             object_names = NULL,
+                             run_doublet_finder = TRUE,
+                             doublet_normalization = c("LogNormalize", "SCT"),
+                             doublet_vars_to_regress = "percent.mt",
+                             doublet_cluster_resolution = 0.1,
+                             filter_doublets = FALSE) {
+  doublet_normalization <- match.arg(doublet_normalization)
+
   message(sprintf('--- Reading data and creating Seurat objects (%d directories) ---',
                   length(data_dirs)))
   # Use lapply to read the data and create Seurat objects
@@ -97,14 +116,36 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
     }), names(seurat_objects))
   }
 
+  # ---- Doublet detection --------------------------------------------------
+  if (isTRUE(run_doublet_finder)) {
+    message(sprintf('--- Calling doublets with DoubletFinder (%s) ---',
+                    doublet_normalization))
+    seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {
+      lab <- names(seurat_objects)[i]
+      message(sprintf('  [%d/%d] %s', i, length(seurat_objects), lab))
+      out <- calldoublet(seurat_objects[[i]],
+                         samplenameIndex    = i,
+                         normalization      = doublet_normalization,
+                         vars.to.regress    = doublet_vars_to_regress,
+                         cluster_resolution = doublet_cluster_resolution)
+      if (isTRUE(filter_doublets)) {
+        n_before <- ncol(out)
+        out      <- subset(out, doublet_finder == "Singlet")
+        message(sprintf('    %s: dropped %d doublets (%d singlets remaining)',
+                        lab, n_before - ncol(out), ncol(out)))
+      }
+      out
+    }), names(seurat_objects))
+  }
+
   message('--- Generating unfiltered QC plots ---')
   obj <- merge(seurat_objects[[1]], seurat_objects[-1])
   gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') +
-                              ggplot2::theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    ggplot2::theme(axis.text.x = element_text(angle = 45, hjust = 1))
   mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') +
-                              ggplot2::theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    ggplot2::theme(axis.text.x = element_text(angle = 45, hjust = 1))
   print(gene.plot + mt.plot)
 
   return(seurat_objects)
