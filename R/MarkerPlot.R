@@ -7,11 +7,14 @@
 #'
 #' Before plotting, the gene table is filtered down to genes that:
 #' \enumerate{
-#'   \item are present in the chosen \code{assay}, and
-#'   \item have non-zero expression in at least one cell of the object.
+#'   \item are present in the chosen \code{assay},
+#'   \item have non-zero expression in at least one cell of the object, and
+#'   \item show variation in average expression across the identities being
+#'     plotted (genes that scale to \code{NaN} because they're uniformly
+#'     expressed would render as a row of grey dots and are dropped).
 #' }
-#' Both filtering steps emit a message listing the dropped genes so all-empty
-#' rows never sneak into the plot.
+#' Each filtering step emits a message listing the dropped genes so all-empty
+#' or all-grey rows never sneak into the plot.
 #'
 #' @param obj A Seurat object.
 #' @param genes A two-column data frame. The first column holds gene names,
@@ -103,6 +106,35 @@ MarkerPlot <- function(obj,
          "non-zero expression.")
   }
 
+  # ---- Pull dot plot summary data ----------------------------------------
+  # Needed for the variance filter below and (optionally) for clustering.
+  # This computes the same z-scored avg expression that Seurat::DotPlot will
+  # later render, so we can preempt any features that scale to NaN.
+  Seurat::DefaultAssay(obj) <- assay
+  dp_data <- .pull_dotplot_data(obj, genes$Gene)
+
+  # Drop genes whose avg.exp.scaled is non-finite across identities. These
+  # are genes whose log1p(avg) is identical for every identity (commonly:
+  # zero across every cluster that survives CellsByIdentities), so scale()
+  # divides by zero and returns NaN. ggplot would render them as a row of
+  # grey dots — drop them so the plot is clean.
+  uniform_genes <- unique(as.character(
+    dp_data$features.plot[!is.finite(dp_data$avg.exp.scaled)]
+  ))
+  if (length(uniform_genes)) {
+    message(sprintf(
+      "  Dropping %d gene(s) with no variation across identities (would render grey): %s",
+      length(uniform_genes), paste(uniform_genes, collapse = ", ")
+    ))
+    genes   <- genes[!genes$Gene %in% uniform_genes, , drop = FALSE]
+    dp_data <- dp_data[!as.character(dp_data$features.plot) %in% uniform_genes, ,
+                       drop = FALSE]
+  }
+
+  if (nrow(genes) == 0) {
+    stop("No genes remain after filtering for variation across identities.")
+  }
+
   # ---- Annotation-label geometry ------------------------------------------
   tmp <- genes
   tmp$count <- 1
@@ -113,16 +145,13 @@ MarkerPlot <- function(obj,
   tmp <- tmp[order(tmp$Details), ]
   tmp$cumsum  <- cumsum(tmp$index)
   tmp$annot_y <- tmp$cumsum - (0.5 * tmp$index)
-  tmp$xpos    <- length(unique(Seurat::Idents(obj))) + 1
 
   intersects <- cumsum(as.numeric(table(genes$Details))) + 0.5
   intersects <- intersects[seq_len(length(intersects) - 1)]
 
   # ---- Optionally cluster identities by correlation -----------------------
-  Seurat::DefaultAssay(obj) <- assay
   if (isTRUE(cluster)) {
     message("Grouping clusters by correlation...")
-    dp_data <- .pull_dotplot_data(obj, genes$Gene)
     features.plot <- avg.exp.scaled <- id <- NULL  # NSE
     testmat <- tidyr::pivot_wider(
       dp_data[, c("id", "features.plot", "avg.exp.scaled")],
@@ -131,6 +160,11 @@ MarkerPlot <- function(obj,
     ) %>%
       tibble::column_to_rownames("id")
 
+    # Any remaining non-finite cells (shouldn't be many after the uniform
+    # filter, but be defensive) become 0 so hclust doesn't choke.
+    testmat <- as.matrix(testmat)
+    testmat[!is.finite(testmat)] <- 0
+
     tree_row  <- .cluster_mat(testmat)
     row_order <- rownames(testmat)[tree_row$order]
     Seurat::Idents(obj) <- factor(Seurat::Idents(obj), levels = row_order)
@@ -138,6 +172,8 @@ MarkerPlot <- function(obj,
 
   # ---- Build the plot -----------------------------------------------------
   ordered_genes <- genes$Gene[order(genes$Details)]
+  tmp$xpos <- length(unique(Seurat::Idents(obj))) + 1
+
   d <- Seurat::DotPlot(
     obj,
     features = factor(ordered_genes, levels = ordered_genes)
@@ -375,7 +411,11 @@ MarkerPlot <- function(obj,
   }
 
   if (identical(distance[1], "correlation")) {
-    d <- stats::as.dist(1 - stats::cor(t(mat)))
+    cor_mat <- stats::cor(t(mat), use = "pairwise.complete.obs")
+    # Any remaining NA (e.g. a row with zero variance vs. everything) becomes
+    # 0 correlation so hclust doesn't choke on NA/NaN/Inf.
+    cor_mat[!is.finite(cor_mat)] <- 0
+    d <- stats::as.dist(1 - cor_mat)
   } else if (inherits(distance, "dist")) {
     d <- distance
   } else {
