@@ -49,11 +49,14 @@ identities by correlation across the requested features before plotting.
 \details{
 Before plotting, the gene table is filtered down to genes that:
 \enumerate{
-\item are present in the chosen \code{assay}, and
-\item have non-zero expression in at least one cell of the object.
+\item are present in the chosen \code{assay},
+\item have non-zero expression in at least one cell of the object, and
+\item show variation in average expression across the identities being
+plotted (genes that scale to \code{NaN} because they're uniformly
+expressed would render as a row of grey dots and are dropped).
 }
-Both filtering steps emit a message listing the dropped genes so all-empty
-rows never sneak into the plot.
+Each filtering step emits a message listing the dropped genes so all-empty
+or all-grey rows never sneak into the plot.
 }
 \examples{
 \dontrun{
