@@ -113,7 +113,6 @@ MarkerPlot <- function(obj,
   tmp <- tmp[order(tmp$Details), ]
   tmp$cumsum  <- cumsum(tmp$index)
   tmp$annot_y <- tmp$cumsum - (0.5 * tmp$index)
-  tmp$xpos    <- length(unique(Seurat::Idents(obj))) + 1
 
   intersects <- cumsum(as.numeric(table(genes$Details))) + 0.5
   intersects <- intersects[seq_len(length(intersects) - 1)]
@@ -130,6 +129,12 @@ MarkerPlot <- function(obj,
       values_from = avg.exp.scaled
     ) %>%
       tibble::column_to_rownames("id")
+
+    # Features with zero variance across identities (e.g. uniformly zero
+    # expression for the surviving cells) come out of scale() as NaN and
+    # would break hclust. Treat them as "no contribution" by zeroing them out.
+    testmat <- as.matrix(testmat)
+    testmat[!is.finite(testmat)] <- 0
 
     tree_row  <- .cluster_mat(testmat)
     row_order <- rownames(testmat)[tree_row$order]
@@ -375,7 +380,11 @@ MarkerPlot <- function(obj,
   }
 
   if (identical(distance[1], "correlation")) {
-    d <- stats::as.dist(1 - stats::cor(t(mat)))
+    cor_mat <- stats::cor(t(mat), use = "pairwise.complete.obs")
+    # Any remaining NA (e.g. a row with zero variance vs. everything) becomes
+    # 0 correlation so hclust doesn't choke on NA/NaN/Inf.
+    cor_mat[!is.finite(cor_mat)] <- 0
+    d <- stats::as.dist(1 - cor_mat)
   } else if (inherits(distance, "dist")) {
     d <- distance
   } else {
