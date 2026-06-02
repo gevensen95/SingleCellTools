@@ -32,7 +32,6 @@ Imports:
     RANN (>= 2.6.1),
     ggplot2 (>= 3.4.4),
     RColorBrewer,
-    ClusterR,
     glmGamPoi (>= 1.12.2),
     GO.db (>= 3.17.0),
     UCell (>= 2.4.0),
