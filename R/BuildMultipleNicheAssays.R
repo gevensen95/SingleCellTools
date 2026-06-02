@@ -15,6 +15,9 @@
 #' @param num_init  Number of times the algorithm will be run with different centroid seeds for ClusterR::MiniBatchKmeans
 #' @param type Spatial Techology (specify "visium" if not true single, otherwise NULL is sufficient)
 #' @return Seurat object containing a new assay
+#' @importFrom Seurat GetTissueCoordinates FindNeighbors ScaleData
+#' @importFrom SeuratObject CreateAssayObject Cells DefaultAssay DefaultAssay<-
+#' @importFrom ClusterR MiniBatchKmeans predict_MBatchKMeans
 #' @export
 #'
 BuildMultipleNicheAssays <- function(
@@ -55,7 +58,7 @@ BuildMultipleNicheAssays <- function(
     fov <- list.fov[[i]]
 
     # Initialize a binary matrix (cells x groups) based on group.by annotation
-    cells <- Cells(object[[fov]])
+    cells <- SeuratObject::Cells(object[[fov]])
     group.labels <- unlist(object[[group.by]][cells, ])
     groups <- sort(unique(group.labels))
     cell.type.mtx <- matrix(0, nrow = length(cells), ncol = length(groups))
@@ -85,12 +88,12 @@ BuildMultipleNicheAssays <- function(
 
     # Create the niche assay using the neighbors information
     sum.mtx <- as.matrix(neighbors[["nn"]] %*% cell.type.mtx)
-    niche.assay <- CreateAssayObject(counts = t(sum.mtx))
+    niche.assay <- SeuratObject::CreateAssayObject(counts = t(sum.mtx))
     object[[assay]] <- niche.assay
-    DefaultAssay(object) <- assay
+    SeuratObject::DefaultAssay(object) <- assay
 
     # Scale the data in the niche assay
-    object <- ScaleData(object)
+    object <- Seurat::ScaleData(object)
 
     # Replace the object in the list with the modified object
     list.object[[i]] <- object

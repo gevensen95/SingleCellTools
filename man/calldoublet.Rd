@@ -39,3 +39,10 @@ column ("Doublet" / "Singlet").
 Runs the standard DoubletFinder workflow on a single Seurat object:
 normalize → PCA → choose # PCs → UMAP/clusters → pK sweep → doubletFinder.
 }
+\details{
+On return, the normalized \code{data} and \code{scale.data} layers, the
+variable features, and the \code{pca} / \code{umap} reductions created
+during the workflow are stripped from the object so the result carries
+only counts plus the new \code{doublet_finder} (and \code{seurat_clusters})
+metadata columns.
+}

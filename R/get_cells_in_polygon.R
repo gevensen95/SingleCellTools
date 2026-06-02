@@ -6,6 +6,8 @@
 #' @param poly_df Data frame of polygon coordinates (x & y as columns)
 #' @param image_name Name of image to look for cells in
 #' @return List of data frames
+#' @importFrom Seurat GetTissueCoordinates
+#' @importFrom dplyr rename
 #' @export
 #'
 get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
@@ -34,6 +36,7 @@ get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
   coords <- as.data.frame(coords)
 
   # Standardize to x/y
+  imagecol <- imagerow <- NULL  # silence R CMD check NSE notes
   if (all(c("imagecol", "imagerow") %in% names(coords))) {
     coords <- dplyr::rename(coords, x = imagecol, y = imagerow)
   } else if (!all(c("x", "y") %in% names(coords))) {

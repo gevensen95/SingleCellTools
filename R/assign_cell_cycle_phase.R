@@ -7,23 +7,28 @@
 #' @param g2m_genes G2M Phase Genes (must be species specific)
 #' @param threshold_quantile Threshold for G1 Phase, 0.5 is the recommended threshold
 #' @return Vector containing child GO terms
+#' @importFrom UCell AddModuleScore_UCell
+#' @importFrom stats quantile
 #' @export
 #'
 assign_cell_cycle_phase <- function(seurat_obj, s_genes, g2m_genes,
                                     threshold_quantile = 0.5) {
   message('--- Scoring S phase genes with UCell ---')
-  seurat_obj <- AddModuleScore_UCell(seurat_obj, features = list(s_genes), name = "_S.Score_UCell")
+  seurat_obj <- UCell::AddModuleScore_UCell(seurat_obj, features = list(s_genes),
+                                            name = "_S.Score_UCell")
 
   message('--- Scoring G2M phase genes with UCell ---')
-  seurat_obj <- AddModuleScore_UCell(seurat_obj, features = list(g2m_genes), name = "_G2M.Score_UCell")
+  seurat_obj <- UCell::AddModuleScore_UCell(seurat_obj, features = list(g2m_genes),
+                                            name = "_G2M.Score_UCell")
 
   # Extract column names created by UCell
-  s_col <- grep("_S.Score_UCell$", colnames(seurat_obj@meta.data), value = TRUE)
+  s_col   <- grep("_S.Score_UCell$",   colnames(seurat_obj@meta.data), value = TRUE)
   g2m_col <- grep("_G2M.Score_UCell$", colnames(seurat_obj@meta.data), value = TRUE)
 
-  message(sprintf('--- Computing score thresholds (quantile = %.2f) ---', threshold_quantile))
-  s_thresh <- quantile(seurat_obj[[s_col]][,1], threshold_quantile)
-  g2m_thresh <- quantile(seurat_obj[[g2m_col]][,1], threshold_quantile)
+  message(sprintf('--- Computing score thresholds (quantile = %.2f) ---',
+                  threshold_quantile))
+  s_thresh   <- stats::quantile(seurat_obj[[s_col]][, 1],   threshold_quantile)
+  g2m_thresh <- stats::quantile(seurat_obj[[g2m_col]][, 1], threshold_quantile)
 
   message('--- Assigning cell cycle phase (G1 / S / G2M) ---')
   seurat_obj$Phase <- with(seurat_obj@meta.data, ifelse(

@@ -1,7 +1,7 @@
 Package: SingleCellTools
 Title: Wrapper and analysis functions for single cell data
-Version: 2.301
-Authors@R: 
+Version: 2.302
+Authors@R:
     person("K. Garrett", "Evensen", , "kgsevensen@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-6720-2526"))
 Description: Functions to make single cell easier
@@ -9,6 +9,36 @@ License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-Depends: R (>= 2.10), Seurat (>= 4.9.9.9050), Signac (>= 1.9.0.9000), EnsDb.Mmusculus.v79 (>= 2.99.0), dplyr (>= 1.1.2), readr (>= 2.1.4), ggplot2 (>= 3.4.4), stringr (>= 1.5.0), tidyr (>= 1.3.0), RANN (>= 2.6.1), rlang (>= 1.1.1), purrr (>= 1.0.2), glmGamPoi (>= 1.12.2)
-Imports: Seurat (>= 4.9.9.9050), Signac (>= 1.9.0.9000), EnsDb.Mmusculus.v79 (>= 2.99.0), dplyr (>= 1.1.2), readr (>= 2.1.4), ggplot2 (>= 3.4.4), stringr (>= 1.5.0), tidyr (>= 1.3.0), RANN (>= 2.6.1), rlang (>= 1.1.1), purrr (>= 1.0.2), glmGamPoi (>= 1.12.2), GO.db (>= 3.17.0), UCell (>= 2.4.0), DoubletFinder (>= 2.0.6), maditr (>= 0.8.6)
+Depends:
+    R (>= 2.10)
+Imports:
+    Seurat (>= 4.9.9.9050),
+    SeuratObject (>= 5.0.0),
+    Signac (>= 1.9.0.9000),
+    EnsDb.Mmusculus.v79 (>= 2.99.0),
+    Matrix,
+    methods,
+    stats,
+    utils,
+    grDevices,
+    dplyr (>= 1.1.2),
+    tibble,
+    tidyr (>= 1.3.0),
+    magrittr,
+    readr (>= 2.1.4),
+    stringr (>= 1.5.0),
+    rlang (>= 1.1.1),
+    purrr (>= 1.0.2),
+    RANN (>= 2.6.1),
+    ggplot2 (>= 3.4.4),
+    RColorBrewer,
+    ClusterR,
+    glmGamPoi (>= 1.12.2),
+    GO.db (>= 3.17.0),
+    UCell (>= 2.4.0),
+    DoubletFinder,
+    irlba,
+    RSpectra
+Suggests:
+    sf
 Config/roxygen2/version: 8.0.0

@@ -22,6 +22,8 @@
 #'   Gene 'CD3D' with default suffix becomes column 'CD3D_pos'.
 #' @return The same shape as `seurat_objects` (single object or list) with new
 #'   logical metadata columns added.
+#' @importFrom Seurat DefaultAssay FetchData
+#' @importFrom SeuratObject AddMetaData
 #' @export
 AddGenePositivity <- function(seurat_objects,
                               genes,

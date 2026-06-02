@@ -31,6 +31,16 @@
 #' @param common_genes_assay Assay to inspect for gene names when
 #'   `common_genes_only = TRUE`.
 #' @return A merged, integrated, clustered Seurat object.
+#' @importFrom Seurat DefaultAssay SCTransform NormalizeData FindVariableFeatures ScaleData RunPCA ElbowPlot IntegrateLayers FindNeighbors FindClusters RunUMAP DimPlot FindAllMarkers DotPlot
+#' @importFrom SeuratObject LayerData Layers
+#' @importFrom Matrix colSums
+#' @importFrom magrittr %>%
+#' @importFrom dplyr group_by summarise arrange filter slice_max
+#' @importFrom stringr str_detect
+#' @importFrom stats median
+#' @importFrom utils write.csv
+#' @importFrom ggplot2 coord_flip labs ggsave
+#' @importFrom methods as
 #' @export
 MergeSeurat <- function(seurat_objects,
                         cell_IDs = names(seurat_objects),
@@ -190,11 +200,11 @@ MergeSeurat <- function(seurat_objects,
   if (spatial == 'Visium') {
     obj <- suppressWarnings(merge(seurat_objects[[1]], seurat_objects[-1],
                                   add.cell.ids = cell_IDs))
-    obj[["RNA"]] <- as(object = obj[["Spatial"]], Class = "Assay5")
+    obj[["RNA"]] <- methods::as(object = obj[["Spatial"]], Class = "Assay5")
   } else if (spatial == 'Xenium') {
     obj <- suppressWarnings(merge(seurat_objects[[1]], seurat_objects[-1],
                                   add.cell.ids = cell_IDs))
-    obj[["RNA"]] <- as(object = obj[["Xenium"]], Class = "Assay5")
+    obj[["RNA"]] <- methods::as(object = obj[["Xenium"]], Class = "Assay5")
   } else if (spatial == 'no') {
     obj <- merge(seurat_objects[[1]], seurat_objects[-1],
                  add.cell.ids = cell_IDs)
@@ -280,6 +290,7 @@ MergeSeurat <- function(seurat_objects,
                                              recorrect_umi = FALSE)
     utils::write.csv(marker_results, 'markers_all.csv')
 
+    p_val_adj <- avg_log2FC <- cluster <- NULL  # silence R CMD check NSE notes
     markers_filtered <- marker_results %>%
       dplyr::filter(p_val_adj < 0.05) %>%
       dplyr::arrange(-avg_log2FC) %>%

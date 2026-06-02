@@ -9,13 +9,14 @@
 #'   below \code{get_all_children_verbose} sets verbose=TRUE on the outer call
 #'   and FALSE on the inner calls.
 #' @return Vector containing child GO terms
+#' @importFrom GO.db GOBPCHILDREN
 #' @export
 #'
 get_all_children <- function(go_term, verbose = FALSE) {
   if (verbose) message(sprintf('--- Collecting all child GO terms for %s ---', go_term))
 
   # Get direct children of the GO term
-  children <- unlist(mget(go_term, GOBPCHILDREN, ifnotfound = NA))  # 'ifnotfound = NA' prevents errors if no children
+  children <- unlist(mget(go_term, GO.db::GOBPCHILDREN, ifnotfound = NA))  # 'ifnotfound = NA' prevents errors if no children
 
   # If there are no children, return an empty vector
   if (all(is.na(children))) {

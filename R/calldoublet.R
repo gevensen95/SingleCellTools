@@ -3,6 +3,12 @@
 #' Runs the standard DoubletFinder workflow on a single Seurat object:
 #' normalize → PCA → choose # PCs → UMAP/clusters → pK sweep → doubletFinder.
 #'
+#' On return, the normalized \code{data} and \code{scale.data} layers, the
+#' variable features, and the \code{pca} / \code{umap} reductions created
+#' during the workflow are stripped from the object so the result carries
+#' only counts plus the new \code{doublet_finder} (and \code{seurat_clusters})
+#' metadata columns.
+#'
 #' @param obj A Seurat object.
 #' @param samplenameIndex Passed through unchanged from the original API
 #'   (currently unused inside the function; retained for call-site
@@ -18,6 +24,10 @@
 #'   Default \code{0.1}.
 #' @return The input Seurat object with a \code{doublet_finder} metadata
 #'   column ("Doublet" / "Singlet").
+#' @importFrom Seurat SCTransform NormalizeData FindVariableFeatures ScaleData RunPCA RunUMAP FindNeighbors FindClusters
+#' @importFrom SeuratObject DefaultAssay DefaultAssay<- Assays Layers Reductions VariableFeatures VariableFeatures<-
+#' @importFrom DoubletFinder paramSweep summarizeSweep find.pK modelHomotypic doubletFinder
+#' @export
 calldoublet <- function(obj,
                         samplenameIndex,
                         normalization      = c("LogNormalize", "SCT"),
@@ -28,14 +38,16 @@ calldoublet <- function(obj,
 
   # ---- Normalize ----------------------------------------------------------
   if (use_sct) {
-    obj <- SCTransform(obj, vars.to.regress = vars.to.regress, verbose = FALSE)
+    obj <- Seurat::SCTransform(obj, vars.to.regress = vars.to.regress,
+                               verbose = FALSE)
   } else {
-    obj <- NormalizeData(obj, verbose = FALSE)
-    obj <- FindVariableFeatures(obj, verbose = FALSE)
-    obj <- ScaleData(obj, vars.to.regress = vars.to.regress, verbose = FALSE)
+    obj <- Seurat::NormalizeData(obj, verbose = FALSE)
+    obj <- Seurat::FindVariableFeatures(obj, verbose = FALSE)
+    obj <- Seurat::ScaleData(obj, vars.to.regress = vars.to.regress,
+                             verbose = FALSE)
   }
 
-  obj <- RunPCA(obj, verbose = FALSE)
+  obj <- Seurat::RunPCA(obj, verbose = FALSE)
 
   # ---- Find significant PCs -----------------------------------------------
   stdv         <- obj[["pca"]]@stdev
@@ -48,16 +60,16 @@ calldoublet <- function(obj,
   min.pc <- min(co1, co2)
 
   # ---- Finish pre-processing ----------------------------------------------
-  library("irlba")
-  library("RSpectra")
-  obj <- RunUMAP(obj, dims = 1:min.pc, verbose = FALSE)
-  obj <- FindNeighbors(obj, dims = 1:min.pc, verbose = FALSE)
-  obj <- FindClusters(obj, resolution = cluster_resolution, verbose = FALSE)
+  # NB: irlba and RSpectra are pulled in via the package Imports so that the
+  # PCA/UMAP code that needs them can find them — no library() calls here.
+  obj <- Seurat::RunUMAP(obj, dims = 1:min.pc, verbose = FALSE)
+  obj <- Seurat::FindNeighbors(obj, dims = 1:min.pc, verbose = FALSE)
+  obj <- Seurat::FindClusters(obj, resolution = cluster_resolution, verbose = FALSE)
 
   # ---- pK identification (no ground-truth) --------------------------------
-  sweep.list  <- paramSweep(obj, PCs = 1:min.pc, sct = use_sct)
-  sweep.stats <- summarizeSweep(sweep.list)
-  bcmvn       <- find.pK(sweep.stats)
+  sweep.list  <- DoubletFinder::paramSweep(obj, PCs = 1:min.pc, sct = use_sct)
+  sweep.stats <- DoubletFinder::summarizeSweep(sweep.list)
+  bcmvn       <- DoubletFinder::find.pK(sweep.stats)
   # Optimal pK is the max of the bimodality coefficient (BCmvn) distribution
   bcmvn.max   <- bcmvn[which.max(bcmvn$BCmetric), ]
   optimal.pk  <- bcmvn.max$pK
@@ -65,16 +77,16 @@ calldoublet <- function(obj,
 
   # ---- Homotypic doublet proportion estimate ------------------------------
   annotations    <- obj@meta.data$seurat_clusters
-  homotypic.prop <- modelHomotypic(annotations)
+  homotypic.prop <- DoubletFinder::modelHomotypic(annotations)
   nExp.poi       <- round(optimal.pk * nrow(obj@meta.data))
   nExp.poi.adj   <- round(nExp.poi * (1 - homotypic.prop))
 
   # ---- Run DoubletFinder --------------------------------------------------
-  obj <- doubletFinder(seu  = obj,
-                       PCs  = 1:min.pc,
-                       pK   = optimal.pk,
-                       nExp = nExp.poi.adj,
-                       sct  = use_sct)
+  obj <- DoubletFinder::doubletFinder(seu  = obj,
+                                      PCs  = 1:min.pc,
+                                      pK   = optimal.pk,
+                                      nExp = nExp.poi.adj,
+                                      sct  = use_sct)
 
   metadata <- obj@meta.data
   colnames(metadata)[length(colnames(metadata))] <- "doublet_finder"
@@ -85,10 +97,31 @@ calldoublet <- function(obj,
   cat("Doublet: ", as.vector(table(metadata[, length(colnames(metadata))]))[1], "\n")
   cat("Singlet: ", as.vector(table(metadata[, length(colnames(metadata))]))[2], "\n")
 
-  # ---- Cleanup: only strip the SCT assay when we created it ---------------
-  if (use_sct) {
-    DefaultAssay(obj) <- 'RNA'
-    obj[['SCT']]      <- NULL
+  # ---- Cleanup: strip everything we created during the workflow -----------
+  # For SCT, drop the entire SCT assay — all of its derived layers go with it.
+  if (use_sct && "SCT" %in% SeuratObject::Assays(obj)) {
+    SeuratObject::DefaultAssay(obj) <- 'RNA'
+    obj[['SCT']]                    <- NULL
+  }
+
+  # Drop the normalized 'data' and 'scale.data' layers from the RNA assay.
+  # No-op for any layer that isn't present.
+  for (lyr in c("data", "scale.data")) {
+    if (lyr %in% SeuratObject::Layers(obj[["RNA"]])) {
+      obj[["RNA"]][[lyr]] <- NULL
+    }
+  }
+
+  # Clear the variable-features set chosen by FindVariableFeatures /
+  # SCTransform. tryCatch keeps this safe across Seurat versions where the
+  # setter signature has varied.
+  tryCatch({
+    SeuratObject::VariableFeatures(obj, assay = "RNA") <- character(0)
+  }, error = function(e) invisible(NULL))
+
+  # Drop the PCA and UMAP reductions we computed for the pK sweep.
+  for (red in intersect(c("pca", "umap"), SeuratObject::Reductions(obj))) {
+    obj[[red]] <- NULL
   }
 
   return(obj)
