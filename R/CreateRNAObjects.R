@@ -120,6 +120,11 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
     }), names(seurat_objects))
   }
 
+  seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {
+    seurat_obj[["RNA"]] <- methods::as(seurat_obj[["RNA"]], Class = "Assay5")
+    return(seurat_obj)
+  }), names(seurat_objects))
+
   # ---- Doublet detection --------------------------------------------------
   if (isTRUE(run_doublet_finder)) {
     message(sprintf('--- Calling doublets with DoubletFinder (%s) ---',
