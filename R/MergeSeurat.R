@@ -31,16 +31,6 @@
 #' @param common_genes_assay Assay to inspect for gene names when
 #'   `common_genes_only = TRUE`.
 #' @return A merged, integrated, clustered Seurat object.
-#' @importFrom Seurat DefaultAssay SCTransform NormalizeData FindVariableFeatures ScaleData RunPCA ElbowPlot IntegrateLayers FindNeighbors FindClusters RunUMAP DimPlot FindAllMarkers DotPlot
-#' @importFrom SeuratObject LayerData Layers
-#' @importFrom Matrix colSums
-#' @importFrom magrittr %>%
-#' @importFrom dplyr group_by summarise arrange filter slice_max
-#' @importFrom stringr str_detect
-#' @importFrom stats median
-#' @importFrom utils write.csv
-#' @importFrom ggplot2 coord_flip labs ggsave
-#' @importFrom methods as
 #' @export
 MergeSeurat <- function(seurat_objects,
                         cell_IDs = names(seurat_objects),

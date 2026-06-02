@@ -24,9 +24,6 @@
 #'   Default \code{0.1}.
 #' @return The input Seurat object with a \code{doublet_finder} metadata
 #'   column ("Doublet" / "Singlet").
-#' @importFrom Seurat SCTransform NormalizeData FindVariableFeatures ScaleData RunPCA RunUMAP FindNeighbors FindClusters
-#' @importFrom SeuratObject DefaultAssay DefaultAssay<- Assays Layers Reductions VariableFeatures VariableFeatures<-
-#' @importFrom DoubletFinder paramSweep summarizeSweep find.pK modelHomotypic doubletFinder
 #' @export
 calldoublet <- function(obj,
                         samplenameIndex,

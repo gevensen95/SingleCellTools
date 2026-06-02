@@ -9,7 +9,6 @@
 #'   below \code{get_all_children_verbose} sets verbose=TRUE on the outer call
 #'   and FALSE on the inner calls.
 #' @return Vector containing child GO terms
-#' @importFrom GO.db GOBPCHILDREN
 #' @export
 #'
 get_all_children <- function(go_term, verbose = FALSE) {

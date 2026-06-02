@@ -27,10 +27,6 @@
 #'   \code{doublet_finder == "Singlet"} after doublet calling. Default
 #'   \code{FALSE} so the doublet labels are preserved for downstream review.
 #' @return A list of Seurat objects
-#' @importFrom Seurat Read10X Read10X_h5 CreateSeuratObject PercentageFeatureSet
-#' @importFrom rlang is_empty
-#' @importFrom stringr str_detect
-#' @importFrom ggplot2 ggplot geom_boxplot labs theme element_text aes
 #' @export
 
 CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
