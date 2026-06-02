@@ -27,6 +27,10 @@
 #'   \code{doublet_finder == "Singlet"} after doublet calling. Default
 #'   \code{FALSE} so the doublet labels are preserved for downstream review.
 #' @return A list of Seurat objects
+#' @importFrom Seurat Read10X Read10X_h5 CreateSeuratObject PercentageFeatureSet
+#' @importFrom rlang is_empty
+#' @importFrom stringr str_detect
+#' @importFrom ggplot2 ggplot geom_boxplot labs theme element_text aes
 #' @export
 
 CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
@@ -80,7 +84,7 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                                  min.cells = cells,
                                  min.features = features,
                                  project = basename(dir))
-    } else if (sum(str_detect(list.files(dir), '.h5'))>0) {
+    } else if (sum(stringr::str_detect(list.files(dir), '.h5')) > 0) {
       seurat_data <- Seurat::Read10X_h5(
         paste(dir,
               list.files(dir)[sapply(list.files(dir),
@@ -140,12 +144,13 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
 
   message('--- Generating unfiltered QC plots ---')
   obj <- merge(seurat_objects[[1]], seurat_objects[-1])
-  gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
+  orig.ident <- nFeature_RNA <- percent.mt <- NULL  # silence R CMD check NSE notes
+  gene.plot <- ggplot2::ggplot(obj@meta.data, ggplot2::aes(orig.ident, nFeature_RNA)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') +
-    ggplot2::theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+  mt.plot <- ggplot2::ggplot(obj@meta.data, ggplot2::aes(orig.ident, percent.mt)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') +
-    ggplot2::theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
   print(gene.plot + mt.plot)
 
   return(seurat_objects)

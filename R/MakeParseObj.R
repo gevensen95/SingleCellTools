@@ -105,6 +105,7 @@
 #' @importFrom utils read.csv
 #' @importFrom tibble column_to_rownames
 #' @importFrom SeuratObject CreateAssayObject CreateSeuratObject
+#' @importFrom Seurat PercentageFeatureSet
 #' @export
 MakeParseObj <- function(paths,
                          sample_names               = NULL,

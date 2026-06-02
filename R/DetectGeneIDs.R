@@ -21,6 +21,8 @@
 #'       sampled rownames that match each pattern.}
 #'     \item{\code{examples}}{First five rownames, for visual inspection.}
 #'   }
+#' @importFrom Seurat DefaultAssay
+#' @importFrom utils head
 #' @export
 
 detect_gene_id_type <- function(seurat_obj, assay = NULL) {
