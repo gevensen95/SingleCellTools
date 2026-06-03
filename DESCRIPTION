@@ -1,6 +1,6 @@
 Package: SingleCellTools
 Title: Wrapper and analysis functions for single cell data
-Version: 2.303
+Version: 2.303_cask
 Authors@R:
     person("K. Garrett", "Evensen", , "kgsevensen@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-6720-2526"))
@@ -27,7 +27,6 @@ Depends:
     RANN (>= 2.6.1),
     ggplot2 (>= 3.4.4),
     RColorBrewer,
-    ClusterR,
     glmGamPoi (>= 1.12.2),
     GO.db (>= 3.17.0),
     UCell (>= 2.4.0),
