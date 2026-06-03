@@ -95,40 +95,30 @@ calldoublet <- function(obj,
   cat("Singlet: ", as.vector(table(metadata[, length(colnames(metadata))]))[2], "\n")
 
   # ---- Cleanup: strip everything we created during the workflow -----------
-  # For SCT, drop the entire SCT assay — all its derived layers go with it.
+  # For SCT, drop the entire SCT assay — all of its derived layers go with it.
   if (use_sct && "SCT" %in% SeuratObject::Assays(obj)) {
-    SeuratObject::DefaultAssay(obj) <- "RNA"
-    obj[["SCT"]]                    <- NULL
+    SeuratObject::DefaultAssay(obj) <- 'RNA'
+    obj[['SCT']]                    <- NULL
   }
 
-  # Drop normalized layers from the RNA assay, including any split variants
-  # (data.1, data.2, scale.data.1, ...) that show up after a previous merge.
-  rna <- obj[["RNA"]]
-  target_patterns <- c("^data(\\.|$)", "^scale\\.data(\\.|$)")
-  lyrs_to_drop <- unique(unlist(lapply(
-    target_patterns,
-    function(p) grep(p, names(rna@layers), value = TRUE)
-  )))
-  for (lyr in lyrs_to_drop) {
-    rna@layers[[lyr]] <- NULL
+  # Drop the normalized 'data' and 'scale.data' layers from the RNA assay.
+  # No-op for any layer that isn't present.
+  for (lyr in c("data", "scale.data")) {
+    if (lyr %in% SeuratObject::Layers(obj[["RNA"]])) {
+      obj[["RNA"]][[lyr]] <- NULL
+    }
   }
 
-  # Clear variable features. Assay5 stores them as vf_* columns in @meta.data;
-  # the legacy Assay class uses the @var.features slot. Handle both.
-  if (inherits(rna, "Assay5")) {
-    vf_cols <- grep("^vf_", colnames(rna@meta.data), value = TRUE)
-    if (length(vf_cols)) rna@meta.data[vf_cols] <- list(NULL)
-  } else {
-    rna@var.features <- character(0)
-  }
-  obj[["RNA"]] <- rna
+  # Clear the variable-features set chosen by FindVariableFeatures /
+  # SCTransform. tryCatch keeps this safe across Seurat versions where the
+  # setter signature has varied.
+  tryCatch({
+    SeuratObject::VariableFeatures(obj, assay = "RNA") <- character(0)
+  }, error = function(e) invisible(NULL))
 
-  # Drop pca / umap reductions, allowing for assay-suffixed names like
-  # "pca.RNA" or "umap.SCT".
-  red_to_drop <- grep("^(pca|umap)(\\.|$)",
-                      names(obj@reductions), value = TRUE)
-  for (red in red_to_drop) {
-    obj@reductions[[red]] <- NULL
+  # Drop the PCA and UMAP reductions we computed for the pK sweep.
+  for (red in intersect(c("pca", "umap"), SeuratObject::Reductions(obj))) {
+    obj[[red]] <- NULL
   }
 
   return(obj)
