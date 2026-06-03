@@ -7,8 +7,6 @@
 #' @param g2m_genes G2M Phase Genes (must be species specific)
 #' @param threshold_quantile Threshold for G1 Phase, 0.5 is the recommended threshold
 #' @return Vector containing child GO terms
-#' @importFrom UCell AddModuleScore_UCell
-#' @importFrom stats quantile
 #' @export
 #'
 assign_cell_cycle_phase <- function(seurat_obj, s_genes, g2m_genes,

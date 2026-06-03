@@ -42,13 +42,6 @@
 #' MarkerPlot(harmony, cellID)
 #' }
 #'
-#' @importFrom magrittr %>%
-#' @importFrom dplyr group_by summarise
-#' @importFrom tibble column_to_rownames
-#' @importFrom tidyr pivot_wider
-#' @importFrom ggplot2 aes coord_flip element_text geom_text geom_vline ggplot labs margin scale_color_gradientn scale_size_continuous theme theme_linedraw xlab ylab
-#' @importFrom RColorBrewer brewer.pal
-#' @importFrom Seurat DotPlot DefaultAssay DefaultAssay<- FetchData Idents Idents<-
 #' @export
 MarkerPlot <- function(obj,
                        genes,

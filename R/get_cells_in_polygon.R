@@ -6,8 +6,6 @@
 #' @param poly_df Data frame of polygon coordinates (x & y as columns)
 #' @param image_name Name of image to look for cells in
 #' @return List of data frames
-#' @importFrom Seurat GetTissueCoordinates
-#' @importFrom dplyr rename
 #' @export
 #'
 get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {

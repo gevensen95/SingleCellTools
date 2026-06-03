@@ -15,9 +15,6 @@
 #' @param num_init  Number of times the algorithm will be run with different centroid seeds for ClusterR::MiniBatchKmeans
 #' @param type Spatial Techology (specify "visium" if not true single, otherwise NULL is sufficient)
 #' @return Seurat object containing a new assay
-#' @importFrom Seurat GetTissueCoordinates FindNeighbors ScaleData
-#' @importFrom SeuratObject CreateAssayObject Cells DefaultAssay DefaultAssay<-
-#' @importFrom ClusterR MiniBatchKmeans predict_MBatchKMeans
 #' @export
 #'
 BuildMultipleNicheAssays <- function(
