@@ -117,6 +117,7 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
   }
 
   seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {
+    seurat_obj <- seurat_objects[[i]]
     seurat_obj[["RNA"]] <- methods::as(seurat_obj[["RNA"]], Class = "Assay5")
     return(seurat_obj)
   }), names(seurat_objects))
