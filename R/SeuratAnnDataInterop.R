@@ -1,0 +1,73 @@
+#' Convert a Seurat object to an AnnData (h5ad) file
+#'
+#' Round-trips data with the Python / scanpy world via the
+#' \code{zellkonverter} Bioconductor package. The Seurat object is first
+#' converted to a \code{SingleCellExperiment} (using SeuratObject's
+#' \code{as.SingleCellExperiment}) and then written as \code{.h5ad}.
+#'
+#' @param obj A Seurat object.
+#' @param file Output path. Should end in \code{.h5ad}.
+#' @param assay Assay to export. Default DefaultAssay.
+#' @return Invisibly, the path written to.
+#' @importFrom Seurat as.SingleCellExperiment DefaultAssay
+#' @export
+ToAnnData <- function(obj, file, assay = NULL) {
+  if (!requireNamespace("zellkonverter", quietly = TRUE)) {
+    stop("Package 'zellkonverter' is required. Install with: ",
+         "BiocManager::install('zellkonverter')")
+  }
+  if (!inherits(obj, "Seurat")) stop("`obj` must be a Seurat object.")
+  if (!grepl("\\.h5ad$", file)) {
+    warning("Output file does not end in '.h5ad'; writing anyway.")
+  }
+  a <- if (is.null(assay)) Seurat::DefaultAssay(obj) else assay
+
+  message("--- Converting Seurat -> SingleCellExperiment ---")
+  sce <- Seurat::as.SingleCellExperiment(obj, assay = a)
+
+  message(sprintf("--- Writing AnnData to %s ---", file))
+  zellkonverter::writeH5AD(sce, file = file)
+  invisible(file)
+}
+
+
+#' Read an AnnData (h5ad) file into a Seurat object
+#'
+#' Reads the file as a \code{SingleCellExperiment} via \code{zellkonverter}
+#' and converts to a Seurat object with \code{Seurat::as.Seurat}. Note that
+#' some scanpy-specific bits (e.g. \code{obsm} entries beyond UMAP/PCA,
+#' \code{varm}, \code{uns}) may not round-trip cleanly.
+#'
+#' @param file Path to an \code{.h5ad} file.
+#' @param counts Name of the layer in the AnnData object to treat as raw
+#'   counts. Default \code{"counts"}; falls back to \code{"X"} if not found.
+#' @param data Name of the layer to treat as normalized data. Default
+#'   \code{"logcounts"}.
+#' @return A Seurat object.
+#' @importFrom Seurat as.Seurat
+#' @export
+FromAnnData <- function(file, counts = "counts", data = "logcounts") {
+  if (!requireNamespace("zellkonverter", quietly = TRUE)) {
+    stop("Package 'zellkonverter' is required. Install with: ",
+         "BiocManager::install('zellkonverter')")
+  }
+  if (!file.exists(file)) stop("File not found: ", file)
+
+  message(sprintf("--- Reading AnnData from %s ---", file))
+  sce <- zellkonverter::readH5AD(file)
+
+  available_assays <- SummarizedExperiment::assayNames(sce)
+  if (!counts %in% available_assays) {
+    if ("X" %in% available_assays) {
+      counts <- "X"
+      message("  No 'counts' assay; using 'X' as counts.")
+    } else {
+      stop("Neither '", counts, "' nor 'X' found in the AnnData assays. ",
+           "Available: ", paste(available_assays, collapse = ", "))
+    }
+  }
+  if (!data %in% available_assays) data <- counts
+
+  message("--- Converting SingleCellExperiment -> Seurat ---")
+  Seurat::as.Seurat(sce, counts = counts, data = data)
+}
