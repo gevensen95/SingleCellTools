@@ -1,3 +1,8 @@
 2026-06-03.09:36:29   348  cd /vast/igc/analyses/garrett/bin/SingleCellTools/
 2026-06-03.09:37:49   349  git config --global user.email "kgsevensen@gmail.com"
 2026-06-03.09:37:58   350  git config --global user.name "Garrett_Cask"
+2026-06-11.13:20:57   359  cd SingleCellTools/
+2026-06-11.13:20:57   360  ls
+2026-06-11.13:20:58   361  git fetch origin
+2026-06-11.13:21:07   362  git merge origin/main
+2026-06-11.13:21:39   362  git merge origin/main
