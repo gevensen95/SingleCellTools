@@ -51,7 +51,6 @@
   "RANN",
   "ggplot2",
   "RColorBrewer",
-  "ClusterR",
   "glmGamPoi",
   "GO.db",
   "UCell",
