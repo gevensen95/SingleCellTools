@@ -4,7 +4,12 @@
 \alias{FromAnnData}
 \title{Read an AnnData (h5ad) file into a Seurat object}
 \usage{
-FromAnnData(file, counts = "counts", data = "logcounts")
+FromAnnData(
+  file,
+  counts = "counts",
+  data = "logcounts",
+  reader = c("python", "R")
+)
 }
 \arguments{
 \item{file}{Path to an \code{.h5ad} file.}
@@ -14,6 +19,14 @@ counts. Default \code{"counts"}; falls back to \code{"X"} if not found.}
 
 \item{data}{Name of the layer to treat as normalized data. Default
 \code{"logcounts"}.}
+
+\item{reader}{Which zellkonverter backend to use. \code{"python"}
+(default) goes through the \code{anndata} Python module via basilisk
+— required for files where counts are stored as integer sparse
+matrices (e.g. Tabula Sapiens, scvi-tools exports), because the
+native R reader builds an invalid \code{dgRMatrix} with integer
+\code{@x} slot. \code{"R"} is the native reader; faster startup but
+may fail on integer-typed sparse data.}
 }
 \value{
 A Seurat object.
@@ -23,4 +36,15 @@ Reads the file as a \code{SingleCellExperiment} via \code{zellkonverter}
 and converts to a Seurat object with \code{Seurat::as.Seurat}. Note that
 some scanpy-specific bits (e.g. \code{obsm} entries beyond UMAP/PCA,
 \code{varm}, \code{uns}) may not round-trip cleanly.
+}
+\details{
+After reading, each assay is coerced to a column-compressed sparse
+matrix (\code{dgCMatrix}) with a double-precision \code{@x} slot. This
+avoids two common errors with h5ads written by scanpy / scvi-tools:
+\itemize{
+\item \code{invalid class "dgRMatrix" object: 'x' slot is not of type "double"}
+— counts stored as integers in the source file.
+\item Seurat refusing to construct an assay from a row-compressed
+sparse matrix.
+}
 }
