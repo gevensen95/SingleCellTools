@@ -33,18 +33,20 @@ A Seurat object.
 }
 \description{
 Reads the file as a \code{SingleCellExperiment} via \code{zellkonverter}
-and converts to a Seurat object with \code{Seurat::as.Seurat}. Note that
-some scanpy-specific bits (e.g. \code{obsm} entries beyond UMAP/PCA,
-\code{varm}, \code{uns}) may not round-trip cleanly.
-}
-\details{
-After reading, each assay is coerced to a column-compressed sparse
-matrix (\code{dgCMatrix}) with a double-precision \code{@x} slot. This
-avoids two common errors with h5ads written by scanpy / scvi-tools:
+and converts to a Seurat object. After reading, each assay is coerced
+to a column-compressed sparse matrix (\code{dgCMatrix}) with a
+double-precision \code{@x} slot. This avoids two common errors with
+h5ads written by scanpy / scvi-tools:
 \itemize{
 \item \code{invalid class "dgRMatrix" object: 'x' slot is not of type "double"}
 — counts stored as integers in the source file.
 \item Seurat refusing to construct an assay from a row-compressed
 sparse matrix.
 }
+}
+\details{
+For \code{as.Seurat} failures in Seurat v5 when the source AnnData
+has only a single expression matrix (so \code{counts == data}), this
+function transparently falls back to building the Seurat object
+directly from the SCE assays, colData, and reducedDims.
 }

@@ -34,19 +34,21 @@ ToAnnData <- function(obj, file, assay = NULL) {
 #' Read an AnnData (h5ad) file into a Seurat object
 #'
 #' Reads the file as a \code{SingleCellExperiment} via \code{zellkonverter}
-#' and converts to a Seurat object with \code{Seurat::as.Seurat}. Note that
-#' some scanpy-specific bits (e.g. \code{obsm} entries beyond UMAP/PCA,
-#' \code{varm}, \code{uns}) may not round-trip cleanly.
-#'
-#' After reading, each assay is coerced to a column-compressed sparse
-#' matrix (\code{dgCMatrix}) with a double-precision \code{@x} slot. This
-#' avoids two common errors with h5ads written by scanpy / scvi-tools:
+#' and converts to a Seurat object. After reading, each assay is coerced
+#' to a column-compressed sparse matrix (\code{dgCMatrix}) with a
+#' double-precision \code{@x} slot. This avoids two common errors with
+#' h5ads written by scanpy / scvi-tools:
 #' \itemize{
 #'   \item \code{invalid class "dgRMatrix" object: 'x' slot is not of type "double"}
 #'     — counts stored as integers in the source file.
 #'   \item Seurat refusing to construct an assay from a row-compressed
 #'     sparse matrix.
 #' }
+#'
+#' For \code{as.Seurat} failures in Seurat v5 when the source AnnData
+#' has only a single expression matrix (so \code{counts == data}), this
+#' function transparently falls back to building the Seurat object
+#' directly from the SCE assays, colData, and reducedDims.
 #'
 #' @param file Path to an \code{.h5ad} file.
 #' @param counts Name of the layer in the AnnData object to treat as raw
@@ -123,5 +125,50 @@ FromAnnData <- function(file,
   }
 
   message("--- Converting SingleCellExperiment -> Seurat ---")
-  Seurat::as.Seurat(sce, counts = counts, data = data)
+  # Try Seurat::as.Seurat first; it handles reductions, alt assays, etc.
+  # In Seurat v5 it fails when `counts == data` because internally it
+  # validates `data` against the Seurat layer namespace ("counts",
+  # "data", "scale.data"), not against SCE assay names. Fall back to
+  # constructing the object manually in that case.
+  tryCatch(
+    Seurat::as.Seurat(sce, counts = counts, data = data),
+    error = function(e) {
+      message("  as.Seurat failed (", conditionMessage(e), ")")
+      message("  Falling back to manual Seurat construction.")
+
+      cmat <- SummarizedExperiment::assay(sce, counts)
+      cmat <- methods::as(cmat, "CsparseMatrix")
+      if (!is.double(cmat@x)) cmat@x <- as.numeric(cmat@x)
+      obj <- SeuratObject::CreateSeuratObject(counts = cmat)
+
+      # If `data` is a distinct assay, write it into the data layer
+      if (!identical(data, counts) &&
+          data %in% SummarizedExperiment::assayNames(sce)) {
+        dmat <- SummarizedExperiment::assay(sce, data)
+        dmat <- methods::as(dmat, "CsparseMatrix")
+        if (!is.double(dmat@x)) dmat@x <- as.numeric(dmat@x)
+        SeuratObject::LayerData(obj, assay = "RNA", layer = "data") <- dmat
+      }
+
+      # Carry over colData -> @meta.data (skip cols Seurat already added)
+      cd <- as.data.frame(SummarizedExperiment::colData(sce))
+      cd <- cd[, !colnames(cd) %in% colnames(obj@meta.data), drop = FALSE]
+      if (ncol(cd)) obj@meta.data <- cbind(obj@meta.data, cd)
+
+      # Carry over reducedDims as DimReducs (best-effort)
+      if (requireNamespace("SingleCellExperiment", quietly = TRUE)) {
+        for (rn in SingleCellExperiment::reducedDimNames(sce)) {
+          embed <- SingleCellExperiment::reducedDim(sce, rn)
+          if (is.null(colnames(embed))) {
+            colnames(embed) <- paste0(toupper(rn), "_", seq_len(ncol(embed)))
+          }
+          obj[[tolower(rn)]] <- SeuratObject::CreateDimReducObject(
+            embeddings = embed, key = paste0(toupper(rn), "_"),
+            assay = SeuratObject::DefaultAssay(obj)
+          )
+        }
+      }
+      obj
+    }
+  )
 }

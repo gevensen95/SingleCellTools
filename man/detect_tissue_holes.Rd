@@ -9,6 +9,11 @@ detect_tissue_holes(
   fovs = NULL,
   bin_size = NULL,
   min_hole_size = 4,
+  exclude_gene = NULL,
+  sensitivity = 0.75,
+  exclude_gene_threshold = NULL,
+  exclude_gene_assay = NULL,
+  exclude_gene_layer = "data",
   n_iterations = 2,
   label_col = "hole_layer"
 )
@@ -21,18 +26,40 @@ processes every image attached to the object.}
 
 \item{bin_size}{Edge length of one grid bin in the same units as the
 coordinates. \code{NULL} (default) auto-computes
-\code{2.5 * median nearest-neighbor distance} per FOV, which puts
-roughly a handful of cells in each populated bin.}
+\code{2.5 * median nearest-neighbor distance} per FOV.}
 
-\item{min_hole_size}{Minimum number of contiguous empty bins for a hole
-to be counted. Filters out single-bin "noise holes" caused by sparse
-sampling. Default 4.}
+\item{min_hole_size}{Minimum number of contiguous empty bins (4-connected)
+for a hole to count. Default 4.}
+
+\item{exclude_gene}{Optional gene symbol. When supplied, holes whose
+bordering tissue bins have a mean expression of this gene above the
+chosen cutoff are skipped (their border cells are not flagged).
+\code{NULL} (default) disables the filter. Examples: \code{"Glul"}
+for liver central veins, \code{"Pecam1"} / \code{"Cdh5"} for
+endothelial-lined vessels.}
+
+\item{sensitivity}{Quantile of the per-bin mean-expression
+distribution to use as the cutoff (only when
+\code{exclude_gene_threshold = NULL}). Default 0.75 — bins above
+the 75th percentile are treated as high-expression. Higher values
+(e.g. 0.9) are stricter (fewer holes excluded); lower values
+(e.g. 0.5) are more permissive. Range 0--1.}
+
+\item{exclude_gene_threshold}{Absolute expression cutoff. When
+\code{NULL} (default), the cutoff is computed from
+\code{sensitivity}; set to a numeric value to override the
+data-adaptive path and use a fixed threshold instead.}
+
+\item{exclude_gene_assay}{Assay to read expression from. \code{NULL}
+(default) uses \code{DefaultAssay(obj)}.}
+
+\item{exclude_gene_layer}{Layer to read from. Default \code{"data"}
+(log-normalized).}
 
 \item{n_iterations}{Number of inward-peeling iterations. Default 2.}
 
 \item{label_col}{Name of the metadata column to write. Default
-\code{"hole_layer"}. \code{0} = not near a hole, \code{1} = directly
-bordering, \code{2} = next ring, ...}
+\code{"hole_layer"}.}
 }
 \value{
 The Seurat object with a new integer metadata column.
@@ -51,9 +78,30 @@ cells immediately touching a hole; on the next pass those cells are
 removed from the occupancy grid and a new ring of hole-edge cells is
 found, etc. The output metadata column records the layer in which each
 cell was caught: \code{0} for cells not near any hole, \code{1} for the
-cells directly bordering a hole, \code{2} for the next ring inward, ...
+cells directly bordering a hole, \code{2} for the next ring, ...
+
+\strong{Marker-gene exclusion.} Set \code{exclude_gene} to ignore holes
+that are biologically meaningful gaps (a vessel, a sinusoid) rather
+than tears. The function computes the mean expression of
+\code{exclude_gene} per tissue bin (a "bin expression vector"), then
+decides which holes look like real anatomy:
+\itemize{
+\item \strong{Data-adaptive thresholding (default).} The bin
+expression vector's quantile at \code{sensitivity} is used as the
+cutoff. Bins above that cutoff count as "high expression." A hole
+is excluded if the mean of its border-bin expression exceeds the
+cutoff. This adapts automatically to each FOV's overall
+expression level and is the recommended path.
+\item \strong{Absolute thresholding.} If
+\code{exclude_gene_threshold} is set to a number, that value is
+used as the cutoff directly (regardless of the distribution). Use
+this when you want a fixed biological cutoff (e.g. "any hole
+bordered by cells expressing Glul above log-normalized 1.0 is a
+central vein").
+}
 
 Distinct from \code{detect_fov_edges} — that function finds the
 \emph{outer} boundary, this one finds \emph{internal} gaps. Run both
-if you want to drop everything within N rings of either kind of boundary.
+if you want to drop everything within N rings of either kind of
+boundary.
 }
