@@ -7,6 +7,8 @@
 detect_fov_edges(
   obj,
   fovs = NULL,
+  method = c("bbox", "angular"),
+  bbox_factor = 1,
   k = 10,
   gap_threshold = 2 * pi/3,
   density_factor = 1,
@@ -20,17 +22,23 @@ detect_fov_edges(
 \item{fovs}{Character vector of FOV / image names. \code{NULL} (default)
 processes every image attached to the object.}
 
-\item{k}{Number of nearest neighbors per cell. Default 10.}
+\item{method}{\code{"bbox"} (default) or \code{"angular"}. See Details.}
 
-\item{gap_threshold}{Minimum angular gap (in radians) for a cell to be
-considered an edge candidate. Default \code{2 * pi / 3} (120 degrees).}
+\item{bbox_factor}{(bbox method) Threshold multiplier on the median
+nearest-neighbor distance. A cell is flagged as an edge if its
+distance to the bounding box is less than
+\code{bbox_factor * median_nn_distance}. Default 2 — roughly "within
+two cell-widths of the box edge". Bump higher to catch a thicker
+ring per pass; drop lower to catch only the outermost ring.}
 
-\item{density_factor}{Multiplier on the median mean-neighbor distance.
-A cell only qualifies as an edge if its mean k-NN distance is greater
-than \code{density_factor * median(mean_nn_dist)}. Default 1 — set
-higher (e.g. 1.5, 2.0) to require sparser neighborhoods (fewer false
-positives, may miss some true edges); set to a value <= 0 to disable
-the density check entirely and use angular gap alone.}
+\item{k}{(angular method) Number of nearest neighbors per cell.
+Default 10.}
+
+\item{gap_threshold}{(angular method) Minimum angular gap in radians.
+Default \code{2 * pi / 3} (120 degrees).}
+
+\item{density_factor}{(angular method) Multiplier on the median mean-NN
+distance for the density check. Default 1. Set <= 0 to disable.}
 
 \item{n_iterations}{Number of edge-peeling iterations. Default 2.}
 
@@ -39,32 +47,34 @@ the density check entirely and use angular gap alone.}
 \code{2} = next ring, ...}
 }
 \value{
-The Seurat object with a new integer metadata column
-\code{label_col}.
+The Seurat object with a new integer metadata column.
 }
 \description{
-For each cell, finds its \code{k} nearest neighbors, computes the
-angular gap between consecutive neighbors (sorted by angle around the
-cell), and marks the cell as an "edge" cell when \strong{both}:
-\enumerate{
-\item the largest angular gap exceeds \code{gap_threshold} (the cell
-has a notable empty arc on one side), AND
-\item the cell's neighborhood is sparser than typical for the FOV
-(mean distance to its \code{k} nearest neighbors exceeds
-\code{density_factor} times the median across active cells).
-}
-The density requirement is what separates true outer-edge cells from
-interior cells that happen to have one large angular gap because of
-local density fluctuations.
+Two methods are supported, chosen by \code{method}:
 }
 \details{
-Detection is run iteratively. Pass 1 identifies the outer boundary;
-on the next pass those cells are removed and the new outer boundary
-is identified, etc. The output metadata column records the iteration
-in which each cell was caught: \code{0} for interior, \code{1} for
-the outermost ring, \code{2} for the next ring, ...
+\describe{
+\item{\code{"bbox"} (default)}{Compute the axis-aligned bounding box
+around the cells in the FOV, then mark each cell whose minimum
+perpendicular distance to a box edge is below a threshold. The
+threshold scales with the median nearest-neighbor distance, so it
+adapts automatically to whatever coordinate units you're using
+(micron, pixel, etc.). This is the fast, deterministic option and
+is the right tool when the tissue (or imaged region) is roughly
+convex within each FOV — e.g. CosMx / Xenium tiles.}
+\item{\code{"angular"}}{For each cell, look at the angles to its
+\code{k} nearest neighbors and flag the cell if the largest gap
+exceeds \code{gap_threshold} AND its mean k-NN distance exceeds
+\code{density_factor * median(mean_nn_dist)}. Catches concave tissue
+edges, tear margins, and internal sparse regions that the bbox
+method misses. Slower and noisier.}
+}
 
-Works for any spatial assay (Visium, Xenium, MERFISH, ...). For
-Visium-specific edge detection that also considers tears and the
-capture-area boundary, see \code{EdgeDetectionVisium}.
+Detection is run iteratively in both modes. Pass 1 identifies the outer
+boundary; the next pass removes those cells, recomputes (the bounding
+box or the angular statistics) on the survivors, and identifies the
+new outer boundary, etc. The output metadata column records the
+iteration in which each cell was caught:
+\code{0} for interior, \code{1} for the outermost ring, \code{2} for
+the next ring, ...
 }
