@@ -12,7 +12,10 @@ AnnotateClusters(
   ref_label_col = "label.main",
   cluster_col = "seurat_clusters",
   assay = NULL,
-  new_col = "cell_type",
+  new_col = "predicted_cell_type",
+  filter_nonspecific = TRUE,
+  nonspecific_max_fraction = 0.5,
+  high_relative_to_max = 0.5,
   min_score = NA,
   min_margin = NA,
   unassigned_label = "Unknown"
@@ -26,30 +29,44 @@ AnnotateClusters(
 \item{markers}{Named list of marker gene vectors, one element per cell
 type. Required when \code{method = "marker"}.}
 
-\item{reference}{A reference for SingleR (SummarizedExperiment or
-Seurat object). Required when \code{method = "singler"}.}
+\item{reference}{A reference for SingleR. Required when
+\code{method = "singler"}.}
 
-\item{ref_label_col}{For \code{method = "singler"}: the column in
-the reference's colData / metadata holding cell-type labels.}
+\item{ref_label_col}{For SingleR: the column in the reference's
+colData / metadata holding cell-type labels.}
 
 \item{cluster_col}{Metadata column holding the cluster ids to annotate.
 Default \code{"seurat_clusters"}.}
 
 \item{assay}{Assay to use. Default DefaultAssay.}
 
-\item{new_col}{Name of the new metadata column. Default \code{"cell_type"}.}
+\item{new_col}{Name of the new metadata column. Default
+\code{"predicted_cell_type"}.}
+
+\item{filter_nonspecific}{Logical; if TRUE (default) drop marker genes
+that are broadly expressed across many clusters before scoring. Only
+used in marker mode.}
+
+\item{nonspecific_max_fraction}{Fraction of clusters above which a
+marker is considered non-specific. Default 0.5 — a gene that is
+"high" in more than half of the clusters is dropped.}
+
+\item{high_relative_to_max}{A gene counts as "high" in a cluster if
+its mean expression there is at least this fraction of the gene's
+maximum cluster-mean across all clusters. Default 0.5 — within 2x
+of the gene's max cluster mean. Lower values (e.g. 0.3) are more
+permissive about what counts as "high" and so will drop more
+markers; higher values (e.g. 0.7) are stricter.}
 
 \item{min_score}{Minimum score below which a cluster is labeled
-\code{unassigned_label}. Default \code{NA} (check disabled).
-\code{NULL} uses the mode-specific default; an explicit number
-overrides it.}
+\code{unassigned_label}. Default \code{NA} (disabled). \code{NULL}
+uses the mode-specific default.}
 
 \item{min_margin}{Minimum margin between best and 2nd-best score / vote.
-Default \code{NA} (check disabled). \code{NULL} uses the
-mode-specific default; an explicit number overrides it.}
+Default \code{NA} (disabled). \code{NULL} uses the mode-specific default.}
 
 \item{unassigned_label}{Label applied to clusters that fail the
-\code{min_score} or \code{min_margin} test. Default \code{"Unknown"}.}
+thresholds. Default \code{"Unknown"}.}
 }
 \value{
 The Seurat object with a new metadata column \code{new_col}.
@@ -67,6 +84,20 @@ to a per-cluster majority vote. Requires \code{SingleR}.}
 }
 }
 \details{
+\strong{Non-specific marker filtering (marker mode).} In tissues with
+one dominant cell type (e.g. hepatocytes in liver), highly-expressed
+"markers" of that type often leak into every other cluster — enough
+that the dominant signature beats genuinely correct but
+lower-magnitude signatures in non-dominant clusters. Set
+\code{filter_nonspecific = TRUE} (default) to compute per-cluster mean
+expression of every marker gene before scoring, identify genes that
+are "high" in too many clusters, and drop them from the marker lists.
+A gene is "high" in a cluster if its mean expression there exceeds
+\code{high_relative_to_max} times its maximum cluster-mean across all
+clusters; a gene is "non-specific" overall if it is "high" in more
+than \code{nonspecific_max_fraction} of the clusters. The dropped
+genes are reported in a message.
+
 \strong{Unknown / unassigned clusters.} Two thresholds:
 \itemize{
 \item \code{min_score}: clusters whose best score (marker mode) or
@@ -78,16 +109,8 @@ also get the \code{unassigned_label}.
 }
 
 By default both thresholds are \code{NA}, which disables the
-"Unknown" checks entirely — every cluster gets the top-scoring label,
-regardless of how weak or ambiguous that score is. To re-enable the
-checks, pass an explicit numeric value, or pass \code{NULL} to fall
-back to the mode-specific defaults:
-\itemize{
-\item \strong{Marker mode}: \code{min_score = 0.1},
-\code{min_margin = 0.05} (UCell scores are bounded in \code{(0, 1)}
-and typically peak around 0.15-0.35 for matched signatures).
-\item \strong{SingleR mode}: \code{min_score = 0.5},
-\code{min_margin = 0.2} (require a majority vote that beats the
-runner-up by at least 20 percentage points).
-}
+"Unknown" checks entirely. To re-enable, pass an explicit numeric
+value, or pass \code{NULL} to fall back to mode-specific defaults
+(marker: \code{min_score = 0.1, min_margin = 0.05}; SingleR:
+\code{0.5, 0.2}).
 }
