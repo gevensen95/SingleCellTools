@@ -151,9 +151,19 @@ AnnotateClusters <- function(obj,
     }
     empty <- names(filtered_markers)[vapply(filtered_markers, length, integer(1)) == 0]
     if (length(empty) > 0) {
-      stop("The following cell type(s) have no marker genes present in assay '",
-           a, "': ", paste(empty, collapse = ", "),
-           ". Check gene symbol case/format and species.")
+      warning("Dropping cell type(s) with no marker genes present in assay '",
+              a, "': ", paste(empty, collapse = ", "),
+              ". Check gene symbol case/format and species (e.g. 'Cd3e' vs 'CD3E'). ",
+              "Remaining cell types will still be scored; dropped types cannot be ",
+              "assigned and clusters that would have matched them will fall to the ",
+              "next-best label (or '", unassigned_label, "' if thresholds are set).",
+              call. = FALSE)
+      filtered_markers <- filtered_markers[setdiff(names(filtered_markers), empty)]
+    }
+    if (length(filtered_markers) == 0) {
+      stop("No cell types have any marker genes present in assay '", a,
+           "'. Cannot run marker-based annotation. Check gene symbol case/format ",
+           "and species (e.g. 'Cd3e' vs 'CD3E').")
     }
     markers <- filtered_markers
 
