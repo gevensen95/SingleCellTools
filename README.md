@@ -53,8 +53,9 @@ Key things it does:
 
 ## Documentation
 
-A full **[vignette and tutorial](SingleCellTools_vignette.md)** covers every function group
-with worked examples, parameter tables, and tips for common pitfalls.
+- **[Vignette & function reference](SingleCellTools_vignette.md)** — covers every function group with worked examples, parameter tables, and tips for common pitfalls.
+- **[ifnb tutorial](SingleCellTools_vignette_ifnb.md)** — end-to-end walkthrough using the built-in `ifnb` PBMC dataset from `SeuratData`; no raw data download required.
+- **[Spatial tutorial](SingleCellTools_vignette_spatial.md)** — Visium workflow (edge detection, integration, annotation, niche analysis) using the public `stxBrain` mouse brain dataset from `SeuratData`.
 
 ---
 
