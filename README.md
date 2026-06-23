@@ -15,6 +15,9 @@
   <img src="https://img.shields.io/badge/R-%3E%3D%202.10-276DC3?logo=r" alt="R >= 2.10" />
   <img src="https://img.shields.io/badge/Seurat-v5-ff69b4" alt="Seurat v5" />
   <img src="https://img.shields.io/badge/lifecycle-experimental-orange" alt="Lifecycle: experimental" />
+  <a href="SingleCellTools_vignette.md">
+    <img src="https://img.shields.io/badge/docs-vignette-brightgreen" alt="Vignette" />
+  </a>
 </p>
 
 ---
@@ -45,6 +48,13 @@ Key things it does:
 > [katlande/scCoExpress](https://github.com/katlande/scCoExpress) &mdash; this package's
 > `NicheCoExpress()` is adapted in spirit from it, but is specifically for testing niche-level,
 > per-sample co-expression differences between two conditions.
+
+---
+
+## Documentation
+
+A full **[vignette and tutorial](SingleCellTools_vignette.md)** covers every function group
+with worked examples, parameter tables, and tips for common pitfalls.
 
 ---
 
