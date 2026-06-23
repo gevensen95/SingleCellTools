@@ -15,6 +15,9 @@
   <img src="https://img.shields.io/badge/R-%3E%3D%202.10-276DC3?logo=r" alt="R >= 2.10" />
   <img src="https://img.shields.io/badge/Seurat-v5-ff69b4" alt="Seurat v5" />
   <img src="https://img.shields.io/badge/lifecycle-experimental-orange" alt="Lifecycle: experimental" />
+  <a href="SingleCellTools_vignette.md">
+    <img src="https://img.shields.io/badge/docs-vignette-brightgreen" alt="Vignette" />
+  </a>
 </p>
 
 ---
@@ -45,6 +48,14 @@ Key things it does:
 > [katlande/scCoExpress](https://github.com/katlande/scCoExpress) &mdash; this package's
 > `NicheCoExpress()` is adapted in spirit from it, but is specifically for testing niche-level,
 > per-sample co-expression differences between two conditions.
+
+---
+
+## Documentation
+
+- **[Vignette & function reference](SingleCellTools_vignette.md)** — covers every function group with worked examples, parameter tables, and tips for common pitfalls.
+- **[ifnb tutorial](SingleCellTools_vignette_ifnb.md)** — end-to-end walkthrough using the built-in `ifnb` PBMC dataset from `SeuratData`; no raw data download required.
+- **[Spatial tutorial](SingleCellTools_vignette_spatial.md)** — Visium workflow (edge detection, integration, annotation, niche analysis) using the public `stxBrain` mouse brain dataset from `SeuratData`.
 
 ---
 
