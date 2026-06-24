@@ -16,7 +16,8 @@ MarkerPctPlot(
   max_pct = 100,
   style = c("tile", "dot"),
   colors = c("white", "firebrick"),
-  maxsize = 5
+  maxsize = 5,
+  label_offset = 1.2
 )
 }
 \arguments{
@@ -57,6 +58,11 @@ gradient. Default \code{c("white", "firebrick")}.}
 
 \item{maxsize}{(style = "dot" only) Maximum dot size passed to
 \code{scale_size_continuous}. Default 5.}
+
+\item{label_offset}{Distance (in discrete x-axis units, where 1 unit =
+the spacing between adjacent idents) past the rightmost ident at
+which to anchor the cell-type annotation labels. Default 1.2.
+Increase to push labels further away from the panel border.}
 }
 \value{
 A \code{ggplot} object.
@@ -86,6 +92,11 @@ identity would render as a row of empty / minimum-color tiles and are
 dropped).
 }
 Each filtering step emits a message listing the dropped genes.
+
+\strong{Dependency.} Uses the internal helpers \code{.pull_dotplot_data}
+and \code{.cluster_mat} defined in \code{dotplot-helpers.R}. If sourcing
+files directly (rather than loading as a package), source that file
+before this one.
 }
 \examples{
 \dontrun{

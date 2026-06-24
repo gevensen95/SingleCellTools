@@ -57,6 +57,11 @@ expressed would render as a row of grey dots and are dropped).
 }
 Each filtering step emits a message listing the dropped genes so all-empty
 or all-grey rows never sneak into the plot.
+
+\strong{Dependency.} Uses the internal helpers \code{.pull_dotplot_data}
+and \code{.cluster_mat} defined in \code{dotplot-helpers.R}. If sourcing
+files directly (rather than loading as a package), source that file
+before this one.
 }
 \examples{
 \dontrun{
