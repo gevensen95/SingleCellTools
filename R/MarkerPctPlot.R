@@ -24,6 +24,11 @@
 #' }
 #' Each filtering step emits a message listing the dropped genes.
 #'
+#' \strong{Dependency.} Uses the internal helpers \code{.pull_dotplot_data}
+#' and \code{.cluster_mat} defined in \code{dotplot-helpers.R}. If sourcing
+#' files directly (rather than loading as a package), source that file
+#' before this one.
+#'
 #' @param obj A Seurat object.
 #' @param genes A two-column data frame. The first column holds gene names,
 #'   the second holds annotation labels. Column names are ignored — order is
@@ -50,6 +55,10 @@
 #'   gradient. Default \code{c("white", "firebrick")}.
 #' @param maxsize (style = "dot" only) Maximum dot size passed to
 #'   \code{scale_size_continuous}. Default 5.
+#' @param label_offset Distance (in discrete x-axis units, where 1 unit =
+#'   the spacing between adjacent idents) past the rightmost ident at
+#'   which to anchor the cell-type annotation labels. Default 1.2.
+#'   Increase to push labels further away from the panel border.
 #'
 #' @return A \code{ggplot} object.
 #'
@@ -68,21 +77,22 @@
 #' @importFrom dplyr group_by summarise
 #' @importFrom tibble column_to_rownames
 #' @importFrom tidyr pivot_wider
-#' @importFrom ggplot2 aes coord_flip element_text geom_text geom_tile geom_point geom_vline ggplot labs margin scale_fill_gradient scale_color_gradient scale_size_continuous theme theme_linedraw xlab ylab
+#' @importFrom ggplot2 aes coord_cartesian element_text geom_text geom_tile geom_point geom_hline ggplot labs margin scale_fill_gradient scale_color_gradient scale_size_continuous theme theme_linedraw xlab ylab
 #' @importFrom Seurat DefaultAssay DefaultAssay<- FetchData Idents Idents<- Assays
 #' @export
 MarkerPctPlot <- function(obj,
-                          genes,
-                          margin_factor    = 0.5,
-                          label.fontsize   = 3,
-                          assay            = "RNA",
-                          show.annotations = TRUE,
-                          cluster          = TRUE,
-                          min_pct          = 0,
-                          max_pct          = 100,
-                          style            = c("tile", "dot"),
-                          colors           = c("white", "firebrick"),
-                          maxsize          = 5) {
+                           genes,
+                           margin_factor    = 0.5,
+                           label.fontsize   = 3,
+                           assay            = "RNA",
+                           show.annotations = TRUE,
+                           cluster          = TRUE,
+                           min_pct          = 0,
+                           max_pct          = 100,
+                           style            = c("tile", "dot"),
+                           colors           = c("white", "firebrick"),
+                           maxsize          = 5,
+                           label_offset     = 1.2) {
 
   style <- match.arg(style)
 
@@ -219,7 +229,13 @@ MarkerPctPlot <- function(obj,
                                   levels = ordered_genes)
 
   n_idents <- length(unique(dp_data$id))
-  tmp$xpos <- n_idents + 1
+  # Annotation labels sit `label_offset` discrete-units past the rightmost
+  # ident on the x-axis. The right edge of the panel sits at n_idents + 0.5,
+  # so label_offset >= 0.5 puts the anchor outside the panel border.
+  # Default 1.2 gives a visible gap between the panel and the labels.
+  # `clip = "off"` in coord_cartesian below lets them render in the
+  # plot.margin past the panel border.
+  tmp$xpos <- n_idents + label_offset
 
   # ---- Build the plot -----------------------------------------------------
   features.plot <- pct.exp <- id <- annot_y <- xpos <- NULL  # NSE
@@ -259,10 +275,18 @@ MarkerPctPlot <- function(obj,
 
   p <- p +
     ggplot2::theme_linedraw() +
-    ggplot2::geom_vline(xintercept = intersects) +
+    # Idents are on the x-axis and genes on the y-axis, so the gene-group
+    # separators are horizontal lines at gene-position cutoffs.
+    ggplot2::geom_hline(yintercept = intersects) +
     ggplot2::xlab("") +
     ggplot2::ylab(" ") +
-    ggplot2::coord_flip(clip = "off", ylim = c(1, n_idents)) +
+    # xlim locks the visible panel to the actual ident columns (1..n).
+    # Without this, the geom_text below (at x = n_idents + label_offset)
+    # would cause ggplot to auto-expand the x scale, reserving a blank
+    # tile-width column on the right inside the panel. clip = "off" still
+    # lets the text render past the locked range into the plot.margin.
+    ggplot2::coord_cartesian(xlim = c(0.5, n_idents + 0.5),
+                             clip = "off") +
     ggplot2::theme(
       legend.position = "left",
       legend.title    = ggplot2::element_text(size = 6),
@@ -277,17 +301,16 @@ MarkerPctPlot <- function(obj,
       )
     )
 
-  # Note: coord_flip() swaps x/y, so the per-identity axis ends up horizontal
-  # and the per-gene axis ends up vertical — matching MarkerPlot's layout.
-  # The annotation labels go on the (post-flip) right edge, which means
-  # mapping to (y = xpos, x = annot_y) in pre-flip coordinates.
+  # Annotation labels: x = `label_offset` past the rightmost ident, y =
+  # midpoint of each gene group on the y-axis. No coord_flip — idents stay
+  # on x, genes on y as requested.
   if (isTRUE(show.annotations)) {
     p <- p + ggplot2::geom_text(
       data    = tmp,
       mapping = ggplot2::aes(x = xpos, y = annot_y, label = Details),
       size    = label.fontsize,
       hjust   = 0,
-      vjust   = 0,
+      vjust   = 0.5,
       inherit.aes = FALSE
     )
   }
