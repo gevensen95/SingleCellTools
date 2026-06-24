@@ -77,7 +77,7 @@
 #' @importFrom dplyr group_by summarise
 #' @importFrom tibble column_to_rownames
 #' @importFrom tidyr pivot_wider
-#' @importFrom ggplot2 aes coord_cartesian element_text geom_text geom_tile geom_point geom_hline ggplot labs margin scale_fill_gradient scale_color_gradient scale_size_continuous theme theme_linedraw xlab ylab
+#' @importFrom ggplot2 aes coord_cartesian element_text geom_text geom_tile geom_point geom_segment ggplot labs margin scale_fill_gradient scale_color_gradient scale_size_continuous theme theme_linedraw xlab ylab
 #' @importFrom Seurat DefaultAssay DefaultAssay<- FetchData Idents Idents<- Assays
 #' @export
 MarkerPctPlot <- function(obj,
@@ -273,11 +273,24 @@ MarkerPctPlot <- function(obj,
       )
   }
 
+  # Gene-group separator lines, drawn with geom_segment so they end at the
+  # right edge of the panel (x = n_idents + 0.5) rather than spanning the
+  # full plot region (which would cut through the cell-type labels rendered
+  # in the margin via clip = "off"). One segment per group boundary.
+  hlines_df <- data.frame(
+    y    = intersects,
+    yend = intersects,
+    x    = 0.5,
+    xend = n_idents + 0.5
+  )
+
   p <- p +
     ggplot2::theme_linedraw() +
-    # Idents are on the x-axis and genes on the y-axis, so the gene-group
-    # separators are horizontal lines at gene-position cutoffs.
-    ggplot2::geom_hline(yintercept = intersects) +
+    ggplot2::geom_segment(
+      data    = hlines_df,
+      mapping = ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
+      inherit.aes = FALSE
+    ) +
     ggplot2::xlab("") +
     ggplot2::ylab(" ") +
     # xlim locks the visible panel to the actual ident columns (1..n).
