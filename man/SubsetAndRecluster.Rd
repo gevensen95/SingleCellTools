@@ -12,6 +12,7 @@ SubsetAndRecluster(
   cells = NULL,
   assay = NULL,
   min_cells_per_gene = 3,
+  normalize = c("auto", "none", "LogNormalize", "SCT"),
   integrate = TRUE,
   integration_method = "HarmonyIntegration",
   normalization_method = c("LogNormalize", "SCT"),
@@ -33,13 +34,13 @@ SubsetAndRecluster(
 
 \item{assay}{Assay to use for QC recalculation and as the object's default
 assay going forward. \code{NULL} (default) auto-selects: \code{"RNA"}
-if present, else \code{"Spatial"}, else \code{DefaultAssay(obj)}. If
-supplied explicitly, it must be one of \code{names(obj@assays)}.}
+if present, else \code{"Spatial"}, else \code{DefaultAssay(obj)}.}
 
 \item{min_cells_per_gene}{After subsetting, drop genes detected (count > 0)
-in fewer than this many cells. Default 3. Genes that are extremely
-sparse in a small subset can otherwise make downstream normalization
-(e.g. \code{SCTransform()}) fail with a "subscript out of bounds" error.}
+in fewer than this many cells. Default 3.}
+
+\item{normalize}{One of \code{"auto"} (default), \code{"none"},
+\code{"LogNormalize"}, \code{"SCT"}. See Details.}
 
 \item{integrate}{Logical; if TRUE, run \code{IntegrateLayers}. Default TRUE.}
 
@@ -48,8 +49,8 @@ sparse in a small subset can otherwise make downstream normalization
 \item{normalization_method}{Normalization method that was \emph{already}
 applied to \code{obj} (\code{"LogNormalize"} or \code{"SCT"}), passed
 through to \code{IntegrateLayers(normalization.method = ...)} when
-\code{integrate = TRUE}. Default \code{"LogNormalize"}. Ignored if
-\code{integrate = FALSE}.}
+\code{integrate = TRUE}. Default \code{"LogNormalize"}. Also drives the
+choice between LogNormalize and SCT in \code{normalize = "auto"} mode.}
 
 \item{new_reduction}{Name of the integrated reduction (default
 \code{"harmony"}).}
@@ -64,30 +65,36 @@ The subsetted, re-clustered Seurat object.
 \description{
 Subsets cells (by identity, metadata column value, or explicit cell list),
 cleans up the resulting object, then re-runs the rest of the standard
-pipeline on the subset: PCA, integrate (optional), UMAP, cluster. Useful
-for cell-type-specific re-analyses where the first-pass clustering is too
-coarse.
+pipeline on the subset: (optional) normalize, PCA, integrate (optional),
+UMAP, cluster. Useful for cell-type-specific re-analyses where the
+first-pass clustering is too coarse.
 }
 \details{
+\strong{Normalization (\code{normalize}).} \code{RunPCA()} requires
+\code{data} and \code{scale.data} layers; if the working assay has only
+a \code{counts} layer, PCA errors with
+\code{'arg' should be "counts"}. To avoid that, the default
+\code{normalize = "auto"} inspects the layers in the working assay and:
+\itemize{
+\item if \code{data} and \code{scale.data} layers already exist, does
+nothing;
+\item if either is missing, runs \code{NormalizeData()} +
+\code{FindVariableFeatures()} + \code{ScaleData()} (or
+\code{SCTransform()} when \code{normalization_method = "SCT"}).
+}
+Set \code{normalize = "none"} to keep the historical behavior (assume
+the caller already normalized the input) or \code{"LogNormalize"} /
+\code{"SCT"} to force a re-normalization regardless of what layers
+already exist.
+
 \strong{Layers are not split or re-split here.} If \code{obj}'s assay has
 per-sample split layers (e.g. \code{data.1}, \code{data.2}, ... from the
 standard Seurat v5 integration workflow), \code{subset()} preserves that
-split structure on the retained cells/features, and it is left as-is for
-\code{RunPCA()}/\code{IntegrateLayers()} below. If you need split layers
-for integration and \code{obj} doesn't already have them, split it (e.g.
-\code{obj[[assay]] <- split(obj[[assay]], f = obj$orig.ident)}) and
-re-run normalization on the split object \emph{before} calling this
-function.
-
-\strong{No normalization is performed.} \code{obj} must already have
-normalized data, variable features, and scaled data (\code{scale.data})
-for the chosen assay -- e.g. from \code{NormalizeData()} +
-\code{FindVariableFeatures()} + \code{ScaleData()}, or
-\code{SCTransform()} -- run on the object \emph{before} subsetting.
-\code{subset()} carries these layers over for the retained cells/features,
-and \code{RunPCA()} below requires them. If you need to (re-)normalize the
-subset from raw counts, do so on the returned object before calling this
-again, or normalize beforehand.
+split structure, and Seurat's normalization functions run per-layer
+automatically. If you need split layers for integration and \code{obj}
+doesn't already have them, split it (e.g.
+\code{obj[[assay]] <- split(obj[[assay]], f = obj$orig.ident)}) before
+calling this function.
 
 Exactly one of \code{idents}, \code{metadata_col}+\code{metadata_value},
 or \code{cells} must be supplied.
@@ -103,21 +110,13 @@ chosen assay becomes the object's default assay.
 assay has more than one \code{counts} layer (e.g. a Seurat v5 object
 split by sample), \code{SeuratObject::JoinLayers()} is called on just
 the \code{counts} layers so they can be read as a single matrix for
-the QC steps below. Other layers (\code{data}, \code{scale.data},
-etc.) are left untouched, preserving any existing per-sample split.
-If joining fails (this can happen when \code{subset()} leaves a
-per-sample layer with zero cells), the layers are left split and QC
-metadata is recomputed by summing across them instead.
+the QC steps below.
 \item \strong{Recalculate QC metadata.} \code{nCount_<assay>} and
-\code{nFeature_<assay>} are recomputed from the subsetted counts,
-since Seurat does not update these automatically after \code{subset()}.
+\code{nFeature_<assay>} are recomputed from the subsetted counts.
 \item \strong{Drop empty cells.} Any cell with \code{nCount_<assay> == 0}
-after subsetting is removed (can arise when a subset by identity or
-metadata leaves a cell with no counts for the chosen assay).
-\item \strong{Drop empty features.} Any gene with zero total counts
-across all retained cells is removed. This commonly arises after
-subsetting to a few clusters and, if left in, can make downstream
-normalization (e.g. \code{SCTransform()}) fail with a "subscript out
-of bounds" error.
+after subsetting is removed.
+\item \strong{Drop empty features.} Any gene detected in fewer than
+\code{min_cells_per_gene} cells across all retained cells is removed
+(prevents downstream SCT \emph{subscript out of bounds} errors).
 }
 }
