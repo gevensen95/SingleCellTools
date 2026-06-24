@@ -5,27 +5,73 @@
 \title{Identify Spots at Edges in Visium Data}
 \usage{
 EdgeDetectionVisium(
-  coord_path,
   seurat.obj = NULL,
+  coord_path = NULL,
+  image = NULL,
   search = "radius",
-  neighbors = 7
+  neighbors = 7,
+  radius = NULL,
+  radius_factor = 1.5
 )
 }
 \arguments{
-\item{coord_path}{Path to the directory with tissue coordinate file}
+\item{seurat.obj}{A Visium Seurat object. If provided, coordinates are
+pulled with \code{GetTissueCoordinates} and barcode order is matched
+to \code{colnames(seurat.obj)}.}
 
-\item{seurat.obj}{Seurat object that corresponds to coord_path to ensure
-barcodes are the same}
+\item{coord_path}{Optional path to a spaceranger \code{spatial/}
+directory containing \code{tissue_positions(_list).csv}. Used only
+when \code{seurat.obj} is \code{NULL} or coordinate extraction from
+it fails.}
 
-\item{search}{Search type (see nn2)}
+\item{image}{Image / FOV name to pull coordinates from when
+\code{seurat.obj} has multiple images. \code{NULL} (default) uses
+the first one.}
 
-\item{neighbors}{Number of neighbors to look for}
+\item{search}{Search type passed to \code{\link[RANN]{nn2}}. Default
+\code{"radius"}.}
+
+\item{neighbors}{Number of neighbors required. Spots with fewer than
+\code{neighbors} neighbors inside the radius cutoff are flagged.
+Default 7 (a Visium spot has 6 immediate neighbors on the hex grid;
+requiring 7 = self + 6 demands a complete neighborhood).}
+
+\item{radius}{Absolute radius cutoff in coordinate units. \code{NULL}
+(default) auto-computes from \code{radius_factor * median nearest-
+neighbor distance}.}
+
+\item{radius_factor}{Multiplier on the median nearest-neighbor distance
+used to auto-compute \code{radius}. Default 1.5.}
 }
 \value{
-A dataframe of with 4 iterations of filtering (Keep vs. Filter)
+A data frame with columns \code{barcode}, the original
+coordinate columns, and \code{Filter}, \code{Filter2}, \code{Filter3},
+\code{Filter4} (each \code{"Keep"} or \code{"Filter"}).
 }
 \description{
-This function takes coordinate data for all spots in the Visium data and
-determines which are at the edges of the capture area, tissue boundary,
-and tears within the tissue.
+Iteratively flags Visium spots that sit on the boundary of the capture
+area, the tissue itself, or tears within the tissue. Each iteration uses
+a k-nearest-neighbor search with a radius cutoff: spots with fewer than
+\code{neighbors} neighbors within the cutoff are flagged as edges, peeled
+off, and the next iteration runs on the survivors. After four passes the
+input table has columns \code{Filter} ... \code{Filter4} recording which
+iteration first flagged each spot (or \code{"Keep"} if it survived all
+four).
+}
+\details{
+\strong{Coordinate source.} The function tries
+\code{Seurat::GetTissueCoordinates(seurat.obj)} first, which works in
+Seurat v4/v5 and avoids depending on the spaceranger output directory
+being present. If \code{seurat.obj} is \code{NULL} or no coordinates can
+be extracted from it, it falls back to reading
+\code{tissue_positions(_list).csv} from \code{coord_path}.
+
+\strong{Radius cutoff.} The original implementation hard-coded
+\code{radius = 2}, which is correct for Visium \code{array_row} /
+\code{array_col} integer coordinates (hex grid spacing). When using
+\code{GetTissueCoordinates} the coordinates may be in pixels instead,
+which breaks that fixed value. The function now auto-computes the
+radius as \code{radius_factor * median nearest-neighbor distance} so
+the same logic works whether you're in array or pixel units. Pass
+\code{radius = <number>} to override.
 }
