@@ -25,6 +25,29 @@
 #' than \code{nonspecific_max_fraction} of the clusters. The dropped
 #' genes are reported in a message.
 #'
+#' \strong{Tumor mode.} \code{tumor_mode = TRUE} adjusts defaults for
+#' malignant samples: it disables \code{filter_nonspecific} (which is
+#' counterproductive when tumor cells drive up per-gene maxima and make
+#' real markers look non-specific) and tightens \code{high_relative_to_max}
+#' if you do leave the filter on. It only changes \emph{defaults} — any
+#' argument you pass explicitly still wins. Best practice for tumor data:
+#' identify malignant cells first with InferCNV / CopyKAT / SCEVAN, then
+#' annotate the immune/stromal compartment with this function and run
+#' subtype scoring (proliferation, EMT, hypoxia, etc.) on the malignant
+#' subset separately. Tumor-mode also issues a warning that labels are
+#' approximate.
+#'
+#' \strong{Visium / spatial data.} This function is a winner-takes-all
+#' classifier; Visium spots are 1-10 cells of mixed types, so per-spot
+#' labels lose minority populations by construction. Use a dedicated
+#' deconvolution tool (\code{RCTD}/\code{spacexr}, \code{cell2location},
+#' \code{CARD}, \code{SpotLight}) to estimate per-spot cell-type
+#' \emph{proportions} from a reference single-cell dataset. If you do use
+#' \code{AnnotateClusters} on Visium, disable \code{filter_nonspecific},
+#' bulk up marker sets to 30-50+ genes, lower \code{min_score} (or leave
+#' \code{NA}), and consider \code{return_scores = "cluster"} so you can
+#' inspect minority signal directly.
+#'
 #' \strong{Unknown / unassigned clusters.} Two thresholds:
 #' \itemize{
 #'   \item \code{min_score}: clusters whose best score (marker mode) or
@@ -54,18 +77,25 @@
 #' @param assay Assay to use. Default DefaultAssay.
 #' @param new_col Name of the new metadata column. Default
 #'   \code{"predicted_cell_type"}.
-#' @param filter_nonspecific Logical; if TRUE (default) drop marker genes
-#'   that are broadly expressed across many clusters before scoring. Only
-#'   used in marker mode.
+#' @param tumor_mode Logical; if TRUE, applies tumor-friendly defaults
+#'   (\code{filter_nonspecific = FALSE}, \code{high_relative_to_max = 0.7})
+#'   and issues a warning that labels are approximate. Defaults only —
+#'   explicit args still win. Default FALSE.
+#' @param filter_nonspecific Logical; if TRUE drop marker genes that are
+#'   broadly expressed across many clusters before scoring. Default TRUE
+#'   (or FALSE if \code{tumor_mode = TRUE} and not set explicitly).
+#'   Marker mode only.
 #' @param nonspecific_max_fraction Fraction of clusters above which a
-#'   marker is considered non-specific. Default 0.5 — a gene that is
-#'   "high" in more than half of the clusters is dropped.
+#'   marker is considered non-specific. Default 0.5.
 #' @param high_relative_to_max A gene counts as "high" in a cluster if
 #'   its mean expression there is at least this fraction of the gene's
-#'   maximum cluster-mean across all clusters. Default 0.5 — within 2x
-#'   of the gene's max cluster mean. Lower values (e.g. 0.3) are more
-#'   permissive about what counts as "high" and so will drop more
-#'   markers; higher values (e.g. 0.7) are stricter.
+#'   maximum cluster-mean across all clusters. Default 0.5 (0.7 in
+#'   tumor mode unless overridden).
+#' @param min_detection_frac Minimum fraction of cells/spots in which at
+#'   least one of a signature's marker genes is detected (count > 0).
+#'   Signatures below this threshold are dropped with a warning — useful
+#'   on sparse Visium data or when a marker list is for the wrong tissue.
+#'   Default \code{NA} (disabled). Marker mode only.
 #' @param min_score Minimum score below which a cluster is labeled
 #'   \code{unassigned_label}. Default \code{NA} (disabled). \code{NULL}
 #'   uses the mode-specific default.
@@ -73,7 +103,17 @@
 #'   Default \code{NA} (disabled). \code{NULL} uses the mode-specific default.
 #' @param unassigned_label Label applied to clusters that fail the
 #'   thresholds. Default \code{"Unknown"}.
-#' @return The Seurat object with a new metadata column \code{new_col}.
+#' @param return_scores One of \code{"none"} (default), \code{"cluster"},
+#'   or \code{"cell"}. \code{"none"} returns the annotated Seurat object
+#'   (legacy behavior). \code{"cluster"} returns a list
+#'   \code{list(obj, scores)} where \code{scores} is the cluster × label
+#'   score matrix (UCell mean scores in marker mode, SingleR vote
+#'   fractions in singler mode). \code{"cell"} returns a list
+#'   \code{list(obj, scores)} where \code{scores} is the cell × label
+#'   matrix (UCell per-cell scores in marker mode, SingleR per-cell
+#'   scores / labels in singler mode).
+#' @return Either the annotated Seurat object (\code{return_scores =
+#'   "none"}), or a list with elements \code{obj} and \code{scores}.
 #' @importFrom Seurat DefaultAssay FetchData
 #' @export
 AnnotateClusters <- function(obj,
@@ -84,18 +124,47 @@ AnnotateClusters <- function(obj,
                              cluster_col              = "seurat_clusters",
                              assay                    = NULL,
                              new_col                  = "predicted_cell_type",
+                             tumor_mode               = FALSE,
                              filter_nonspecific       = TRUE,
                              nonspecific_max_fraction = 0.5,
                              high_relative_to_max     = 0.5,
+                             min_detection_frac       = NA,
                              min_score                = NA,
                              min_margin               = NA,
-                             unassigned_label         = "Unknown") {
+                             unassigned_label         = "Unknown",
+                             return_scores            = c("none", "cluster",
+                                                          "cell")) {
 
-  method <- match.arg(method)
+  method        <- match.arg(method)
+  return_scores <- match.arg(return_scores)
+
   if (!cluster_col %in% colnames(obj@meta.data)) {
     stop("Cluster column '", cluster_col, "' not found in metadata.")
   }
   a <- if (is.null(assay)) Seurat::DefaultAssay(obj) else assay
+
+  # ---- Tumor mode: apply softer defaults (only if user didn't override) ---
+  # Uses missing() to detect arguments that weren't explicitly passed,
+  # so a user who supplied filter_nonspecific = TRUE still gets it on
+  # even in tumor mode.
+  if (isTRUE(tumor_mode)) {
+    if (missing(filter_nonspecific)) {
+      filter_nonspecific <- FALSE
+    }
+    if (missing(high_relative_to_max)) {
+      high_relative_to_max <- 0.7
+    }
+    warning(
+      "tumor_mode = TRUE: marker-based labels in tumors are approximate. ",
+      "Tumor cells often lose canonical markers and gain ",
+      "tumor-program signatures (proliferation, EMT, hypoxia) not in ",
+      "normal-tissue marker lists. Consider identifying malignant cells ",
+      "first (InferCNV / CopyKAT / SCEVAN), then annotating the ",
+      "immune/stromal compartment with this function and scoring tumor ",
+      "subtypes separately.",
+      call. = FALSE
+    )
+  }
 
   # ---- Resolve NULL thresholds to mode-specific defaults -----------------
   if (is.null(min_score)) {
@@ -153,25 +222,52 @@ AnnotateClusters <- function(obj,
     if (length(empty) > 0) {
       warning("Dropping cell type(s) with no marker genes present in assay '",
               a, "': ", paste(empty, collapse = ", "),
-              ". Check gene symbol case/format and species (e.g. 'Cd3e' vs 'CD3E'). ",
-              "Remaining cell types will still be scored; dropped types cannot be ",
-              "assigned and clusters that would have matched them will fall to the ",
-              "next-best label (or '", unassigned_label, "' if thresholds are set).",
+              ". Check gene symbol case/format and species (e.g. 'Cd3e' vs 'CD3E').",
               call. = FALSE)
       filtered_markers <- filtered_markers[setdiff(names(filtered_markers), empty)]
     }
     if (length(filtered_markers) == 0) {
       stop("No cell types have any marker genes present in assay '", a,
-           "'. Cannot run marker-based annotation. Check gene symbol case/format ",
-           "and species (e.g. 'Cd3e' vs 'CD3E').")
+           "'. Cannot run marker-based annotation.")
     }
     markers <- filtered_markers
 
+    # ---- Detection filter: drop signatures with too-sparse detection ------
+    # For each signature, count cells where >=1 marker gene has count > 0.
+    # Useful for Visium / sparse datasets where a signature might score on
+    # pure noise if hardly any cell detects any of its markers, and for
+    # catching wrong-tissue marker lists early.
+    if (!is.na(min_detection_frac)) {
+      if (min_detection_frac < 0 || min_detection_frac > 1) {
+        stop("`min_detection_frac` must be between 0 and 1 (or NA).")
+      }
+      n_cells <- ncol(obj[[a]])
+      sig_frac <- vapply(markers, function(g) {
+        expr <- tryCatch(
+          Seurat::FetchData(obj, vars = g, layer = "counts"),
+          error = function(e) NULL
+        )
+        if (is.null(expr) || ncol(expr) == 0) return(0)
+        sum(rowSums(expr > 0) > 0) / n_cells
+      }, numeric(1))
+      drop_sig <- names(sig_frac)[sig_frac < min_detection_frac]
+      if (length(drop_sig)) {
+        message(sprintf(
+          "  Dropping %d signature(s) below min_detection_frac = %.2f:",
+          length(drop_sig), min_detection_frac))
+        for (ct in drop_sig) {
+          message(sprintf("    '%s': detected in %.1f%% of cells",
+                          ct, 100 * sig_frac[ct]))
+        }
+        markers <- markers[setdiff(names(markers), drop_sig)]
+      }
+      if (length(markers) == 0) {
+        stop("All signatures fell below `min_detection_frac`. Lower the ",
+             "threshold or check that your marker list matches the tissue.")
+      }
+    }
+
     # ---- Filter non-specific (broadly-expressed) marker genes -------------
-    # Pre-compute per-cluster mean expression of every marker gene. A gene
-    # whose mean is comparable across many clusters isn't really a marker
-    # — it's a broadly-expressed gene that will contaminate signature
-    # scores. Drop those genes before they reach UCell.
     if (isTRUE(filter_nonspecific)) {
       all_marker_genes <- unique(unlist(markers))
       clusters_vec     <- as.character(obj@meta.data[[cluster_col]])
@@ -185,7 +281,6 @@ AnnotateClusters <- function(obj,
       if (is.null(expr_df)) {
         message("  filter_nonspecific: FetchData failed; skipping filter.")
       } else {
-        # Cluster x gene matrix of mean expression
         cluster_means <- t(sapply(
           split(seq_along(clusters_vec), clusters_vec),
           function(idx) colMeans(expr_df[idx, , drop = FALSE])
@@ -210,7 +305,6 @@ AnnotateClusters <- function(obj,
             n_clusters,
             paste(nonspecific_genes, collapse = ", ")))
 
-          # Tell the user which signatures lost which genes
           for (ct in names(markers)) {
             removed_here <- intersect(markers[[ct]], nonspecific_genes)
             if (length(removed_here)) {
@@ -224,7 +318,6 @@ AnnotateClusters <- function(obj,
           message("  filter_nonspecific: no non-specific markers detected.")
         }
 
-        # Check no signature has been wiped out
         empty <- names(markers)[vapply(markers, length, integer(1)) == 0]
         if (length(empty) > 0) {
           stop("After non-specific filtering, signature(s) have no markers ",
@@ -248,6 +341,7 @@ AnnotateClusters <- function(obj,
     # Average score per cluster, assign max
     clusters <- as.character(obj@meta.data[[cluster_col]])
     score_mat <- as.matrix(obj@meta.data[, score_cols, drop = FALSE])
+    colnames(score_mat) <- names(markers)  # strip "_score" suffix
     avg_per_cluster <- t(sapply(split(seq_len(nrow(score_mat)), clusters),
                                 function(idx) colMeans(score_mat[idx, , drop = FALSE])))
     rownames(avg_per_cluster) <- levels(factor(clusters))
@@ -255,10 +349,12 @@ AnnotateClusters <- function(obj,
 
     lookup <- .assign_with_unassigned(avg_per_cluster, names(markers))
     obj[[new_col]] <- unname(lookup[clusters])
-    return(obj)
+
+    return(.maybe_return_scores(obj, avg_per_cluster, score_mat,
+                                return_scores))
   }
 
-  # SingleR mode (unchanged) ------------------------------------------------
+  # SingleR mode -----------------------------------------------------------
   if (!requireNamespace("SingleR", quietly = TRUE)) {
     stop("'SingleR' is required for SingleR-based annotation.")
   }
@@ -315,5 +411,35 @@ AnnotateClusters <- function(obj,
 
   lookup <- .assign_with_unassigned(vote_frac, uniq_labels)
   obj[[new_col]] <- unname(lookup[clusters])
-  obj
+
+  # For SingleR "cell" scores: prefer the full scores matrix from pred$scores
+  # if available; otherwise fall back to the per-cell labels as a one-column
+  # data frame.
+  cell_scores <- if (!is.null(pred$scores)) {
+    as.matrix(pred$scores)
+  } else {
+    matrix(per_cell_labels, ncol = 1,
+           dimnames = list(names(per_cell_labels), "label"))
+  }
+
+  .maybe_return_scores(obj, vote_frac, cell_scores, return_scores)
+}
+
+
+# ============================================================================
+# Internal helper: build the return value based on `return_scores`.
+# ============================================================================
+
+#' @keywords internal
+#' @noRd
+.maybe_return_scores <- function(obj,
+                                 cluster_scores,
+                                 cell_scores,
+                                 return_scores) {
+  switch(
+    return_scores,
+    none    = obj,
+    cluster = list(obj = obj, scores = cluster_scores),
+    cell    = list(obj = obj, scores = cell_scores)
+  )
 }

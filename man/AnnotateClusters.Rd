@@ -13,12 +13,15 @@ AnnotateClusters(
   cluster_col = "seurat_clusters",
   assay = NULL,
   new_col = "predicted_cell_type",
+  tumor_mode = FALSE,
   filter_nonspecific = TRUE,
   nonspecific_max_fraction = 0.5,
   high_relative_to_max = 0.5,
+  min_detection_frac = NA,
   min_score = NA,
   min_margin = NA,
-  unassigned_label = "Unknown"
+  unassigned_label = "Unknown",
+  return_scores = c("none", "cluster", "cell")
 )
 }
 \arguments{
@@ -43,20 +46,29 @@ Default \code{"seurat_clusters"}.}
 \item{new_col}{Name of the new metadata column. Default
 \code{"predicted_cell_type"}.}
 
-\item{filter_nonspecific}{Logical; if TRUE (default) drop marker genes
-that are broadly expressed across many clusters before scoring. Only
-used in marker mode.}
+\item{tumor_mode}{Logical; if TRUE, applies tumor-friendly defaults
+(\code{filter_nonspecific = FALSE}, \code{high_relative_to_max = 0.7})
+and issues a warning that labels are approximate. Defaults only —
+explicit args still win. Default FALSE.}
+
+\item{filter_nonspecific}{Logical; if TRUE drop marker genes that are
+broadly expressed across many clusters before scoring. Default TRUE
+(or FALSE if \code{tumor_mode = TRUE} and not set explicitly).
+Marker mode only.}
 
 \item{nonspecific_max_fraction}{Fraction of clusters above which a
-marker is considered non-specific. Default 0.5 — a gene that is
-"high" in more than half of the clusters is dropped.}
+marker is considered non-specific. Default 0.5.}
 
 \item{high_relative_to_max}{A gene counts as "high" in a cluster if
 its mean expression there is at least this fraction of the gene's
-maximum cluster-mean across all clusters. Default 0.5 — within 2x
-of the gene's max cluster mean. Lower values (e.g. 0.3) are more
-permissive about what counts as "high" and so will drop more
-markers; higher values (e.g. 0.7) are stricter.}
+maximum cluster-mean across all clusters. Default 0.5 (0.7 in
+tumor mode unless overridden).}
+
+\item{min_detection_frac}{Minimum fraction of cells/spots in which at
+least one of a signature's marker genes is detected (count > 0).
+Signatures below this threshold are dropped with a warning — useful
+on sparse Visium data or when a marker list is for the wrong tissue.
+Default \code{NA} (disabled). Marker mode only.}
 
 \item{min_score}{Minimum score below which a cluster is labeled
 \code{unassigned_label}. Default \code{NA} (disabled). \code{NULL}
@@ -67,9 +79,20 @@ Default \code{NA} (disabled). \code{NULL} uses the mode-specific default.}
 
 \item{unassigned_label}{Label applied to clusters that fail the
 thresholds. Default \code{"Unknown"}.}
+
+\item{return_scores}{One of \code{"none"} (default), \code{"cluster"},
+or \code{"cell"}. \code{"none"} returns the annotated Seurat object
+(legacy behavior). \code{"cluster"} returns a list
+\code{list(obj, scores)} where \code{scores} is the cluster × label
+score matrix (UCell mean scores in marker mode, SingleR vote
+fractions in singler mode). \code{"cell"} returns a list
+\code{list(obj, scores)} where \code{scores} is the cell × label
+matrix (UCell per-cell scores in marker mode, SingleR per-cell
+scores / labels in singler mode).}
 }
 \value{
-The Seurat object with a new metadata column \code{new_col}.
+Either the annotated Seurat object (\code{return_scores =
+  "none"}), or a list with elements \code{obj} and \code{scores}.
 }
 \description{
 Two annotation modes:
@@ -97,6 +120,29 @@ A gene is "high" in a cluster if its mean expression there exceeds
 clusters; a gene is "non-specific" overall if it is "high" in more
 than \code{nonspecific_max_fraction} of the clusters. The dropped
 genes are reported in a message.
+
+\strong{Tumor mode.} \code{tumor_mode = TRUE} adjusts defaults for
+malignant samples: it disables \code{filter_nonspecific} (which is
+counterproductive when tumor cells drive up per-gene maxima and make
+real markers look non-specific) and tightens \code{high_relative_to_max}
+if you do leave the filter on. It only changes \emph{defaults} — any
+argument you pass explicitly still wins. Best practice for tumor data:
+identify malignant cells first with InferCNV / CopyKAT / SCEVAN, then
+annotate the immune/stromal compartment with this function and run
+subtype scoring (proliferation, EMT, hypoxia, etc.) on the malignant
+subset separately. Tumor-mode also issues a warning that labels are
+approximate.
+
+\strong{Visium / spatial data.} This function is a winner-takes-all
+classifier; Visium spots are 1-10 cells of mixed types, so per-spot
+labels lose minority populations by construction. Use a dedicated
+deconvolution tool (\code{RCTD}/\code{spacexr}, \code{cell2location},
+\code{CARD}, \code{SpotLight}) to estimate per-spot cell-type
+\emph{proportions} from a reference single-cell dataset. If you do use
+\code{AnnotateClusters} on Visium, disable \code{filter_nonspecific},
+bulk up marker sets to 30-50+ genes, lower \code{min_score} (or leave
+\code{NA}), and consider \code{return_scores = "cluster"} so you can
+inspect minority signal directly.
 
 \strong{Unknown / unassigned clusters.} Two thresholds:
 \itemize{
