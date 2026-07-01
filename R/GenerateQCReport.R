@@ -31,26 +31,16 @@
 #'     and the cells that would survive each cutoff.
 #'   \item Cell-cycle phase breakdown (if a \code{Phase} column exists).
 #'   \item Doublet calls (if \code{doublet_col} exists).
-#'   \item Edge-spot summary (if an \code{is_edge} or edge-layer column
-#'     exists).
-#'   \item Tissue-hole summary (if a hole-layer column exists).
+#'   \item Edge-spot summary (if an \code{is_edge} column exists).
 #'   \item Sample-sample pseudobulk correlation heatmap (>= 2 samples).
-#'   \item Sample guide — de-identified FOV codes (A1, A2, ..., B1, ...)
-#'     used as compact facet labels in the spatial sections below.
 #'   \item Spatial QC maps per FOV (if \code{obj@images} is populated).
-#'   \item Spatial QC: FOV edges (if edge detection was run/available).
-#'   \item Spatial QC: tissue holes (if hole detection was run/available).
 #'   \item Session info appendix.
 #' }
 #'
 #' @param obj A Seurat object or a (optionally named) list of them.
 #' @param output_file Path to write the HTML report to. May be relative
 #'   (resolved against the current working directory) or absolute.
-#' @param title Title for the report. If left at its default and the input
-#'   is detected as spatial data (any sample has \code{obj@images}
-#'   populated), the title is automatically changed to
-#'   \code{"Spatial QC report"}. Pass an explicit \code{title} to override
-#'   this auto-detection.
+#' @param title Title for the report.
 #' @param metadata_cols Character vector of metadata columns to plot as
 #'   violin distributions and use for the cutoff table.
 #' @param doublet_col Metadata column holding doublet calls. \code{NULL}
@@ -70,38 +60,14 @@
 #'   \code{max / median > log_threshold}.
 #' @param log_threshold Ratio threshold for triggering log transformation.
 #'   Default 10 (i.e., the metric's max is more than 10x its median).
-#' @param spatial_max_cols Maximum number of panels per row in the
-#'   "Spatial QC", "Spatial QC: FOV edges", and "Spatial QC: tissue holes"
-#'   sections. Default 4 — these sections use compact, de-identified
-#'   \code{fov_code} facet labels (see "Sample guide") so a denser grid
-#'   stays readable.
-#' @param max_cells_per_fov Maximum number of cells to plot per FOV in the
-#'   spatial sections. FOVs with more cells than this are randomly
-#'   downsampled to \code{max_cells_per_fov} before plotting. Default
-#'   20000.
-#' @param downsample_seed Random seed used when downsampling FOVs for the
-#'   spatial sections. Default 1.
-#' @param detect_edges Logical; if TRUE, run \code{detect_fov_edges()} on
-#'   spatial input(s) that don't already have \code{edge_col} in their
-#'   metadata, before building the report. Default FALSE.
-#' @param detect_holes Logical; if TRUE, run \code{detect_tissue_holes()} on
-#'   spatial input(s) that don't already have \code{hole_col} in their
-#'   metadata, before building the report. Default FALSE.
-#' @param edge_col Name of the integer FOV-edge-layer metadata column
-#'   (written by \code{detect_fov_edges()}; \code{0} = interior,
-#'   \code{>0} = edge ring). Default \code{"edge_layer"}.
-#' @param hole_col Name of the integer tissue-hole-layer metadata column
-#'   (written by \code{detect_tissue_holes()}; \code{0} = not near a hole,
-#'   \code{>0} = hole-bordering ring). Default \code{"hole_layer"}.
-#' @param edge_args Additional named arguments passed to
-#'   \code{detect_fov_edges()} when \code{detect_edges = TRUE}.
-#' @param hole_args Additional named arguments passed to
-#'   \code{detect_tissue_holes()} when \code{detect_holes = TRUE}.
+#' @param spatial_max_cols Maximum number of spatial-QC panels per row.
+#'   Default 3 — caps facet density to keep panels wide enough that the
+#'   FOV/sample names aren't truncated.
 #' @return Invisibly, the absolute path of the rendered report.
 #' @export
 GenerateQCReport <- function(obj,
                              output_file      = "qc_report.html",
-                             title            = "Single-cell QC Report",
+                             title            = "Single-cell QC report",
                              metadata_cols    = c("nFeature_RNA",
                                                   "nCount_RNA",
                                                   "percent.mt"),
@@ -112,20 +78,7 @@ GenerateQCReport <- function(obj,
                              assay            = NULL,
                              log_skewed       = TRUE,
                              log_threshold    = 10,
-                             spatial_max_cols = 4,
-                             max_cells_per_fov = 20000,
-                             downsample_seed   = 1,
-                             detect_edges      = FALSE,
-                             detect_holes      = FALSE,
-                             edge_col          = "edge_layer",
-                             hole_col          = "hole_layer",
-                             edge_args         = list(),
-                             hole_args         = list()) {
-
-  # Capture before any reassignment, so we can tell whether the caller
-  # supplied an explicit title (in which case auto spatial-title detection
-  # below is skipped).
-  title_missing <- missing(title)
+                             spatial_max_cols = 3) {
 
   if (!requireNamespace("rmarkdown", quietly = TRUE)) {
     stop("Package 'rmarkdown' is required. install.packages('rmarkdown')")
@@ -137,54 +90,11 @@ GenerateQCReport <- function(obj,
   call_text <- paste(deparse(match.call(), width.cutoff = 80L),
                      collapse = "\n")
 
-  # ---- Small helper: 1,2,...,26,27 -> A,B,...,Z,AA,... -------------------
-  # Used to build de-identified sample codes for the "Sample guide" table.
-  .index_to_letters <- function(n) {
-    vapply(n, function(i) {
-      out <- ""
-      while (i > 0) {
-        r   <- (i - 1L) %% 26L
-        out <- paste0(LETTERS[r + 1L], out)
-        i   <- (i - r - 1L) %/% 26L
-      }
-      out
-    }, character(1))
-  }
-
-  # ---- Optionally run edge / tissue-hole detection on spatial inputs -----
-  # No-ops for non-Seurat / non-spatial objects, and skipped if the target
-  # column is already present (avoids redundant recomputation).
-  .maybe_detect_edges_holes <- function(o, label) {
-    if (!inherits(o, "Seurat")) return(o)
-    if (length(o@images) == 0) return(o)
-    if (isTRUE(detect_edges) && !edge_col %in% colnames(o@meta.data)) {
-      if (!requireNamespace("RANN", quietly = TRUE)) {
-        warning("'RANN' not available; skipping FOV edge detection for '",
-                label, "'.")
-      } else {
-        message(sprintf("--- Detecting FOV edges for '%s' ---", label))
-        o <- do.call(detect_fov_edges,
-                      c(list(obj = o, label_col = edge_col), edge_args))
-      }
-    }
-    if (isTRUE(detect_holes) && !hole_col %in% colnames(o@meta.data)) {
-      if (!requireNamespace("RANN", quietly = TRUE)) {
-        warning("'RANN' not available; skipping tissue-hole detection for '",
-                label, "'.")
-      } else {
-        message(sprintf("--- Detecting tissue holes for '%s' ---", label))
-        o <- do.call(detect_tissue_holes,
-                      c(list(obj = o, label_col = hole_col), hole_args))
-      }
-    }
-    o
-  }
-
   # ---- Normalize input ---------------------------------------------------
   # samples: named list of lists, each entry { md, counts (sparse), images }
   # n_genes_per_sample: integer vector
   if (inherits(obj, "Seurat")) {
-    src_obj <- .maybe_detect_edges_holes(obj, "obj")
+    src_obj <- obj
     a       <- if (is.null(assay)) Seurat::DefaultAssay(src_obj) else assay
     md_full <- src_obj@meta.data
     if (sample_col %in% colnames(md_full)) {
@@ -218,7 +128,7 @@ GenerateQCReport <- function(obj,
              all(vapply(obj, inherits, logical(1), "Seurat"))) {
     if (is.null(names(obj))) names(obj) <- paste0("obj_", seq_along(obj))
     samples <- lapply(names(obj), function(nm) {
-      o <- .maybe_detect_edges_holes(obj[[nm]], nm)
+      o <- obj[[nm]]
       a <- if (is.null(assay)) Seurat::DefaultAssay(o) else assay
       list(
         name   = nm,
@@ -232,7 +142,11 @@ GenerateQCReport <- function(obj,
       )
     })
     names(samples) <- names(obj)
-    n_genes_per_sample <- vapply(obj, nrow, integer(1))
+    # Seurat v5 note: nrow() on some assay classes returns a `double`, not
+    # `integer`, so a strict integer(1) template fails with
+    #   "values must be type 'integer', but FUN(X[[1]]) result is type 'double'"
+    # Use numeric(1) which accepts both.
+    n_genes_per_sample <- vapply(obj, nrow, numeric(1))
     names(n_genes_per_sample) <- names(obj)
   } else {
     stop("`obj` must be a Seurat object or a list of Seurat objects.")
@@ -305,7 +219,7 @@ GenerateQCReport <- function(obj,
   # ---- Summary table -----------------------------------------------------
   summary_df <- data.frame(
     sample  = names(samples),
-    n_cells = vapply(samples, function(s) nrow(s$md), integer(1)),
+    n_cells = vapply(samples, function(s) nrow(s$md), numeric(1)),
     n_genes = unname(n_genes_per_sample[names(samples)]),
     stringsAsFactors = FALSE
   )
@@ -414,56 +328,20 @@ GenerateQCReport <- function(obj,
   }
 
   # ---- Edge-spot summary -------------------------------------------------
-  # Handles either a logical `is_edge` column, or an integer `edge_col`
-  # layer column (0 = interior, >0 = edge ring) written by
-  # detect_fov_edges().
   edge_summary <- do.call(rbind, lapply(samples, function(s) {
-    has_is_edge <- "is_edge" %in% colnames(s$md)
-    has_layer   <- edge_col %in% colnames(s$md)
-    if (!has_is_edge && !has_layer) return(NULL)
+    if (!"is_edge" %in% colnames(s$md)) return(NULL)
     n_total <- nrow(s$md)
-    if (has_layer) {
-      layer_vals <- s$md[[edge_col]]
-      n_edge     <- sum(layer_vals > 0, na.rm = TRUE)
-      max_layer  <- suppressWarnings(max(layer_vals, na.rm = TRUE))
-      if (!is.finite(max_layer)) max_layer <- NA_integer_
-    } else {
-      n_edge    <- sum(isTRUE(s$md$is_edge) | s$md$is_edge == TRUE, na.rm = TRUE)
-      max_layer <- NA_integer_
-    }
+    n_edge  <- sum(isTRUE(s$md$is_edge) | s$md$is_edge == TRUE, na.rm = TRUE)
     data.frame(
-      sample    = s$name,
-      n_total   = n_total,
-      n_edge    = n_edge,
-      pct_edge  = round(100 * n_edge / max(1, n_total), 2),
-      max_layer = max_layer,
+      sample   = s$name,
+      n_total  = n_total,
+      n_edge   = n_edge,
+      pct_edge = round(100 * n_edge / max(1, n_total), 2),
       stringsAsFactors = FALSE,
       row.names = NULL
     )
   }))
   if (!is.null(edge_summary) && nrow(edge_summary) == 0) edge_summary <- NULL
-
-  # ---- Tissue-hole summary ------------------------------------------------
-  # Based on an integer `hole_col` layer column (0 = not near a hole,
-  # >0 = hole-bordering ring) written by detect_tissue_holes().
-  hole_summary <- do.call(rbind, lapply(samples, function(s) {
-    if (!hole_col %in% colnames(s$md)) return(NULL)
-    n_total    <- nrow(s$md)
-    layer_vals <- s$md[[hole_col]]
-    n_hole     <- sum(layer_vals > 0, na.rm = TRUE)
-    max_layer  <- suppressWarnings(max(layer_vals, na.rm = TRUE))
-    if (!is.finite(max_layer)) max_layer <- NA_integer_
-    data.frame(
-      sample        = s$name,
-      n_total       = n_total,
-      n_hole_edge   = n_hole,
-      pct_hole_edge = round(100 * n_hole / max(1, n_total), 2),
-      max_layer     = max_layer,
-      stringsAsFactors = FALSE,
-      row.names = NULL
-    )
-  }))
-  if (!is.null(hole_summary) && nrow(hole_summary) == 0) hole_summary <- NULL
 
   # ---- Pseudobulk sample-sample correlation -----------------------------
   cor_mat <- NULL
@@ -486,64 +364,15 @@ GenerateQCReport <- function(obj,
     }
   }
 
-  # ---- Spatial detection + sample guide ----------------------------------
+  # ---- Spatial QC --------------------------------------------------------
   # Detect whether *any* sample has any spatial images attached. Avoids the
   # `make.unique(NULL)` crash that fires when no sample is spatial.
+  spatial_df <- NULL
   has_images <- any(vapply(samples,
                            function(s) length(s$images) > 0,
                            logical(1)))
-
-  # Auto-switch the title for spatial input, unless the caller passed an
-  # explicit `title`.
-  if (title_missing && isTRUE(has_images)) {
-    title <- "Spatial QC report"
-  }
-
-  # Build a "sample guide": each sample gets a letter code (A, B, C, ...)
-  # and each FOV/image within that sample gets a short de-identified code
-  # (A1, A2, ..., B1, B2, ...). These short codes are used as facet labels
-  # in the spatial sections below so dense grids stay readable; the guide
-  # table maps each code back to the original sample/FOV name.
-  sample_guide_df <- NULL
-  fov_lookup       <- NULL
   if (has_images) {
-    samples_with_images <- names(samples)[vapply(samples,
-                                                   function(s) length(s$images) > 0,
-                                                   logical(1))]
-    sample_letters <- setNames(.index_to_letters(seq_along(samples_with_images)),
-                                samples_with_images)
-
-    fov_lookup <- do.call(rbind, lapply(samples_with_images, function(nm) {
-      imgs <- names(samples[[nm]]$images)
-      if (!length(imgs)) return(NULL)
-      data.frame(
-        sample   = nm,
-        image    = imgs,
-        fov_code = paste0(sample_letters[[nm]], seq_along(imgs)),
-        stringsAsFactors = FALSE
-      )
-    }))
-
-    # Long-format guide: one row per FOV, in fov_code order. A wide
-    # sample x FOV-index matrix gets unreadably wide once samples have more
-    # than a handful of FOVs, so we keep this as a narrow 3-column lookup
-    # table instead (fov_code -> sample, original FOV/image name).
-    sample_guide_df <- data.frame(
-      fov_code = fov_lookup$fov_code,
-      sample   = fov_lookup$sample,
-      fov      = fov_lookup$image,
-      stringsAsFactors = FALSE
-    )
-    rownames(sample_guide_df) <- NULL
-  }
-
-  # ---- Spatial QC data frame ----------------------------------------------
-  spatial_df <- NULL
-  if (has_images) {
-    fov_code_map <- setNames(fov_lookup$fov_code,
-                             paste(fov_lookup$sample, fov_lookup$image, sep = ""))
     spatial_df <- do.call(rbind, lapply(samples, function(s) {
-      if (length(s$images) == 0) return(NULL)
       do.call(rbind, lapply(names(s$images), function(img_name) {
         coords <- tryCatch(
           Seurat::GetTissueCoordinates(s$images[[img_name]], which = "centroids"),
@@ -560,34 +389,16 @@ GenerateQCReport <- function(obj,
         keep <- coords$cell %in% s$cells
         coords <- coords[keep, c("cell", "x", "y"), drop = FALSE]
         if (!nrow(coords)) return(NULL)
-
-        # Downsample large FOVs before attaching metadata / plotting, so
-        # tightly-packed multi-panel grids stay responsive.
-        n_before <- nrow(coords)
-        if (n_before > max_cells_per_fov) {
-          set.seed(downsample_seed)
-          coords <- coords[sample(seq_len(n_before), max_cells_per_fov), , drop = FALSE]
-          message(sprintf(
-            "  '%s' / '%s': downsampled %d -> %d cells for spatial plotting",
-            s$name, img_name, n_before, nrow(coords)))
-        }
-
-        # Attach QC metrics + edge/hole layer columns (if present)
-        extra_cols <- intersect(union(metadata_cols, c(edge_col, hole_col)),
-                                colnames(s$md))
-        for (mc in extra_cols) {
+        # Attach QC metrics
+        for (mc in intersect(metadata_cols, colnames(s$md))) {
           coords[[mc]] <- s$md[coords$cell, mc]
         }
-        coords$sample   <- s$name
-        coords$image    <- img_name
-        coords$fov_code <- fov_code_map[[paste(s$name, img_name, sep = "")]]
+        coords$sample <- s$name
+        coords$image  <- img_name
         coords
       }))
     }))
     if (!is.null(spatial_df) && nrow(spatial_df) == 0) spatial_df <- NULL
-    if (!is.null(spatial_df)) {
-      spatial_df$fov_code <- factor(spatial_df$fov_code, levels = fov_lookup$fov_code)
-    }
   }
 
   # ---- Compute dynamic figure heights for facetted panels ---------------
@@ -605,8 +416,7 @@ GenerateQCReport <- function(obj,
     top_genes_fig_h <- 4
   }
 
-  # Spatial layout: cap columns per row (default 4) using the de-identified
-  # `fov_code` as the facet variable, and scale strip text so the codes
+  # Spatial layout: cap columns per row and scale strip text so FOV names
   # don't get truncated when there are many panels. With more panels per
   # row, each strip is narrower, so we shrink the font.
   #
@@ -614,20 +424,18 @@ GenerateQCReport <- function(obj,
   # actually consume — square panels of width fig.width/ncol stacked
   # `nrow` deep, plus a small buffer for the title / legend / strips.
   # Over-allocating fig.height shows up as huge whitespace before/after
-  # the figure in the rendered HTML. The same ncol/fig_h/strip size are
-  # reused for the "Spatial QC", "Spatial QC: FOV edges", and
-  # "Spatial QC: tissue holes" sections, since they all facet on the same
-  # `fov_code` set.
+  # the figure in the rendered HTML.
   spatial_ncol        <- 1L
   spatial_fig_h       <- 6
   spatial_strip_size  <- 11
   fig_w               <- 9   # matches the chunk-level fig.width default
   if (!is.null(spatial_df)) {
-    n_facets     <- length(unique(spatial_df$fov_code))
-    spatial_ncol <- min(spatial_max_cols, max(1L, n_facets))
-    spatial_nrow <- ceiling(n_facets / spatial_ncol)
+    facet_var <- if (length(unique(spatial_df$image)) > 1) "image" else "sample"
+    n_facets  <- length(unique(spatial_df[[facet_var]]))
+    spatial_ncol       <- min(spatial_max_cols, max(1L, n_facets))
+    spatial_nrow       <- ceiling(n_facets / spatial_ncol)
     # Effective per-panel side after axis/legend overhead (~0.5 in).
-    panel_in <- max(1.5, (fig_w - 0.5) / spatial_ncol)
+    panel_in <- max(2, (fig_w - 0.5) / spatial_ncol)
     # +1.5 in for title + subtitle + legend + strip strip.
     spatial_fig_h      <- panel_in * spatial_nrow + 1.5
     # Font size: 1 col -> 14pt; each extra col drops 2pt; floor at 7pt.
@@ -637,26 +445,22 @@ GenerateQCReport <- function(obj,
   # ---- Stash inputs for the Rmd ------------------------------------------
   data_path <- tempfile(fileext = ".rds")
   saveRDS(list(
-    title              = title,
-    call_text          = call_text,
-    metadata_cols      = metadata_cols,
-    long_qc            = long_qc,
-    summary_df         = summary_df,
-    scatter_df         = scatter_df,
+    title            = title,
+    call_text        = call_text,
+    metadata_cols    = metadata_cols,
+    long_qc          = long_qc,
+    summary_df       = summary_df,
+    scatter_df       = scatter_df,
     top_genes_df       = top_genes_df,
     top_ncol           = top_ncol,
     cutoffs_df         = cutoffs_df,
     cc_df              = cc_df,
     doublet_summary    = doublet_summary,
     edge_summary       = edge_summary,
-    hole_summary       = hole_summary,
     cor_mat            = cor_mat,
-    sample_guide_df    = sample_guide_df,
     spatial_df         = spatial_df,
     spatial_ncol       = spatial_ncol,
-    spatial_strip_size = spatial_strip_size,
-    edge_col           = edge_col,
-    hole_col           = hole_col
+    spatial_strip_size = spatial_strip_size
   ), data_path)
 
   # ---- Build Rmd ---------------------------------------------------------
@@ -811,20 +615,9 @@ GenerateQCReport <- function(obj,
     "",
     "```{r edges}",
     "if (is.null(b$edge_summary)) {",
-    "  cat('No edge information present in any sample (skip if non-spatial).')",
+    "  cat('No is_edge column present in any sample (skip if non-Visium).')",
     "} else {",
     "  knitr::kable(b$edge_summary, row.names = FALSE)",
-    "}",
-    "```",
-    "",
-    "## Tissue holes",
-    "",
-    "```{r holes}",
-    "if (is.null(b$hole_summary)) {",
-    "  cat('No tissue-hole information present in any sample ',",
-    "      '(run with detect_holes = TRUE to compute it).', sep = '')",
-    "} else {",
-    "  knitr::kable(b$hole_summary, row.names = FALSE)",
     "}",
     "```",
     "",
@@ -852,27 +645,6 @@ GenerateQCReport <- function(obj,
     "}",
     "```",
     "",
-    "## Sample guide",
-    "",
-    "```{r sample_guide}",
-    "if (is.null(b$sample_guide_df)) {",
-    "  cat('Not applicable (no spatial images detected).')",
-    "} else {",
-    "  sg <- b$sample_guide_df",
-    "  cap <- 'Each row is one FOV. The fov_code column gives the de-identified facet label (e.g. A1, A2, B1) used in the spatial sections below.'",
-    "  kbl <- knitr::kable(sg, row.names = FALSE,",
-    "                       col.names = c('FOV code', 'Sample', 'Original FOV / image'),",
-    "                       caption = cap)",
-    "  if (requireNamespace('kableExtra', quietly = TRUE)) {",
-    "    kbl <- kableExtra::kable_styling(kbl, full_width = FALSE, position = 'left',",
-    "                                      bootstrap_options = c('striped', 'condensed'))",
-    "    kbl <- kableExtra::column_spec(kbl, 1, bold = TRUE)",
-    "    kbl <- kableExtra::collapse_rows(kbl, columns = 2, valign = 'top')",
-    "  }",
-    "  kbl",
-    "}",
-    "```",
-    "",
     "## Spatial QC",
     "",
     sprintf("```{r spatial, fig.height=%.1f}", spatial_fig_h),
@@ -883,13 +655,15 @@ GenerateQCReport <- function(obj,
     "  if (is.na(metric_for_color)) {",
     "    cat('No metric available to color spatial plot.')",
     "  } else {",
+    "    facet_var <- if (length(unique(b$spatial_df$image)) > 1) 'image' else 'sample'",
     "    # NB: dropped coord_equal() because newer ggplot2 refuses to combine",
     "    # fixed aspect ratio with free scales. Within-panel x/y proportions",
     "    # are no longer guaranteed 1:1, but each FOV fills its panel.",
     "    ggplot2::ggplot(b$spatial_df,",
     "                    ggplot2::aes(x = x, y = y, color = .data[[metric_for_color]])) +",
     "      ggplot2::geom_point(size = 0.3) +",
-    "      ggplot2::facet_wrap(~ fov_code, scales = 'free', ncol = b$spatial_ncol) +",
+    "      ggplot2::facet_wrap(stats::as.formula(paste('~', facet_var)),",
+    "                          scales = 'free', ncol = b$spatial_ncol) +",
     "      ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = 0.02)) +",
     "      ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0.02)) +",
     "      ggplot2::scale_color_viridis_c() +",
@@ -898,46 +672,6 @@ GenerateQCReport <- function(obj,
     "                     strip.text = ggplot2::element_text(size = b$spatial_strip_size)) +",
     "      ggplot2::labs(color = metric_for_color)",
     "  }",
-    "}",
-    "```",
-    "",
-    "## Spatial QC: FOV edges",
-    "",
-    sprintf("```{r spatial_edges, fig.height=%.1f}", spatial_fig_h),
-    "if (is.null(b$spatial_df) || !(b$edge_col %in% colnames(b$spatial_df))) {",
-    "  cat('No FOV-edge layer available (run with detect_edges = TRUE).')",
-    "} else {",
-    "  ggplot2::ggplot(b$spatial_df,",
-    "                  ggplot2::aes(x = x, y = y, color = factor(.data[[b$edge_col]]))) +",
-    "    ggplot2::geom_point(size = 0.3) +",
-    "    ggplot2::facet_wrap(~ fov_code, scales = 'free', ncol = b$spatial_ncol) +",
-    "    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = 0.02)) +",
-    "    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0.02)) +",
-    "    ggplot2::scale_color_viridis_d() +",
-    "    ggplot2::theme_void() +",
-    "    ggplot2::theme(aspect.ratio = 1,",
-    "                   strip.text = ggplot2::element_text(size = b$spatial_strip_size)) +",
-    "    ggplot2::labs(color = 'edge layer')",
-    "}",
-    "```",
-    "",
-    "## Spatial QC: tissue holes",
-    "",
-    sprintf("```{r spatial_holes, fig.height=%.1f}", spatial_fig_h),
-    "if (is.null(b$spatial_df) || !(b$hole_col %in% colnames(b$spatial_df))) {",
-    "  cat('No tissue-hole layer available (run with detect_holes = TRUE).')",
-    "} else {",
-    "  ggplot2::ggplot(b$spatial_df,",
-    "                  ggplot2::aes(x = x, y = y, color = factor(.data[[b$hole_col]]))) +",
-    "    ggplot2::geom_point(size = 0.3) +",
-    "    ggplot2::facet_wrap(~ fov_code, scales = 'free', ncol = b$spatial_ncol) +",
-    "    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = 0.02)) +",
-    "    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0.02)) +",
-    "    ggplot2::scale_color_viridis_d() +",
-    "    ggplot2::theme_void() +",
-    "    ggplot2::theme(aspect.ratio = 1,",
-    "                   strip.text = ggplot2::element_text(size = b$spatial_strip_size)) +",
-    "    ggplot2::labs(color = 'hole layer')",
     "}",
     "```",
     "",
@@ -971,6 +705,17 @@ GenerateQCReport <- function(obj,
   } else {
     message(sprintf("--- Wrote %s (%.1f KB) ---", output_file,
                     file.info(output_file)$size / 1024))
+  }
+
+  # ---- Sidecar: machine-readable cutoffs for ApplyQCFilters() -----------
+  # Write the suggested-cutoffs table next to the HTML as CSV so it can be
+  # loaded programmatically (e.g. by ApplyQCFilters) without parsing the
+  # rendered report.
+  if (!is.null(cutoffs_df) && nrow(cutoffs_df) > 0) {
+    cutoffs_csv <- sub("\\.html?$", "", output_file, ignore.case = TRUE)
+    cutoffs_csv <- paste0(cutoffs_csv, "_cutoffs.csv")
+    utils::write.csv(cutoffs_df, cutoffs_csv, row.names = FALSE)
+    message(sprintf("--- Wrote sidecar cutoffs to %s ---", cutoffs_csv))
   }
 
   invisible(output_file)

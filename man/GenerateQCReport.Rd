@@ -7,7 +7,7 @@
 GenerateQCReport(
   obj,
   output_file = "qc_report.html",
-  title = "Single-cell QC Report",
+  title = "Single-cell QC report",
   metadata_cols = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
   sample_col = "orig.ident",
   doublet_col = "doublet_finder",
@@ -16,15 +16,7 @@ GenerateQCReport(
   assay = NULL,
   log_skewed = TRUE,
   log_threshold = 10,
-  spatial_max_cols = 4,
-  max_cells_per_fov = 20000,
-  downsample_seed = 1,
-  detect_edges = FALSE,
-  detect_holes = FALSE,
-  edge_col = "edge_layer",
-  hole_col = "hole_layer",
-  edge_args = list(),
-  hole_args = list()
+  spatial_max_cols = 3
 )
 }
 \arguments{
@@ -33,11 +25,7 @@ GenerateQCReport(
 \item{output_file}{Path to write the HTML report to. May be relative
 (resolved against the current working directory) or absolute.}
 
-\item{title}{Title for the report. If left at its default and the input
-is detected as spatial data (any sample has \code{obj@images}
-populated), the title is automatically changed to
-\code{"Spatial QC report"}. Pass an explicit \code{title} to override
-this auto-detection.}
+\item{title}{Title for the report.}
 
 \item{metadata_cols}{Character vector of metadata columns to plot as
 violin distributions and use for the cutoff table.}
@@ -66,41 +54,9 @@ metrics whose distribution has a heavy right tail (e.g.,
 \item{log_threshold}{Ratio threshold for triggering log transformation.
 Default 10 (i.e., the metric's max is more than 10x its median).}
 
-\item{spatial_max_cols}{Maximum number of panels per row in the
-"Spatial QC", "Spatial QC: FOV edges", and "Spatial QC: tissue holes"
-sections. Default 4 — these sections use compact, de-identified
-\code{fov_code} facet labels (see "Sample guide") so a denser grid
-stays readable.}
-
-\item{max_cells_per_fov}{Maximum number of cells to plot per FOV in the
-spatial sections. FOVs with more cells than this are randomly
-downsampled to \code{max_cells_per_fov} before plotting. Default
-20000.}
-
-\item{downsample_seed}{Random seed used when downsampling FOVs for the
-spatial sections. Default 1.}
-
-\item{detect_edges}{Logical; if TRUE, run \code{detect_fov_edges()} on
-spatial input(s) that don't already have \code{edge_col} in their
-metadata, before building the report. Default FALSE.}
-
-\item{detect_holes}{Logical; if TRUE, run \code{detect_tissue_holes()} on
-spatial input(s) that don't already have \code{hole_col} in their
-metadata, before building the report. Default FALSE.}
-
-\item{edge_col}{Name of the integer FOV-edge-layer metadata column
-(written by \code{detect_fov_edges()}; \code{0} = interior,
-\code{>0} = edge ring). Default \code{"edge_layer"}.}
-
-\item{hole_col}{Name of the integer tissue-hole-layer metadata column
-(written by \code{detect_tissue_holes()}; \code{0} = not near a hole,
-\code{>0} = hole-bordering ring). Default \code{"hole_layer"}.}
-
-\item{edge_args}{Additional named arguments passed to
-\code{detect_fov_edges()} when \code{detect_edges = TRUE}.}
-
-\item{hole_args}{Additional named arguments passed to
-\code{detect_tissue_holes()} when \code{detect_holes = TRUE}.}
+\item{spatial_max_cols}{Maximum number of spatial-QC panels per row.
+Default 3 — caps facet density to keep panels wide enough that the
+FOV/sample names aren't truncated.}
 }
 \value{
 Invisibly, the absolute path of the rendered report.
@@ -138,15 +94,9 @@ Sections included:
 and the cells that would survive each cutoff.
 \item Cell-cycle phase breakdown (if a \code{Phase} column exists).
 \item Doublet calls (if \code{doublet_col} exists).
-\item Edge-spot summary (if an \code{is_edge} or edge-layer column
-exists).
-\item Tissue-hole summary (if a hole-layer column exists).
+\item Edge-spot summary (if an \code{is_edge} column exists).
 \item Sample-sample pseudobulk correlation heatmap (>= 2 samples).
-\item Sample guide — de-identified FOV codes (A1, A2, ..., B1, ...)
-used as compact facet labels in the spatial sections below.
 \item Spatial QC maps per FOV (if \code{obj@images} is populated).
-\item Spatial QC: FOV edges (if edge detection was run/available).
-\item Spatial QC: tissue holes (if hole detection was run/available).
 \item Session info appendix.
 }
 }
