@@ -485,29 +485,43 @@ scored$scores        # cluster x cell-type UCell mean scores
 
 ### 9.3 Reference-based — `AnnotateWithReference()`
 
-For PBMCs specifically, Azimuth is essentially the gold standard: it projects onto a large, curated reference and provides both coarse (`l1`) and fine (`l2`) labels with confidence scores.
+For PBMCs, the CellTypist immune models give consistent, granular labels without needing to supply a reference dataset. `Immune_All_Low.pkl` is the low-resolution PBMC-friendly model; `Immune_All_High.pkl` is the fine-resolution variant.
 
 ```r
 integrated <- AnnotateWithReference(
   integrated,
-  reference          = "pbmcref",
-  annotation_levels  = c("l1", "l2"),
-  min_score          = 0.5,        # Unknown for low-confidence calls
-  unassigned_label   = "Unknown"
+  method          = "celltypist",
+  model           = "Immune_All_Low.pkl",
+  majority_voting = TRUE,
+  min_score       = 0.5
 )
 
-table(integrated$predicted.celltype.l1)
-table(integrated$predicted.celltype.l2)
+table(integrated$predicted_cell_type)
 
 # Compare to your marker-based labels
-table(marker = integrated$predicted_cell_type,
-      azimuth = integrated$predicted.celltype.l1)
+table(marker    = integrated$predicted_cell_type,
+      annotate  = integrated$domain)      # from 9.2 AnnotateClusters
+```
+
+Alternative backends work with the same interface — supply your own labeled reference:
+
+```r
+# scANVI: semi-supervised, best when reference and query come from
+# different technologies
+AnnotateWithReference(integrated, method = "scanvi",
+                      reference = pbmc_ref, ref_label_col = "cell_type",
+                      batch_col = "sample_id")
+
+# scmap: R-native, no Python required
+AnnotateWithReference(integrated, method = "scmap",
+                      reference = pbmc_ref, ref_label_col = "cell_type",
+                      scmap_method = "cluster")
 ```
 
 For the rest of the vignette we'll use `cell_type` — pick whichever of the three above you trust most and assign:
 
 ```r
-integrated$cell_type <- integrated$predicted.celltype.l2   # or predicted_cell_type
+integrated$cell_type <- integrated$predicted_cell_type   # from CellTypist
 Idents(integrated) <- integrated$cell_type
 ```
 
@@ -772,7 +786,8 @@ Key packages used in this vignette:
 | `harmony` | Batch correction (called via `IntegrateLayers`) |
 | `DESeq2` | Pseudobulk differential expression |
 | `speckle` | Propeller composition test |
-| `Azimuth` | Reference-based annotation |
+| `CellTypist` (Python, via `reticulate`) | Default reference-based annotation |
+| `scmap` | R-native alternative reference-based annotation |
 | `liana` | Ligand-receptor consensus scoring |
 | `patchwork` | QCComparePlots grid layout |
 | `ks` | 2D KDE for `PlotFeatureDensity` |

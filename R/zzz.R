@@ -76,7 +76,9 @@
   "liana",
   "OmnipathR",         # liana pulls resources through OmnipathR
   # Reference-based annotation (AnnotateWithReference)
-  "Azimuth",
+  # CellTypist (default) + scANVI are Python-only (via reticulate); scmap is R.
+  "scmap",
+  "reticulate",
   # Spatial deconvolution (RunRCTD)
   "spacexr",
   # Trajectory (PseudotimeWrapper)
