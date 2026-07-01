@@ -13,12 +13,19 @@
 3. [QC and Percent Mitochondrial Reads](#3-qc-and-percent-mitochondrial-reads)
 4. [Edge Detection — `EdgeDetectionVisium()`](#4-edge-detection--edgedetectionvisium)
 5. [Merge and Integrate — `MergeSeurat()`](#5-merge-and-integrate--mergeseurat)
-6. [Annotate Spatial Domains — `MarkerPlot()`](#6-annotate-spatial-domains--markerplot)
-7. [Gene Positivity — `AddGenePositivity()`](#7-gene-positivity--addgenepositivity)
-8. [Spatial Niche Analysis — `BuildMultipleNicheAssays()`](#8-spatial-niche-analysis--buildmultiplenicheassays)
-9. [Subsetting Spatial Objects — `subset_opt()`](#9-subsetting-spatial-objects--subset_opt)
-10. [Tips Specific to Visium Data](#10-tips-specific-to-visium-data)
-11. [Session Info](#11-session-info)
+6. [Annotate Spatial Domains](#6-annotate-spatial-domains)
+   - 6.1 [Marker Dot Plots — `MarkerPlot()` / `MarkerPctPlot()`](#61-marker-dot-plots--markerplot--markerpctplot)
+   - 6.2 [Cluster-level Marker Scoring — `AnnotateClusters()`](#62-cluster-level-marker-scoring--annotateclusters)
+7. [Visium Deconvolution — `RunRCTD()`](#7-visium-deconvolution--runrctd)
+8. [Feature Density on the Tissue — `PlotFeatureDensity()`](#8-feature-density-on-the-tissue--plotfeaturedensity)
+9. [Gene Positivity — `AddGenePositivity()` / `PlotGenePositivity()`](#9-gene-positivity--addgenepositivity--plotgenepositivity)
+10. [Spatial Niche Analysis — `BuildMultipleNicheAssays()`](#10-spatial-niche-analysis--buildmultiplenicheassays)
+11. [Neighborhood Enrichment — `NeighborhoodEnrichment()`](#11-neighborhood-enrichment--neighborhoodenrichment)
+12. [Niche Co-expression — `NicheCoExpress()`](#12-niche-co-expression--nicheco express)
+13. [Single-cell Spatial (Xenium / CosMx) — `detect_fov_edges()` / `detect_tissue_holes()`](#13-single-cell-spatial-xenium--cosmx--detect_fov_edges--detect_tissue_holes)
+14. [Subsetting Spatial Objects — `subset_opt()`](#14-subsetting-spatial-objects--subset_opt)
+15. [Tips Specific to Spatial Data](#15-tips-specific-to-spatial-data)
+16. [Session Info](#16-session-info)
 
 ---
 
@@ -331,7 +338,9 @@ SpatialDimPlot(integrated, label = FALSE) +
 
 ---
 
-## 6. Annotate Spatial Domains — `MarkerPlot()`
+## 6. Annotate Spatial Domains
+
+### 6.1 Marker Dot Plots — `MarkerPlot()` / `MarkerPctPlot()`
 
 We now assign neuroanatomical labels to clusters using canonical mouse brain cell-type
 and region markers. `MarkerPlot()` groups genes by annotation, clusters identities by
@@ -421,7 +430,105 @@ ggsave("spatial_domains_brain.pdf", width = 14, height = 7)
 
 ---
 
-## 7. Gene Positivity — `AddGenePositivity()`
+### 6.2 Cluster-level Marker Scoring — `AnnotateClusters()`
+
+For Visium, use `AnnotateClusters()` with Visium-appropriate defaults — the winner-takes-all limitation applies here (each spot mixes cell types), so `return_scores = "cluster"` is often more informative than the winner label alone.
+
+```r
+brain_markers <- list(
+  Neuron_Ex   = c("Slc17a7", "Camk2a"),      # excitatory
+  Neuron_In   = c("Gad1", "Gad2"),           # inhibitory
+  Astrocyte   = c("Gfap", "Aqp4"),
+  Oligo       = c("Mbp", "Mog", "Plp1"),
+  Endothelial = c("Pecam1", "Cldn5"),
+  Microglia   = c("Cx3cr1", "P2ry12")
+)
+
+# Visium-safe defaults: no non-specific filter, low min_detection_frac
+res <- AnnotateClusters(
+  integrated,
+  markers             = brain_markers,
+  cluster_col         = "seurat_clusters",
+  filter_nonspecific  = FALSE,
+  min_detection_frac  = 0.05,
+  return_scores       = "cluster",
+  new_col             = "domain"
+)
+res$scores       # cluster x cell-type UCell score matrix
+integrated <- res$obj
+
+# Winner label is available too
+table(integrated$domain)
+```
+
+**Deconvolution is preferred for Visium** — see section 7 below. Use marker scoring only as a sanity check.
+
+---
+
+## 7. Visium Deconvolution — `RunRCTD()`
+
+Each Visium spot covers ~55 μm and contains 1-10 cells of mixed types. Winner-takes-all classifiers (`MarkerPlot`, `AnnotateClusters`) lose minority populations by construction. `RunRCTD()` deconvolves each spot as a mixture using a reference single-cell dataset.
+
+```r
+# You need a single-cell reference Seurat object with cell-type labels.
+# For mouse brain, the Allen Brain Institute reference or Zeisel et al. work.
+# Placeholder here:
+brain_ref <- readRDS("data/allen_mouse_cortex.rds")
+
+integrated <- RunRCTD(
+  integrated,
+  reference    = brain_ref,
+  celltype_col = "cell_type",
+  mode         = "full",              # or "doublet" for cleaner but binary calls
+  max_cells_per_ref_celltype = 5000,
+  n_cores      = 8
+)
+
+# Per-cell-type proportion columns on each spot
+head(colnames(integrated@misc$rctd_weights))
+# [1] "L2/3 IT" "L5 IT"   "L6 CT"   "Oligo"   ...
+
+# Overlay proportions spatially
+SpatialFeaturePlot(integrated,
+                   features = c("rctd_Oligo", "rctd_Astro", "rctd_L2.3.IT"))
+
+# Dominant type per spot for quick visualization
+SpatialDimPlot(integrated, group.by = "rctd_dominant")
+```
+
+For laminar cortex or clearly zoned tissue, RCTD proportions map cleanly onto the anatomical structure — a strong sanity check that everything is working.
+
+---
+
+## 8. Feature Density on the Tissue — `PlotFeatureDensity()`
+
+`PlotFeatureDensity()` gives a much cleaner view of sparse markers than `SpatialFeaturePlot()` when combined with the UMAP or a spatial 2D coordinate reduction. On a UMAP:
+
+```r
+PlotFeatureDensity(
+  integrated,
+  features  = c("Mbp", "Gad1", "Slc17a7"),
+  reduction = "umap"
+)
+
+# On the spatial coordinates directly (works when 'spatial' is registered
+# as a reduction; otherwise use SpatialFeaturePlot for the tissue view).
+PlotFeatureDensity(integrated,
+                   features  = "module_score_ISG",
+                   reduction = "umap")
+```
+
+For side-by-side comparison of a gene's density and its ligand's density:
+
+```r
+PlotFeatureDensity(integrated,
+                   features = c("Vegfa", "Kdr"),
+                   joint    = TRUE)
+```
+
+---
+
+## 9. Gene Positivity — `AddGenePositivity()` / `PlotGenePositivity()`
 
 Flag spots where a gene is detectably expressed (counts > 0). Useful for quick spatial
 co-expression checks and for creating binary masks before niche analysis.
@@ -455,9 +562,25 @@ SpatialFeaturePlot(integrated, features = "Gfap_pos") +
   ggtitle("Gfap-positive spots")
 ```
 
+Percent-positive summary across spatial domains via `PlotGenePositivity()`:
+
+```r
+PlotGenePositivity(integrated,
+                   c("Snap25", "Gfap", "Mbp", "Cx3cr1"),
+                   group.by = "spatial_domain",
+                   style    = "heatmap",
+                   max_pct  = 90)
+
+# Or the co-expression view for two markers
+PlotGenePositivity(integrated,
+                   c("Snap25", "Gfap"),
+                   group.by = "spatial_domain",
+                   style    = "combo")
+```
+
 ---
 
-## 8. Spatial Niche Analysis — `BuildMultipleNicheAssays()`
+## 10. Spatial Niche Analysis — `BuildMultipleNicheAssays()`
 
 A spatial niche captures not just what a spot expresses, but what its *neighbors*
 express. `BuildMultipleNicheAssays()` builds a neighborhood-composition assay across
@@ -565,7 +688,89 @@ ggsave("niche_composition_heatmap.pdf", width = 8, height = 6)
 
 ---
 
-## 9. Subsetting Spatial Objects — `subset_opt()`
+## 11. Neighborhood Enrichment — `NeighborhoodEnrichment()`
+
+Tests pairwise cell-type co-localization by comparing observed k-NN pair frequencies to a permutation null. Reports enrichment z-scores per (source, target) pair, and optionally clusters cells into "niches" based on their neighborhood composition.
+
+```r
+enrich <- NeighborhoodEnrichment(
+  integrated,
+  celltype_col  = "domain",       # or rctd_dominant, or predicted labels
+  k             = 10,
+  n_perm        = 200,
+  assign_niches = TRUE,
+  k_niches      = 6
+)
+enrich$results                     # source x target z-score matrix
+integrated <- enrich$obj           # now carries a 'niche' metadata column
+
+# Visualize niches on the tissue
+SpatialDimPlot(integrated, group.by = "niche")
+
+# Enrichment heatmap
+library(pheatmap)
+pheatmap::pheatmap(enrich$results, cluster_rows = FALSE, cluster_cols = FALSE)
+```
+
+Complementary to `BuildMultipleNicheAssays()` — this one focuses on statistical enrichment of specific cell-type pairings; the other builds a full neighborhood assay usable in downstream Seurat workflows.
+
+---
+
+## 12. Niche Co-expression — `NicheCoExpress()`
+
+Differential co-expression of two genes across niches using the Manders overlap coefficient. Answers "is this ligand-receptor pair co-detected more often in the vascular niche than elsewhere?"
+
+```r
+co <- NicheCoExpress(
+  integrated,
+  gene_a    = "Vegfa",
+  gene_b    = "Kdr",
+  niche_col = "niche",
+  layer     = "counts"
+)
+co$per_niche          # Manders coefficient per niche + p-value
+co$plot               # heatmap
+```
+
+---
+
+## 13. Single-cell Spatial (Xenium / CosMx) — `detect_fov_edges()` / `detect_tissue_holes()`
+
+For imaging-based single-cell spatial data, the Visium hex-grid `EdgeDetectionVisium()` isn't the right tool. Two dedicated functions cover FOV edges and tissue tears:
+
+```r
+# Cells near the FOV outer boundary (bbox method is fast and stable)
+xenium <- detect_fov_edges(xenium,
+                           method       = "bbox",
+                           bbox_factor  = 2,
+                           n_iterations = 2,
+                           label_col    = "edge_layer")
+
+# Cells bordering internal gaps / tears
+xenium <- detect_tissue_holes2(xenium,
+                               min_hole_size = 4,
+                               n_iterations  = 2,
+                               label_col     = "hole_layer")
+```
+
+**Marker-gene exclusion** — biologically meaningful gaps (e.g. liver central veins expressing `Glul`, vessels expressing `Pecam1`) can be preserved:
+
+```r
+xenium <- detect_tissue_holes2(xenium,
+                               exclude_gene       = "Glul",
+                               sensitivity        = 0.75,
+                               exclude_gene_layer = "data")
+```
+
+Combine both filters:
+
+```r
+xenium <- xenium[, xenium$edge_layer == 0 & xenium$hole_layer == 0]
+```
+
+---
+
+## 14. Subsetting Spatial Objects — `subset_opt()`
 
 Always use `subset_opt()` instead of `subset()` for spatial Seurat objects. Seurat's
 built-in `subset()` can leave stale image metadata attached after cell removal, which
@@ -604,7 +809,7 @@ mbp_oligo <- subset_opt(
 
 ---
 
-## 10. Tips Specific to Visium Data
+## 15. Tips Specific to Spatial Data
 
 **Run `EdgeDetectionVisium()` before `MergeSeurat()`.** Edge spots are almost always
 the lowest-quality cells in the dataset. Including them biases normalization and
@@ -627,9 +832,15 @@ hexagonal grid with exactly 6 direct neighbors. Using `neighbors.k = 6` therefor
 captures the immediate physical neighborhood without reaching into distant spots.
 
 **Deconvolution for cell-type resolution.** Visium spots capture multiple cells.
-If you need per-cell-type maps rather than spatial domain maps, consider deconvolution
-tools such as RCTD (`spacexr`), SPOTlight, or cell2location — these can be run
-after `MergeSeurat()` on the integrated object.
+The bundled `RunRCTD()` wraps `spacexr::RCTD` and writes per-cell-type proportion
+columns onto every spot — this is the recommended primary annotation strategy for
+Visium. `AnnotateClusters()` on Visium data works as a sanity check but loses
+minority populations by construction (winner-takes-all).
+
+**Visium-safe defaults for `AnnotateClusters()`.** If you do use marker scoring on
+Visium, pass `filter_nonspecific = FALSE`, `min_detection_frac = 0.05`, and
+`return_scores = "cluster"` so you can inspect the minority signal in the score
+matrix.
 
 **`check_gene_ids_across_objects()` before merging sections from different runs.**
 Mouse gene symbols are consistent across standard 10x Genomics pipelines, but if you
@@ -642,7 +853,7 @@ check_gene_ids_across_objects(brain_list)
 
 ---
 
-## 11. Session Info
+## 16. Session Info
 
 ```r
 sessionInfo()
@@ -652,12 +863,15 @@ Key packages used in this vignette:
 
 | Package | Role |
 |---|---|
-| `SingleCellTools` | Edge detection, integration, annotation, niche analysis |
+| `SingleCellTools` | Edge/hole detection, integration, annotation, RCTD, niche + enrichment analysis |
 | `Seurat` | Core data structure and spatial visualization |
 | `SeuratData` | `stxBrain` Visium mouse brain dataset |
 | `harmony` | Batch correction across sections (via `IntegrateLayers`) |
 | `ClusterR` | Mini-batch k-means for niche clustering |
-| `RANN` | Nearest-neighbor searches in `EdgeDetectionVisium` |
+| `spacexr` | RCTD Visium deconvolution |
+| `RANN` | Nearest-neighbor searches (`EdgeDetectionVisium`, `detect_fov_edges`, `NeighborhoodEnrichment`) |
+| `ks` | 2D KDE for `PlotFeatureDensity` |
+| `UCell` | Module scoring for `AnnotateClusters` |
 | `dplyr` / `ggplot2` / `patchwork` | Data wrangling and plotting |
 
 ---

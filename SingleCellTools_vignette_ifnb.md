@@ -13,13 +13,21 @@ Seurat datasets — no raw CellRanger output required.
 2. [Load and Inspect the Data](#2-load-and-inspect-the-data)
 3. [Split into a Sample List](#3-split-into-a-sample-list)
 4. [Doublet Detection — `calldoublet()`](#4-doublet-detection--calldoublet)
-5. [Gene ID Check — `detect_gene_id_type()` and `check_gene_ids_across_objects()`](#5-gene-id-check)
-6. [Merge and Integrate — `MergeSeurat()`](#6-merge-and-integrate--mergeseurat)
-7. [Annotate Cell Types — `MarkerPlot()`](#7-annotate-cell-types--markerplot)
-8. [Flag Gene-Positive Cells — `AddGenePositivity()`](#8-flag-gene-positive-cells--addgenepositivity)
-9. [Cell-Cycle Scoring — `assign_cell_cycle_phase()`](#9-cell-cycle-scoring--assign_cell_cycle_phase)
-10. [Cell-Type Composition](#10-cell-type-composition)
-11. [Session Info](#11-session-info)
+5. [Gene ID Check](#5-gene-id-check)
+6. [QC Report and Filter — `GenerateQCReport()` / `ApplyQCFilters()` / `QCComparePlots()`](#6-qc-report-and-filter)
+7. [Merge and Integrate — `MergeSeurat()`](#7-merge-and-integrate--mergeseurat)
+8. [Integration Quality — `BatchEffectQC()`](#8-integration-quality--batcheffectqc)
+9. [Annotate Cell Types — Three Approaches](#9-annotate-cell-types--three-approaches)
+   - 9.1 [Marker Dot Plots — `MarkerPlot()` / `MarkerPctPlot()`](#91-marker-dot-plots--markerplot--markerpctplot)
+   - 9.2 [Cluster-level Marker Scoring — `AnnotateClusters()`](#92-cluster-level-marker-scoring--annotateclusters)
+   - 9.3 [Reference-based — `AnnotateWithReference()`](#93-reference-based--annotatewithreference)
+10. [Flag Gene-Positive Cells — `AddGenePositivity()` / `PlotGenePositivity()`](#10-flag-gene-positive-cells--addgenepositivity--plotgenepositivity)
+11. [Cell-Cycle Scoring — `assign_cell_cycle_phase()`](#11-cell-cycle-scoring--assign_cell_cycle_phase)
+12. [Cell-Type Composition — `CellComposition()` / `CompositionalTest()`](#12-cell-type-composition--cellcomposition--compositionaltest)
+13. [Differential Expression — `PseudobulkDE()` / `PlotVolcano()`](#13-differential-expression--pseudobulkde--plotvolcano)
+14. [Cell-Cell Communication — `RunLIANA()`](#14-cell-cell-communication--runliana)
+15. [Save with Provenance — `SaveWithProvenance()`](#15-save-with-provenance--savewithprovenance)
+16. [Session Info](#16-session-info)
 
 ---
 
@@ -219,7 +227,50 @@ proceeding.
 
 ---
 
-## 6. Merge and Integrate — `MergeSeurat()`
+## 6. QC Report and Filter
+
+Rather than eyeballing violin plots and picking cutoffs by hand, generate a full HTML QC report with recommended per-sample cutoffs and apply them programmatically.
+
+```r
+# Generate HTML report + machine-readable sidecar CSV
+GenerateQCReport(
+  sample_list,
+  output_file    = "qc/ifnb_qc.html",
+  metadata_cols  = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+  mad_multiplier = 3,
+  doublet_col    = "doublet_finder"
+)
+# writes qc/ifnb_qc.html AND qc/ifnb_qc_cutoffs.csv
+```
+
+Apply the recommended cutoffs — doublet filtering happens by default:
+
+```r
+filtered <- ApplyQCFilters(
+  sample_list,
+  cutoffs         = "qc/ifnb_qc_cutoffs.csv",
+  filter_doublets = TRUE,
+  return_report   = TRUE
+)
+sample_list <- filtered$obj
+filtered$report                # per-sample per-metric retention stats
+```
+
+Confirm at a glance that the filter did what you intended:
+
+```r
+QCComparePlots(
+  pre     = sample_list_pre,   # save this before overwriting
+  post    = sample_list,
+  metrics = c("nCount_RNA", "nFeature_RNA", "percent.mt")
+)
+```
+
+This replaces the manual `subset(obj, nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 20)` step from earlier versions of this vignette.
+
+---
+
+## 7. Merge and Integrate — `MergeSeurat()`
 
 `MergeSeurat()` handles normalization, PCA, integration, clustering, UMAP, and
 (optionally) marker detection in one call. We use Harmony integration here, which is
@@ -279,7 +330,33 @@ did not fully correct for the stimulation effect. In that case, try increasing
 
 ---
 
-## 7. Annotate Cell Types — `MarkerPlot()`
+## 8. Integration Quality — `BatchEffectQC()`
+
+`BatchEffectQC()` quantifies how well the integration mixed CTRL and STIM (or across donors) versus preserving biology. Run it on both the pre-integration `pca` and post-integration `harmony` reductions to see the effect numerically:
+
+```r
+pre  <- BatchEffectQC(integrated, reduction = "pca",
+                      batch_col    = "stim",
+                      celltype_col = NULL)     # no labels yet
+post <- BatchEffectQC(integrated, reduction = "harmony",
+                      batch_col    = "stim",
+                      celltype_col = NULL)
+
+rbind(pre$summary, post$summary)
+#          batch_asw knn_mixing expected_mixing ...
+# [pca]         0.28       0.61            0.94
+# [harmony]     0.03       0.93            0.94
+```
+
+Ideally `knn_mixing` ratio approaches 1 (perfectly random neighborhoods across conditions), and `batch_asw` drops toward 0 (cells no longer cluster by condition). Once you have cell-type labels, re-run with `celltype_col` set to check that biological structure was preserved (`knn_purity` and `celltype_asw` should stay high).
+
+---
+
+## 9. Annotate Cell Types — Three Approaches
+
+`SingleCellTools` v2.4 offers three complementary paths for cell-type annotation. For PBMC-style well-studied tissues, Azimuth is usually the fastest and most accurate; marker-based approaches are more transparent and don't require internet access.
+
+### 9.1 Marker Dot Plots — `MarkerPlot()` / `MarkerPctPlot()`
 
 Now we assign cell-type labels to clusters using canonical PBMC markers. `MarkerPlot()`
 builds an annotated dot plot, groups the genes by cell type, and clusters the
@@ -370,7 +447,73 @@ ggsave("umap_celltypes_ifnb.pdf", width = 10, height = 7)
 
 ---
 
-## 8. Flag Gene-Positive Cells — `AddGenePositivity()`
+### 9.2 Cluster-level Marker Scoring — `AnnotateClusters()`
+
+Skip the manual `RenameIdents` step by having `AnnotateClusters` score each cluster on every marker set with UCell and pick the winner:
+
+```r
+pbmc_marker_list <- list(
+  T_cell     = c("CD3D", "CD3E", "CD8A", "CD8B"),
+  CD4_T      = c("CD4", "IL7R", "CCR7"),
+  NK         = c("GNLY", "NKG7", "KLRD1"),
+  B_cell     = c("MS4A1", "CD79A", "CD79B"),
+  CD14_Mono  = c("CD14", "LYZ", "CST3"),
+  CD16_Mono  = c("FCGR3A", "MS4A7"),
+  DC         = c("FCER1A"),
+  Platelet   = c("PPBP")
+)
+
+integrated <- AnnotateClusters(
+  integrated,
+  method              = "marker",
+  markers             = pbmc_marker_list,
+  cluster_col         = "seurat_clusters",
+  new_col             = "predicted_cell_type",
+  filter_nonspecific  = TRUE,
+  min_score           = 0.1,
+  min_margin          = 0.05
+)
+
+table(integrated$predicted_cell_type)
+
+# Inspect the full per-cluster score matrix
+scored <- AnnotateClusters(integrated, markers = pbmc_marker_list,
+                           method = "marker",
+                           return_scores = "cluster")
+scored$scores        # cluster x cell-type UCell mean scores
+```
+
+### 9.3 Reference-based — `AnnotateWithReference()`
+
+For PBMCs specifically, Azimuth is essentially the gold standard: it projects onto a large, curated reference and provides both coarse (`l1`) and fine (`l2`) labels with confidence scores.
+
+```r
+integrated <- AnnotateWithReference(
+  integrated,
+  reference          = "pbmcref",
+  annotation_levels  = c("l1", "l2"),
+  min_score          = 0.5,        # Unknown for low-confidence calls
+  unassigned_label   = "Unknown"
+)
+
+table(integrated$predicted.celltype.l1)
+table(integrated$predicted.celltype.l2)
+
+# Compare to your marker-based labels
+table(marker = integrated$predicted_cell_type,
+      azimuth = integrated$predicted.celltype.l1)
+```
+
+For the rest of the vignette we'll use `cell_type` — pick whichever of the three above you trust most and assign:
+
+```r
+integrated$cell_type <- integrated$predicted.celltype.l2   # or predicted_cell_type
+Idents(integrated) <- integrated$cell_type
+```
+
+---
+
+## 10. Flag Gene-Positive Cells — `AddGenePositivity()` / `PlotGenePositivity()`
 
 `AddGenePositivity()` adds a logical metadata column for each gene indicating whether
 a cell expresses it above a threshold. This is useful for gating, subsetting, or
@@ -411,9 +554,26 @@ mono <- subset(integrated, CD14_pos == TRUE)
 ncol(mono)
 ```
 
+Visualize positivity across cell types:
+
+```r
+# Percent-positive per cluster, one bar per gene
+PlotGenePositivity(integrated,
+                   c("CD3D", "CD14", "MS4A1", "GNLY", "CD8A"))
+
+# Heatmap for a longer panel
+PlotGenePositivity(integrated,
+                   c("CD3D", "CD4", "CD8A", "IL7R", "CD14", "LYZ",
+                     "FCGR3A", "MS4A1", "GNLY", "NKG7"),
+                   style = "heatmap", max_pct = 90)
+
+# Co-expression combinations for a T/B binary
+PlotGenePositivity(integrated, c("CD3D", "MS4A1"), style = "combo")
+```
+
 ---
 
-## 9. Cell-Cycle Scoring — `assign_cell_cycle_phase()`
+## 11. Cell-Cycle Scoring — `assign_cell_cycle_phase()`
 
 `assign_cell_cycle_phase()` uses UCell module scoring to assign S, G2M, or G1 phase to
 each cell. It is more robust than Seurat's `CellCycleScoring` on datasets with lower
@@ -453,53 +613,148 @@ integrated <- MergeSeurat(
 
 ---
 
-## 10. Cell-Type Composition
+## 12. Cell-Type Composition — `CellComposition()` / `CompositionalTest()`
 
-A natural follow-up question after integration is whether the proportions of each cell
-type differ between CTRL and STIM. The `CompositionAnalysis()` function (if available
-in your version) computes per-sample counts and proportions:
+A natural follow-up question after integration is whether the proportions of each cell type differ between CTRL and STIM.
 
 ```r
-comp <- CompositionAnalysis(
+# Compute proportions + plot
+comp <- CellComposition(
   integrated,
-  group_col    = "cell_type",
-  sample_col   = "sample_id",
-  condition_col = "stim"
+  cluster_col = "cell_type",
+  sample_col  = "sample_id",
+  group_col   = "stim",
+  style       = "box"
 )
+comp$plot
+ggsave("composition_ifnb.pdf", comp$plot, width = 10, height = 5)
 
-# Inspect the proportion table
-head(comp$proportions)
-
-# Stacked bar plot
-CompositionBarplot(comp, fill = "cell_type", facet = "stim")
-ggsave("composition_barplot_ifnb.pdf", width = 10, height = 5)
+# Underlying tidy data
+head(comp$df)     # sample, cluster, n_cells, prop, group
 ```
 
-For a manual alternative using base Seurat + dplyr:
+Test statistical significance of the composition shift using propeller (empirical-Bayes-moderated ANOVA on arcsin-sqrt transformed proportions):
 
 ```r
-comp_manual <- integrated@meta.data %>%
-  count(stim, cell_type) %>%
-  group_by(stim) %>%
-  mutate(proportion = n / sum(n) * 100) %>%
-  ungroup()
-
-ggplot(comp_manual, aes(x = stim, y = proportion, fill = cell_type)) +
-  geom_col() +
-  labs(x = "Condition", y = "% of cells", fill = "Cell type",
-       title = "PBMC composition: CTRL vs. IFN-β") +
-  theme_classic()
-ggsave("composition_manual_ifnb.pdf", width = 6, height = 5)
+comp_test <- CompositionalTest(
+  integrated,
+  cluster_col   = "cell_type",
+  sample_col    = "sample_id",
+  condition_col = "stim",
+  method        = "auto"        # propeller if available, else betareg, else wilcox
+)
+subset(comp_test, padj < 0.05)
 ```
 
-The IFN-β stimulated condition typically shows a shift in monocyte proportions and
-upregulation of ISGs (interferon-stimulated genes) across all cell types — a well-
-characterized response that makes `ifnb` a good sanity check that your integration
-pipeline is working correctly.
+The IFN-β stimulated condition typically shows a shift in monocyte proportions and upregulation of ISGs across all cell types — a well-characterized response that makes `ifnb` a good sanity check that your integration and composition-testing pipelines are working correctly.
 
 ---
 
-## 11. Session Info
+## 13. Differential Expression — `PseudobulkDE()` / `PlotVolcano()`
+
+The correct way to identify STIM-vs-CTRL DE genes is per-cell-type pseudobulk DE, not `FindMarkers`. `PseudobulkDE()` aggregates per (sample, cell_type) and runs DESeq2:
+
+```r
+# Every cell type at once
+de_all <- PseudobulkDE(
+  integrated,
+  sample_col    = "sample_id",
+  condition_col = "stim",
+  ident_1       = "STIM",
+  ident_2       = "CTRL",
+  cluster_col   = "cell_type",
+  min_cells_per_sample      = 10,
+  min_samples_per_condition = 2
+)
+
+# Inspect one cell type
+head(de_all$CD14_Mono$results)
+```
+
+Volcano plot for one cell type:
+
+```r
+PlotVolcano(de_all$CD14_Mono$results,
+            fc_threshold = 1,
+            p_threshold  = 0.05,
+            top_n        = 20,
+            label_genes  = c("ISG15", "IFI6", "MX1", "IFIT1", "IFIT3"))
+```
+
+Compare the DE profiles across two cell types (do they share the same ISGs?):
+
+```r
+cmp <- CompareMarkers(
+  de_all$CD14_Mono$results,
+  de_all$CD4_T$results,
+  labels = c("CD14_Mono", "CD4_T")
+)
+cmp$overlap
+cmp$plot                   # log2FC-vs-log2FC scatter, colored by category
+```
+
+---
+
+## 14. Cell-Cell Communication — `RunLIANA()`
+
+Compare ligand-receptor interactions between conditions by running LIANA on each stim/ctrl split, then intersecting the top interactions:
+
+```r
+# CTRL
+lr_ctrl <- RunLIANA(
+  subset(integrated, stim == "CTRL"),
+  idents_col = "cell_type",
+  method     = "consensus",
+  min_cells  = 10
+)
+
+# STIM
+lr_stim <- RunLIANA(
+  subset(integrated, stim == "STIM"),
+  idents_col = "cell_type",
+  method     = "consensus",
+  min_cells  = 10
+)
+
+# Top interactions unique to STIM
+top_ctrl <- head(lr_ctrl$ligand.complex_receptor.complex, 100)
+top_stim <- head(lr_stim$ligand.complex_receptor.complex, 100)
+setdiff(top_stim, top_ctrl)   # candidate stim-specific interactions
+```
+
+For a differential ligand-receptor pipeline that formally tests condition effects, LIANA's own `liana_deconstruct` or CellChat's differential analysis are the recommended paths — `RunLIANA()` is a starting point.
+
+---
+
+## 15. Save with Provenance — `SaveWithProvenance()`
+
+Save the annotated object with a JSON provenance sidecar so downstream readers can inspect what analysis it went through without loading the `.rds`:
+
+```r
+SaveWithProvenance(
+  integrated,
+  file    = "results/ifnb_integrated.rds",
+  git_dir = getwd(),
+  extra   = list(project = "ifnb_demo",
+                 analyst = "K. Evensen",
+                 date    = format(Sys.Date()))
+)
+# Writes results/ifnb_integrated.rds
+#    AND results/ifnb_integrated_provenance.json
+```
+
+For a quick summary of the object's state after all this work:
+
+```r
+CellSuiteSummary(integrated,
+                 cluster_col = "cell_type",
+                 sample_col  = "sample_id",
+                 top_markers = 5)
+```
+
+---
+
+## 16. Session Info
 
 ```r
 sessionInfo()
@@ -509,12 +764,19 @@ Key packages used in this vignette:
 
 | Package | Role |
 |---|---|
-| `SingleCellTools` | Doublet calling, integration, annotation, plotting |
+| `SingleCellTools` | Doublet calling, QC report/filter, integration, annotation, DE, composition, LIANA, provenance |
 | `Seurat` | Core data structure and analysis functions |
 | `SeuratData` | `ifnb` dataset |
 | `DoubletFinder` | Underlying doublet detection engine |
-| `UCell` | Module scoring for cell-cycle phase assignment |
+| `UCell` | Module scoring for annotation and cell-cycle phase |
 | `harmony` | Batch correction (called via `IntegrateLayers`) |
+| `DESeq2` | Pseudobulk differential expression |
+| `speckle` | Propeller composition test |
+| `Azimuth` | Reference-based annotation |
+| `liana` | Ligand-receptor consensus scoring |
+| `patchwork` | QCComparePlots grid layout |
+| `ks` | 2D KDE for `PlotFeatureDensity` |
+| `jsonlite` | Provenance sidecar |
 | `dplyr` / `ggplot2` | Data wrangling and plotting |
 
 ---
