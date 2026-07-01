@@ -11,6 +11,9 @@ ApplyQCFilters(
   sample_col = NULL,
   single_sample_name = NULL,
   override = NULL,
+  filter_doublets = TRUE,
+  doublet_col = "doublet_finder",
+  doublet_value = "Doublet",
   verbose = TRUE,
   return_report = FALSE
 )
@@ -51,11 +54,24 @@ entry replaces the corresponding cutoff pair; useful for tightening
 or loosening a single metric on a single sample without editing the
 CSV.}
 
+\item{filter_doublets}{Logical; if TRUE (default), drop cells whose
+\code{doublet_col} value equals \code{doublet_value}. If the column
+is missing on a sample, that sample is skipped with a message rather
+than erroring. Set FALSE to skip doublet filtering entirely, e.g.
+for samples where DoubletFinder wasn't run.}
+
+\item{doublet_col}{Metadata column holding doublet calls. Default
+\code{"doublet_finder"} (matches \code{GenerateQCReport}'s default).}
+
+\item{doublet_value}{Value in \code{doublet_col} that identifies a
+doublet call. Default \code{"Doublet"}.}
+
 \item{verbose}{Logical; print per-sample retention counts. Default TRUE.}
 
 \item{return_report}{If TRUE, returns a list with \code{obj} (filtered
 input) and \code{report} (data frame of per-sample per-metric
-retention stats). If FALSE (default), returns just \code{obj}.}
+retention stats, including a \code{doublets} row when doublet
+filtering ran). If FALSE (default), returns just \code{obj}.}
 }
 \value{
 The filtered Seurat object or list of Seurat objects, matching

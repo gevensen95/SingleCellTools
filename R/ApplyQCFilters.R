@@ -42,10 +42,20 @@
 #'   entry replaces the corresponding cutoff pair; useful for tightening
 #'   or loosening a single metric on a single sample without editing the
 #'   CSV.
+#' @param filter_doublets Logical; if TRUE (default), drop cells whose
+#'   \code{doublet_col} value equals \code{doublet_value}. If the column
+#'   is missing on a sample, that sample is skipped with a message rather
+#'   than erroring. Set FALSE to skip doublet filtering entirely, e.g.
+#'   for samples where DoubletFinder wasn't run.
+#' @param doublet_col Metadata column holding doublet calls. Default
+#'   \code{"doublet_finder"} (matches \code{GenerateQCReport}'s default).
+#' @param doublet_value Value in \code{doublet_col} that identifies a
+#'   doublet call. Default \code{"Doublet"}.
 #' @param verbose Logical; print per-sample retention counts. Default TRUE.
 #' @param return_report If TRUE, returns a list with \code{obj} (filtered
 #'   input) and \code{report} (data frame of per-sample per-metric
-#'   retention stats). If FALSE (default), returns just \code{obj}.
+#'   retention stats, including a \code{doublets} row when doublet
+#'   filtering ran). If FALSE (default), returns just \code{obj}.
 #' @return The filtered Seurat object or list of Seurat objects, matching
 #'   the shape of the input. If \code{return_report = TRUE}, a
 #'   \code{list(obj, report, cutoffs)} instead.
@@ -81,6 +91,9 @@ ApplyQCFilters <- function(obj,
                            sample_col          = NULL,
                            single_sample_name  = NULL,
                            override            = NULL,
+                           filter_doublets     = TRUE,
+                           doublet_col         = "doublet_finder",
+                           doublet_value       = "Doublet",
                            verbose             = TRUE,
                            return_report       = FALSE) {
 
@@ -162,7 +175,8 @@ ApplyQCFilters <- function(obj,
            "against the `sample` column of the cutoffs table.")
     }
     out_list <- lapply(names(obj), function(nm) {
-      .filter_one(obj[[nm]], nm, cutoffs_df, verbose)
+      .filter_one(obj[[nm]], nm, cutoffs_df, verbose,
+                  filter_doublets, doublet_col, doublet_value)
     })
     names(out_list) <- names(obj)
     report_df <- do.call(rbind, lapply(out_list, `[[`, "report"))
@@ -181,7 +195,8 @@ ApplyQCFilters <- function(obj,
           as.character(obj@meta.data[[sample_col]]) == samp
         ]
         sub <- subset(obj, cells = cells_samp)
-        one <- .filter_one(sub, samp, cutoffs_df, verbose)
+        one <- .filter_one(sub, samp, cutoffs_df, verbose,
+                           filter_doublets, doublet_col, doublet_value)
         keep_all    <- c(keep_all, colnames(one$obj))
         report_list <- c(report_list, list(one$report))
       }
@@ -198,7 +213,8 @@ ApplyQCFilters <- function(obj,
                " sample(s); pass `single_sample_name` or use `sample_col`.")
         }
       }
-      one <- .filter_one(obj, single_sample_name, cutoffs_df, verbose)
+      one <- .filter_one(obj, single_sample_name, cutoffs_df, verbose,
+                         filter_doublets, doublet_col, doublet_value)
       result    <- one$obj
       report_df <- one$report
     }
@@ -220,25 +236,74 @@ ApplyQCFilters <- function(obj,
 
 #' @keywords internal
 #' @noRd
-.filter_one <- function(so, sample_name, cutoffs_df, verbose) {
+.filter_one <- function(so, sample_name, cutoffs_df, verbose,
+                        filter_doublets = FALSE,
+                        doublet_col     = "doublet_finder",
+                        doublet_value   = "Doublet") {
   if (!inherits(so, "Seurat")) {
     stop("Object for sample '", sample_name, "' is not a Seurat object.")
   }
   rows <- cutoffs_df[cutoffs_df$sample == sample_name, , drop = FALSE]
   n_start <- ncol(so)
 
+  # ---- Doublet drop (before metric-based filter) ------------------------
+  # Doing this before the metric filter means the retention stats for each
+  # metric reflect the singlet population, and the pct-kept numbers in the
+  # report are directly comparable to what you'd get manually after
+  # dropping doublets first.
+  doublet_row <- NULL
+  if (isTRUE(filter_doublets)) {
+    if (!doublet_col %in% colnames(so@meta.data)) {
+      if (verbose) {
+        message(sprintf(
+          "  [%s] doublet column '%s' not present; skipping doublet drop.",
+          sample_name, doublet_col))
+      }
+    } else {
+      is_doublet <- as.character(so@meta.data[[doublet_col]]) == doublet_value
+      is_doublet[is.na(is_doublet)] <- FALSE
+      n_doublet  <- sum(is_doublet)
+      if (n_doublet > 0) {
+        so <- subset(so, cells = colnames(so)[!is_doublet])
+        if (verbose) {
+          message(sprintf("  [%s] dropped %d doublet(s) (%.1f%% of %d)",
+                          sample_name, n_doublet,
+                          100 * n_doublet / n_start, n_start))
+        }
+      } else if (verbose) {
+        message(sprintf("  [%s] no doublets flagged in '%s'.",
+                        sample_name, doublet_col))
+      }
+      doublet_row <- data.frame(
+        sample   = sample_name,
+        metric   = "doublets",
+        lo       = NA_real_,
+        hi       = NA_real_,
+        n_before = n_start,
+        n_after  = ncol(so),
+        pct_kept = round(100 * ncol(so) / max(1, n_start), 1),
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+
   if (nrow(rows) == 0) {
     if (verbose) {
       message(sprintf(
-        "  [%s] no matching sample in cutoffs table; keeping all %d cells.",
-        sample_name, n_start))
+        "  [%s] no matching sample in cutoffs table; %s.",
+        sample_name,
+        if (is.null(doublet_row)) "keeping all cells"
+        else "only doublet filter applied"))
     }
+    empty_row <- data.frame(sample = sample_name, metric = NA_character_,
+                            lo = NA_real_, hi = NA_real_,
+                            n_before = n_start, n_after = ncol(so),
+                            pct_kept = round(100 * ncol(so) / max(1, n_start), 1),
+                            stringsAsFactors = FALSE)
     return(list(
       obj    = so,
-      report = data.frame(sample = sample_name, metric = NA_character_,
-                          n_before = n_start, n_after = n_start,
-                          pct_kept = 100,
-                          stringsAsFactors = FALSE)
+      report = if (is.null(doublet_row)) empty_row
+               else rbind(doublet_row, empty_row)
     ))
   }
 
@@ -283,8 +348,15 @@ ApplyQCFilters <- function(obj,
   }
 
   filtered <- subset(so, cells = cells[keep])
+  metric_df <- do.call(rbind, metric_report)
+  # Prepend the doublet row (if we ran doublet filtering) so it shows up
+  # first in the retention report — reflects that it happened before the
+  # metric-based filter.
+  if (!is.null(doublet_row)) {
+    metric_df <- rbind(doublet_row, metric_df)
+  }
   list(
     obj    = filtered,
-    report = do.call(rbind, metric_report)
+    report = metric_df
   )
 }
