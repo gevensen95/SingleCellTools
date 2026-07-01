@@ -1,25 +1,31 @@
 Package: SingleCellTools
 Title: Wrapper and analysis functions for single cell data
-Version: 2.4.1
+Version: 2.5
 Authors@R:
     person("K. Garrett", "Evensen", , "kgsevensen@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-6720-2526"))
-Description: Functions to make single cell easier
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+Description: Opinionated wrappers over Seurat, Signac, and downstream analysis packages for
+    scRNA-seq and spatial (Visium, Xenium, Parse Bio) workflows. Covers object construction,
+    QC reporting and filtering, integration, marker-based and reference-based annotation,
+    pseudobulk differential expression, composition testing, ligand-receptor inference,
+    trajectory / pseudotime, spatial edge / hole / niche detection, and AnnData
+    interoperability.
+License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Depends:
-    R (>= 2.10)
+    R (>= 4.1.0),
+    Seurat (>= 4.9.9.9050),
+    SeuratObject (>= 4.9.9),
+    ggplot2 (>= 3.4.4),
+    dplyr (>= 1.1.2)
 Imports:
     Seurat (>= 4.9.9.9050),
-    SeuratObject (>= 4.9.9.9086),
+    SeuratObject (>= 4.9.9),
     Signac (>= 1.9.0.9000),
     EnsDb.Mmusculus.v79 (>= 2.99.0),
     Matrix,
     methods,
-    stats,
-    utils,
     grDevices,
     grid,
     dplyr (>= 1.1.2),
@@ -32,22 +38,50 @@ Imports:
     purrr (>= 1.0.2),
     RANN (>= 2.6.1),
     ggplot2 (>= 3.4.4),
+    patchwork,
     RColorBrewer,
     ClusterR,
+    irlba,
+    RSpectra,
     glmGamPoi (>= 1.12.2),
     GO.db (>= 3.17.0),
     UCell (>= 2.4.0),
-    DoubletFinder,
-    irlba,
-    RSpectra
-Suggests:
-    sf,
+    DoubletFinder (>= 2.0.6),
     DESeq2,
-    SingleR,
     SummarizedExperiment,
-    zellkonverter,
+    S4Vectors,
+    edgeR,
+    speckle,
+    limma,
+    liana,
+    OmnipathR,
+    Azimuth,
+    spacexr,
+    slingshot,
+    ks,
+    MASS,
+    cluster,
+    jsonlite,
+    betareg,
+    utils,
+    stats,
     rmarkdown,
     knitr
-Remotes:
-    chris-mcginnis-ucsf/DoubletFinder
+Suggests:
+    SingleR,
+    SingleCellExperiment,
+    zellkonverter,
+    anndata,
+    reticulate,
+    basilisk,
+    harmony,
+    sf,
+    Nebulosa,
+    CellChat,
+    org.Mm.eg.db,
+    org.Hs.eg.db,
+    AnnotationDbi,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
 Config/roxygen2/version: 8.0.0
+Config/testthat/edition: 3

@@ -16,37 +16,68 @@
    - 3.2 [Interactive QC Filtering — `CreateRNAObjectsFilter()`](#32-interactive-qc-filtering--creatернаobjectsfilter)
    - 3.3 [Doublet Detection — `calldoublet()`](#33-doublet-detection--calldoublet)
    - 3.4 [Merging and Integration — `MergeSeurat()`](#34-merging-and-integration--mergeseurat)
-   - 3.5 [Cell Annotation — `MarkerPlot()`](#35-cell-annotation--markerplot)
-   - 3.6 [Gene Positivity — `AddGenePositivity()`](#36-gene-positivity--addgenepositivity)
+   - 3.5 [Sub-clustering — `SubsetAndRecluster()`](#35-sub-clustering--subsetandrecluster)
+   - 3.6 [Cell Annotation — `MarkerPlot()` / `MarkerPctPlot()`](#36-cell-annotation--markerplot--markerpctplot)
+   - 3.7 [Marker-based Annotation — `AnnotateClusters()`](#37-marker-based-annotation--annotateclusters)
+   - 3.8 [Reference-based Annotation — `AnnotateWithReference()`](#38-reference-based-annotation--annotatewithreference)
+   - 3.9 [Batch Marker Discovery — `FindMarkersList()`](#39-batch-marker-discovery--findmarkerslist)
+   - 3.10 [Gene Positivity — `AddGenePositivity()` / `PlotGenePositivity()`](#310-gene-positivity--addgenepositivity--plotgenepositivity)
 4. [One-Shot Pipeline — `CreateAndIntegrateRNA()`](#4-one-shot-pipeline--createandintegrаterna)
-5. [Spatial Workflows](#5-spatial-workflows)
-   - 5.1 [Visium — `CreateVisiumObjects()` + `EdgeDetectionVisium()`](#51-visium--createvisiumobjects--edgedetectionvisium)
-   - 5.2 [Xenium — `LoadXenium2()`](#52-xenium--loadxenium2)
-   - 5.3 [Parse Biosciences — `MakeParseObj()`](#53-parse-biosciences--makeparseobj)
-6. [scATAC-seq — `CreateATACObjects()`](#6-scatac-seq--createatacobjects)
-7. [Utility Functions](#7-utility-functions)
-   - 7.1 [Gene ID Diagnostics](#71-gene-id-diagnostics)
-   - 7.2 [Cell-Cycle Scoring](#72-cell-cycle-scoring)
-   - 7.3 [Spatial Niche Analysis](#73-spatial-niche-analysis)
-   - 7.4 [Spatial Polygon Tools](#74-spatial-polygon-tools)
-   - 7.5 [GO Term Children](#75-go-term-children)
-8. [Tips and Common Pitfalls](#8-tips-and-common-pitfalls)
-9. [Session Info](#9-session-info)
+5. [QC Reporting and Filtering](#5-qc-reporting-and-filtering)
+   - 5.1 [`GenerateQCReport()`](#51-generateqcreport)
+   - 5.2 [`ApplyQCFilters()`](#52-applyqcfilters)
+   - 5.3 [`QCComparePlots()`](#53-qccompareplots)
+6. [Differential Expression](#6-differential-expression)
+   - 6.1 [`PseudobulkDE()`](#61-pseudobulkde)
+   - 6.2 [`PlotVolcano()`](#62-plotvolcano)
+   - 6.3 [`CompareMarkers()`](#63-comparemarkers)
+7. [Composition Analysis](#7-composition-analysis)
+   - 7.1 [`CellComposition()`](#71-cellcomposition)
+   - 7.2 [`CompositionalTest()`](#72-compositionaltest)
+8. [Cell-Cell Communication — `RunLIANA()`](#8-cell-cell-communication--runliana)
+9. [Trajectory Analysis — `PseudotimeWrapper()`](#9-trajectory-analysis--pseudotimewrapper)
+10. [Integration Quality — `BatchEffectQC()`](#10-integration-quality--batcheffectqc)
+11. [Visualization — `PlotFeatureDensity()`](#11-visualization--plotfeaturedensity)
+12. [Spatial Workflows](#12-spatial-workflows)
+    - 12.1 [Visium — `CreateVisiumObjects()` + `EdgeDetectionVisium()`](#121-visium--createvisiumobjects--edgedetectionvisium)
+    - 12.2 [Xenium — `LoadXenium2()`](#122-xenium--loadxenium2)
+    - 12.3 [Parse Biosciences — `MakeParseObj()`](#123-parse-biosciences--makeparseobj)
+    - 12.4 [FOV Edge / Tissue Hole Detection](#124-fov-edge--tissue-hole-detection)
+    - 12.5 [Neighborhood Enrichment — `NeighborhoodEnrichment()`](#125-neighborhood-enrichment--neighborhoodenrichment)
+    - 12.6 [Niche Co-expression — `NicheCoExpress()`](#126-niche-co-expression--nicheco express)
+    - 12.7 [Visium Deconvolution — `RunRCTD()`](#127-visium-deconvolution--runrctd)
+13. [scATAC-seq — `CreateATACObjects()`](#13-scatac-seq--createatacobjects)
+14. [scanpy Interoperability — `ToAnnData()` / `FromAnnData()`](#14-scanpy-interoperability--toanndata--fromanndata)
+15. [Reproducibility](#15-reproducibility)
+    - 15.1 [`SaveWithProvenance()`](#151-savewithprovenance)
+    - 15.2 [`CellSuiteSummary()`](#152-cellsuitesummary)
+16. [Utility Functions](#16-utility-functions)
+    - 16.1 [Gene ID Diagnostics](#161-gene-id-diagnostics)
+    - 16.2 [Cell-Cycle Scoring](#162-cell-cycle-scoring)
+    - 16.3 [Spatial Niche Assays](#163-spatial-niche-assays)
+    - 16.4 [Spatial Polygon Tools](#164-spatial-polygon-tools)
+    - 16.5 [GO Term Children](#165-go-term-children)
+17. [Tips and Common Pitfalls](#17-tips-and-common-pitfalls)
+18. [Session Info](#18-session-info)
 
 ---
 
 ## 1. Overview
 
-`SingleCellTools` is an opinionated set of R wrapper functions that reduce the boilerplate of common single-cell analysis tasks. Rather than replacing Seurat or Signac, it wraps them — consolidating the five-to-ten function calls you write for every project into single, well-parametrized entry points.
+`SingleCellTools` is an opinionated set of R wrapper functions that reduce the boilerplate of common single-cell and spatial analysis tasks. Rather than replacing Seurat or Signac, it wraps them — consolidating the five-to-ten function calls you write for every project into single, well-parametrized entry points.
 
 The package covers:
 
-- Reading **10x Genomics**, **Parse Biosciences**, **Visium**, **Xenium**, and **scATAC-seq** outputs into Seurat objects
-- **Doublet calling** with DoubletFinder, with automatic pK optimization
-- **Merging and integration** (Harmony, RPCA, CCA, or JointPCA) with normalization, PCA, clustering, and UMAP in one call
-- **Edge-spot detection** for Visium data
-- Annotated **dot plots** with automatic gene filtering and identity clustering
-- Metadata helpers including gene positivity flags and cell-cycle phase scoring
+- **Loading**: 10x Genomics, Parse Biosciences, Visium, Xenium, and scATAC-seq into Seurat objects
+- **QC**: doublet calling (DoubletFinder), automated HTML QC reports with recommended cutoffs, one-shot filter application, pre/post filter comparison plots
+- **Integration**: Harmony / RPCA / CCA / JointPCA with normalization, PCA, clustering, and UMAP in one call; quantitative batch-effect QC
+- **Annotation**: marker-list scoring (UCell), SingleR reference correlation, Azimuth reference projection, cluster-level majority voting with `min_score` / `min_margin` thresholds; tumor-mode and Visium-safe defaults
+- **DE and downstream**: pseudobulk DE (DESeq2), volcano plots, marker-set overlap comparison, cell-type composition testing (propeller / beta regression / Wilcoxon), ligand-receptor inference (LIANA)
+- **Trajectory**: pseudotime inference (Slingshot)
+- **Spatial**: edge / hole detection, angular-gap and bounding-box outlier calling, neighborhood enrichment, niche co-expression, RCTD deconvolution, spatial polygon ROI tools
+- **Interop**: bidirectional Seurat ↔ AnnData conversion for scanpy compatibility
+- **Reproducibility**: `.rds` + JSON provenance sidecar, one-command project summary card
+- **Visualization**: annotated dot plots with automatic filtering, percent-positive heatmaps, gene-positivity overlays, 2D KDE feature density (Nebulosa-style)
 
 ---
 
@@ -72,18 +103,55 @@ if (!requireNamespace("BiocManager", quietly = TRUE))
   install.packages("BiocManager")
 
 BiocManager::install(c(
+  # Core scRNA-seq / spatial
   "EnsDb.Mmusculus.v79",  # mouse gene annotations
   "glmGamPoi",            # fast SCTransform fitting
   "GO.db",                # GO term lookups
   "UCell",                # module scoring
-  "Signac"                # scATAC-seq
+  "Signac",               # scATAC-seq
+  # Differential expression and composition
+  "DESeq2",
+  "SummarizedExperiment",
+  "S4Vectors",
+  "edgeR",
+  "speckle",              # propeller composition test
+  "limma",
+  # Trajectory
+  "slingshot",
+  # Reference-based annotation
+  "SingleR",              # optional; used by AnnotateClusters(method="singler")
+  # scanpy interop
+  "zellkonverter"
+))
+```
+
+### GitHub-only dependencies
+
+```r
+# Ligand-receptor inference
+remotes::install_github("saezlab/liana")
+
+# Reference-based annotation
+remotes::install_github("satijalab/azimuth")
+
+# Visium deconvolution
+remotes::install_github("dmcable/spacexr")
+```
+
+### CRAN dependencies added in v2.4
+
+```r
+install.packages(c(
+  "patchwork", "ks", "MASS", "cluster",
+  "jsonlite", "betareg"
 ))
 ```
 
 ### Optional dependencies
 
 ```r
-install.packages("sf")   # required only for get_cells_in_polygon()
+install.packages("sf")     # required only for get_cells_in_polygon()
+install.packages("anndata"); reticulate::install_python()  # for FromAnnData Python reader
 ```
 
 ### Load the package
@@ -92,24 +160,39 @@ install.packages("sf")   # required only for get_cells_in_polygon()
 library(SingleCellTools)
 ```
 
+On load, `SingleCellTools` auto-attaches all of its `Imports` so functions like `%>%`, `ggplot()`, `filter()`, etc. are usable without namespace prefixes. Missing optional dependencies are reported as a single startup message and their functions become inert.
+
 ---
 
 ## 3. Core scRNA-seq Workflow
 
-The typical pipeline looks like this:
+The typical pipeline (v2.4) looks like this:
 
 ```
 CellRanger outputs
       ↓
-CreateRNAObjects()        ← load, compute %mt, call doublets
+CreateRNAObjects()             ← load, compute %mt, call doublets
       ↓
-[manual subset/filter]    ← subset() based on QC plots
+GenerateQCReport()             ← recommended cutoffs (HTML + CSV sidecar)
       ↓
-MergeSeurat()             ← normalize, integrate, cluster, UMAP
+ApplyQCFilters()               ← per-metric + doublet drop
       ↓
-MarkerPlot()              ← annotate cell types
+QCComparePlots()               ← verify effect of filtering
       ↓
-AddGenePositivity()       ← flag gene-positive cells
+MergeSeurat()                  ← normalize, integrate, cluster, UMAP
+      ↓
+BatchEffectQC()                ← integration diagnostics (optional)
+      ↓
+AnnotateClusters()             ← marker or SingleR labels
+   or AnnotateWithReference()  ← Azimuth reference projection
+      ↓
+SubsetAndRecluster()           ← per-cell-type sub-clustering (optional)
+      ↓
+PseudobulkDE()                 ← condition contrasts
+      ↓
+PlotVolcano() / PlotFeatureDensity() / CellComposition() / RunLIANA()
+      ↓
+SaveWithProvenance()           ← .rds + JSON sidecar
 ```
 
 ---
@@ -343,7 +426,43 @@ integrated_visium <- MergeSeurat(
 
 ---
 
-### 3.5 Cell Annotation — `MarkerPlot()`
+### 3.5 Sub-clustering — `SubsetAndRecluster()`
+
+Once you have a first-pass clustering and cell-type labels, it's common to want a finer look at one or a few types (e.g. the T-cell compartment). `SubsetAndRecluster()` chains subsetting → cleanup → optional re-normalization → PCA → optional integration → UMAP → clustering, with sensible defaults for Seurat v5's split-layer conventions.
+
+```r
+tcell <- SubsetAndRecluster(
+  integrated,
+  metadata_col   = "cell_type",
+  metadata_value = c("CD4 T", "CD8 T", "Treg"),
+  assay          = "RNA",
+  normalize      = "auto",            # detect missing data/scale.data layers
+  integrate      = TRUE,
+  integration_method = "HarmonyIntegration",
+  dims           = 20,
+  resolution     = 0.3
+)
+```
+
+Key features:
+
+- `normalize = "auto"` inspects the working assay's layers and runs `NormalizeData` + `FindVariableFeatures` + `ScaleData` (or `SCTransform` when `normalization_method = "SCT"`) only if `data` / `scale.data` are missing. Prevents the common `'arg' should be "counts"` error when passing a raw-count subset to PCA.
+- Cell-empty and sparsely-detected-gene pruning after subsetting, so downstream SCT doesn't fail with "subscript out of bounds".
+- Best-effort `JoinLayers` on `counts` layers so QC metadata (`nCount_<assay>`, `nFeature_<assay>`) is recomputed correctly for the retained cells.
+
+You can also subset by `idents` or by an explicit cell-barcode vector:
+
+```r
+# By cluster id
+SubsetAndRecluster(integrated, idents = c("0", "3", "7"))
+
+# By explicit cells
+SubsetAndRecluster(integrated, cells = my_barcodes)
+```
+
+---
+
+### 3.6 Cell Annotation — `MarkerPlot()` / `MarkerPctPlot()`
 
 `MarkerPlot()` builds an annotated dot plot from a two-column data frame of genes and their cell-type labels. Genes are automatically grouped, sorted, and labeled along the right edge of the plot. Identities are optionally clustered by correlation so similar cell types appear adjacent.
 
@@ -407,7 +526,108 @@ MarkerPlot(integrated, markers, cluster = FALSE)  # disable correlation clusteri
 
 ---
 
-### 3.6 Gene Positivity — `AddGenePositivity()`
+#### Percent-positive companion — `MarkerPctPlot()`
+
+`MarkerPctPlot()` isolates the percent-positive signal (percent of cells in each cluster expressing each gene) as either a heatmap tile or a dot plot. Where `MarkerPlot` encodes avg expression + percent positive together, `MarkerPctPlot` shows only the "how many cells detect this gene" signal, which is more readable when the avg-expression scaling would compress important variation.
+
+```r
+MarkerPctPlot2(
+  integrated, cellID,
+  style        = "tile",         # or "dot"
+  colors       = c("white", "firebrick"),
+  max_pct      = 80,             # spread color range over informative 0-80%
+  label_offset = 1.2             # right-margin cell-type labels
+)
+```
+
+Both `MarkerPlot` and `MarkerPctPlot` accept the same two-column `genes` data frame and share the internal `.pull_dotplot_data` / `.cluster_mat` helpers (in `dotplot-helpers.R`).
+
+---
+
+### 3.7 Marker-based Annotation — `AnnotateClusters()`
+
+`AnnotateClusters()` transfers cell-type labels to each cluster using either UCell module scoring (`method = "marker"`) or SingleR reference correlation (`method = "singler"`). Cluster labels are assigned by averaging per-cell scores per cluster and picking the winner, with configurable `min_score` and `min_margin` thresholds for "Unknown" fallback.
+
+```r
+markers_list <- list(
+  T_cell = c("CD3D", "CD3E", "CD8A", "CD4"),
+  B_cell = c("MS4A1", "CD79A", "CD19"),
+  NK     = c("NKG7", "GNLY", "KLRD1"),
+  Mono   = c("CD14", "LYZ", "FCGR3A")
+)
+
+integrated <- AnnotateClusters(
+  integrated,
+  method              = "marker",
+  markers             = markers_list,
+  cluster_col         = "seurat_clusters",
+  new_col             = "predicted_cell_type",
+  filter_nonspecific  = TRUE,      # drop broadly-expressed "markers"
+  min_score           = 0.1,
+  min_margin          = 0.05
+)
+table(integrated$predicted_cell_type)
+```
+
+**Tumor-friendly defaults.** In tumor samples, canonical markers get compressed toward a proliferating, EMT-mixed dedifferentiated state. Pass `tumor_mode = TRUE` to disable `filter_nonspecific` and tighten `high_relative_to_max`, and to trigger a warning that labels are approximate.
+
+```r
+obj <- AnnotateClusters(obj, markers = markers_list, tumor_mode = TRUE)
+```
+
+**Visium-friendly usage.** Each Visium spot mixes multiple cell types; the winner-takes-all classifier hides minority signal. Use `return_scores = "cluster"` to inspect the full per-cluster score matrix, `min_detection_frac` to drop signatures whose markers barely register, and `filter_nonspecific = FALSE`:
+
+```r
+res <- AnnotateClusters(
+  visium, markers = markers_list,
+  filter_nonspecific  = FALSE,
+  min_detection_frac  = 0.05,
+  return_scores       = "cluster"
+)
+res$obj               # annotated
+res$scores            # cluster x cell-type matrix; heatmap this
+```
+
+---
+
+### 3.8 Reference-based Annotation — `AnnotateWithReference()`
+
+Wraps `Azimuth::RunAzimuth` for reference-based annotation against common tissue atlases (PBMC, lung, kidney, adipose, cortex, ...). Faster and often more consistent than marker-scoring for standard tissues.
+
+```r
+integrated <- AnnotateWithReference(
+  integrated,
+  reference          = "pbmcref",
+  annotation_levels  = c("l1", "l2"),
+  min_score          = 0.5,        # threshold low-confidence calls
+  unassigned_label   = "Unknown"
+)
+table(integrated$predicted.celltype.l2)
+```
+
+Complements `AnnotateClusters` — use Azimuth for the coarse pass, then optionally refine sub-populations with marker-based scoring on a `SubsetAndRecluster` output.
+
+---
+
+### 3.9 Batch Marker Discovery — `FindMarkersList()`
+
+Runs `FindAllMarkers` across a list of Seurat objects, sets `Idents()` to a common cell-type / cluster column, and returns a named list of filtered marker tables (padj + log2FC thresholds applied). Useful across a cohort of samples processed separately.
+
+```r
+markers_by_sample <- FindMarkersList(
+  seurat_list,
+  idents_col       = "cell_ontology_class",
+  padj_threshold   = 0.05,
+  log2fc_threshold = 1
+)
+
+# Combine across samples
+all_markers <- do.call(rbind, markers_by_sample)
+```
+
+---
+
+### 3.10 Gene Positivity — `AddGenePositivity()` / `PlotGenePositivity()`
 
 `AddGenePositivity()` adds a logical metadata column for each gene, flagging cells where expression exceeds a threshold. It accepts a single Seurat object or a list and returns the same shape.
 
@@ -445,6 +665,22 @@ at2 <- subset(integrated, Sftpc_pos == TRUE)
 tapply(integrated$Sftpc_pos, Idents(integrated), mean)
 ```
 
+`PlotGenePositivity()` summarizes those columns visually — three style modes:
+
+```r
+# Percent-positive bar chart per cluster, one bar per gene
+PlotGenePositivity(integrated, c("Sftpc", "Ager", "Trp63"))
+
+# Many genes → tile heatmap
+PlotGenePositivity(integrated, big_gene_vec, style = "heatmap")
+
+# Co-expression combinations (CD3D+/CD4+, CD3D+/CD4-, ...)
+PlotGenePositivity(integrated, c("CD3D", "CD4"), style = "combo")
+
+# For a list of samples, one facet per sample
+PlotGenePositivity(seurat_list, c("Sftpc", "Ager"))
+```
+
 ---
 
 ## 4. One-Shot Pipeline — `CreateAndIntegrateRNA()`
@@ -471,9 +707,296 @@ This is convenient for quick exploratory runs, but `CreateRNAObjects()` + `Merge
 
 ---
 
-## 5. Spatial Workflows
+## 5. QC Reporting and Filtering
 
-### 5.1 Visium — `CreateVisiumObjects()` + `EdgeDetectionVisium()`
+Three functions form a self-contained QC pipeline: `GenerateQCReport()` picks cutoffs, `ApplyQCFilters()` applies them, and `QCComparePlots()` shows what changed.
+
+### 5.1 `GenerateQCReport()`
+
+Produces a self-contained HTML report of per-sample QC — per-metric distributions, log-skew-aware transformation, spatial QC when applicable, doublet call summaries — plus a table of **recommended filter cutoffs** built from `median ± mad_multiplier × MAD` per (sample, metric).
+
+```r
+GenerateQCReport(
+  sample_list,
+  output_file   = "qc/qc_report.html",
+  metadata_cols = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+  mad_multiplier = 3,          # 3 MAD = "outlier" threshold
+  doublet_col   = "doublet_finder"
+)
+```
+
+Alongside the HTML, it writes a machine-readable sidecar (`qc/qc_report_cutoffs.csv`) that `ApplyQCFilters()` picks up automatically.
+
+### 5.2 `ApplyQCFilters()`
+
+Reads the sidecar CSV (or accepts a data frame or the HTML path directly) and subsets each Seurat object to cells that pass every metric's `[suggest_lo, suggest_hi]` range. Doublet filtering is included by default via `filter_doublets = TRUE`.
+
+```r
+sample_list_filtered <- ApplyQCFilters(
+  sample_list,
+  cutoffs         = "qc/qc_report_cutoffs.csv",
+  filter_doublets = TRUE,
+  doublet_col     = "doublet_finder",
+  doublet_value   = "Doublet",
+  return_report   = TRUE          # for a per-sample retention table
+)
+sample_list_filtered$report        # sample x metric x pct_kept
+```
+
+Handy variants:
+
+```r
+# Only some metrics — leave doublet score / percent.hb alone
+ApplyQCFilters(sample_list, cutoffs = "qc/qc_report_cutoffs.csv",
+               metrics = c("nCount_RNA", "nFeature_RNA", "percent.mt"))
+
+# Override a single sample's mito cutoff without editing the CSV
+ApplyQCFilters(sample_list, cutoffs = "qc/qc_report_cutoffs.csv",
+               override = list(sample1 = list(percent.mt = c(0, 15))))
+```
+
+### 5.3 `QCComparePlots()`
+
+Pre/post violin overlays of QC metrics, one panel per metric, faceted by sample, with `n_before → n_after (pct%)` annotations. Confirms at a glance that the filtering did what you intended.
+
+```r
+QCComparePlots(
+  pre     = sample_list,
+  post    = sample_list_filtered$obj,
+  metrics = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+  log_y   = c("nCount_RNA", "nFeature_RNA")
+)
+```
+
+---
+
+## 6. Differential Expression
+
+### 6.1 `PseudobulkDE()`
+
+The statistically correct way to compare conditions across donors: aggregate per-cell counts into per-sample-per-cluster pseudobulk samples, then run DESeq2. Cell-level DE (Wilcoxon, MAST) treats each cell as independent and inflates type-I error.
+
+```r
+# Single cluster / cell type
+res <- PseudobulkDE(
+  integrated,
+  sample_col    = "orig.ident",
+  condition_col = "treatment",
+  ident_1       = "DrugA",
+  ident_2       = "Vehicle",
+  group_by      = "cell_type",
+  group_value   = "T cell"
+)
+head(res$results)                # DESeq2 results table
+head(res$normalized_counts)      # size-factor-normalized pseudobulk counts
+```
+
+For multi-cluster analysis, pass `cluster_col` to loop over every cluster:
+
+```r
+res_all <- PseudobulkDE(
+  integrated,
+  sample_col    = "orig.ident",
+  condition_col = "treatment",
+  ident_1       = "DrugA",
+  ident_2       = "Vehicle",
+  cluster_col   = "cell_type"
+)
+res_all$T_cell$results            # per-cluster access
+de_long <- do.call(rbind, lapply(res_all, `[[`, "results"))
+```
+
+Custom design formulas work for batch adjustment, three-level factors, and interaction models:
+
+```r
+res <- PseudobulkDE(
+  integrated,
+  sample_col    = "orig.ident",
+  condition_col = "treatment",
+  cluster_col   = "cell_type",
+  design        = ~ batch + treatment,
+  contrast      = c("treatment", "DrugA", "Vehicle")
+)
+```
+
+Genes are filtered with `edgeR::filterByExpr` when available (recommended), with a row-sum fallback otherwise.
+
+### 6.2 `PlotVolcano()`
+
+Volcano plot with auto-detection of common column-name conventions. Accepts FindMarkers-style (`avg_log2FC`, `p_val_adj`) or PseudobulkDE-style (`log2FC`, `padj`) inputs.
+
+```r
+PlotVolcano(res$results,
+            fc_threshold = 1,     # |log2FC| threshold
+            p_threshold  = 0.05,
+            top_n        = 20,    # label top-N by combined criterion
+            label_genes  = c("MYC", "TP53"))
+```
+
+### 6.3 `CompareMarkers()`
+
+Merge two DE result tables on gene and classify each as `shared_up / shared_down / opposite_sign / only_a / only_b / n.s. in both`. Includes a Fisher's exact test on the shared-vs-unique contingency and a log2FC-vs-log2FC scatter.
+
+```r
+res_drug    <- PseudobulkDE(obj, sample_col = "orig.ident",
+                            condition_col = "treatment",
+                            ident_1 = "drug", ident_2 = "vehicle")
+res_disease <- PseudobulkDE(obj, sample_col = "orig.ident",
+                            condition_col = "status",
+                            ident_1 = "disease", ident_2 = "healthy")
+
+cmp <- CompareMarkers(
+  res_drug$results, res_disease$results,
+  labels = c("drug_vs_veh", "disease_vs_healthy")
+)
+cmp$overlap                    # counts per category
+cmp$fisher                     # Fisher's exact test
+cmp$plot                       # log2FC-vs-log2FC scatter
+head(cmp$merged)
+```
+
+---
+
+## 7. Composition Analysis
+
+### 7.1 `CellComposition()`
+
+Per-sample per-cluster proportions in a tidy data frame + ggplot. Three plot styles: stacked bars per sample, boxplots per group per cluster, or line plots for time-series-style comparisons.
+
+```r
+comp <- CellComposition(
+  integrated,
+  cluster_col = "cell_type",
+  sample_col  = "orig.ident",
+  group_col   = "treatment",
+  style       = "box"
+)
+comp$plot
+head(comp$df)                  # per-sample per-cluster proportions
+```
+
+### 7.2 `CompositionalTest()`
+
+Statistical test for shifts in composition between conditions. Prefers `speckle::propeller` (arcsin-sqrt or logit-transformed ANOVA — the current best practice), falls back to per-cluster beta regression (`betareg`), falls back further to per-cluster Wilcoxon with BH correction.
+
+```r
+comp_test <- CompositionalTest(
+  integrated,
+  cluster_col   = "cell_type",
+  sample_col    = "orig.ident",
+  condition_col = "treatment",
+  transform     = "asin",
+  method        = "auto"
+)
+subset(comp_test, padj < 0.05)
+```
+
+Each row has `cluster`, per-level `mean_prop_<level>`, `effect`, `stat`, `pvalue`, `padj`, `method`.
+
+---
+
+## 8. Cell-Cell Communication — `RunLIANA()`
+
+Ligand-receptor inference via `liana::liana_wrap` + `liana::liana_aggregate`. Default runs LIANA's consensus set (Connectome, logFC, NATMI, SCA, CellPhoneDB) and aggregates their rankings — more robust than any single method.
+
+```r
+Idents(integrated) <- integrated$cell_type
+lr <- RunLIANA(
+  integrated,
+  idents_col = "cell_type",
+  method     = "consensus",
+  resource   = "Consensus",
+  min_cells  = 10
+)
+head(lr)
+
+# Restrict to interactions FROM T cells
+lr_t <- RunLIANA(integrated, idents_col = "cell_type",
+                 source_cells = "T cell")
+
+# Mouse via ortholog translation
+lr_mouse <- RunLIANA(integrated, idents_col = "cell_type",
+                     use_ortho = TRUE)
+```
+
+---
+
+## 9. Trajectory Analysis — `PseudotimeWrapper()`
+
+Slingshot wrapper for pseudotime inference. Fits lineage curves through the specified reduction using cluster labels as anchors, writes one metadata column per detected lineage.
+
+```r
+integrated <- PseudotimeWrapper(
+  integrated,
+  reduction     = "umap",
+  dims          = 2,
+  cluster_col   = "seurat_clusters",
+  start_cluster = "3",             # optional root
+  prefix        = "slingshot"
+)
+# New columns: slingshot_Lineage1, slingshot_Lineage2, ...
+FeaturePlot(integrated, features = "slingshot_Lineage1")
+
+# The SlingshotDataSet itself, for downstream analysis
+sds <- integrated@misc$slingshot
+```
+
+---
+
+## 10. Integration Quality — `BatchEffectQC()`
+
+Quantifies how well integration has mixed batches while preserving biological structure. Meant for pre-vs-post integration comparison.
+
+```r
+pre  <- BatchEffectQC(integrated, reduction = "pca",
+                      batch_col    = "orig.ident",
+                      celltype_col = "cell_type")
+post <- BatchEffectQC(integrated, reduction = "harmony",
+                      batch_col    = "orig.ident",
+                      celltype_col = "cell_type")
+
+rbind(pre$summary, post$summary)
+#      batch_asw celltype_asw knn_mixing knn_purity ...
+# pre       0.32          0.28       0.61       0.72
+# post      0.04          0.35       0.94       0.78
+```
+
+Interpretation:
+
+- `batch_asw` closer to 0 = better mixing.
+- `celltype_asw` higher = better biology preservation.
+- `knn_mixing` closer to 1 = perfectly random neighborhoods across batches (perfect mixing).
+- `knn_purity` closer to 1 = each cell's neighbors share its label (biology preserved).
+
+Per-cluster diagnostics are returned in `$per_cluster` when `celltype_col` is set.
+
+---
+
+## 11. Visualization — `PlotFeatureDensity()`
+
+Nebulosa-style weighted 2D KDE on any reduction. Much more readable than `FeaturePlot` for sparse markers or module scores.
+
+```r
+PlotFeatureDensity(
+  integrated,
+  features  = c("CD3D", "CD4", "CD8A"),
+  reduction = "umap"
+)
+
+# Joint co-expression panel
+PlotFeatureDensity(integrated, features = c("CD3D", "CD4"), joint = TRUE)
+
+# From a metadata column (e.g. a module score)
+PlotFeatureDensity(integrated, features = "module_score_Bcell")
+```
+
+Uses `ks::kde` when available, falls back to `MASS::kde2d`.
+
+---
+
+## 12. Spatial Workflows
+
+### 12.1 Visium — `CreateVisiumObjects()` + `EdgeDetectionVisium()`
 
 #### Loading
 
@@ -545,7 +1068,7 @@ integrated_visium <- MergeSeurat(
 
 ---
 
-### 5.2 Xenium — `LoadXenium2()`
+### 12.2 Xenium — `LoadXenium2()`
 
 ```r
 xenium_list <- lapply(
@@ -566,7 +1089,7 @@ integrated_xenium <- MergeSeurat(
 
 ---
 
-### 5.3 Parse Biosciences — `MakeParseObj()`
+### 12.3 Parse Biosciences — `MakeParseObj()`
 
 Parse pipeline output uses a `DGE_filtered/` folder layout. `MakeParseObj()` handles the sub-library structure and optional sample splitting.
 
@@ -583,7 +1106,117 @@ The returned list is a standard list of Seurat objects that can be passed direct
 
 ---
 
-## 6. scATAC-seq — `CreateATACObjects()`
+### 12.4 FOV Edge / Tissue Hole Detection
+
+Two complementary functions for finding cells near boundaries in single-cell spatial data (Xenium, CosMx, etc.). Complements `EdgeDetectionVisium()` which handles Visium's hex-grid geometry.
+
+`detect_fov_edges()` — flags cells near the outer edge of each FOV. Two methods:
+
+```r
+# Bounding-box method (default): fast, deterministic, good for roughly convex FOVs
+obj <- detect_fov_edges(obj,
+                        method       = "bbox",
+                        bbox_factor  = 2,        # ~2 cell-widths of the box edge
+                        n_iterations = 2,
+                        label_col    = "edge_layer")
+
+# Angular-gap method: catches concave edges / tears the bbox misses
+obj <- detect_fov_edges(obj,
+                        method         = "angular",
+                        k              = 10,
+                        gap_threshold  = 2 * pi / 3,
+                        density_factor = 1)
+```
+
+Output: an integer metadata column (`0 = interior, 1 = outer ring, 2 = next ring, ...`).
+
+`detect_tissue_holes()` — flags cells bordering internal gaps / tears using a 2D occupancy grid + 4-connected flood fill.
+
+```r
+obj <- detect_tissue_holes2(obj,
+                            bin_size     = NULL,      # auto = 2.5 * median NN dist
+                            min_hole_size = 4,
+                            n_iterations  = 2,
+                            label_col     = "hole_layer")
+```
+
+**Marker-gene exclusion** — biologically meaningful gaps (e.g. liver central veins expressing Glul) can be skipped:
+
+```r
+obj <- detect_tissue_holes2(obj,
+                            exclude_gene       = "Glul",
+                            sensitivity        = 0.75,   # data-adaptive quantile
+                            exclude_gene_layer = "data")
+```
+
+Together, these give you a clean pre-analysis filter:
+
+```r
+obj <- obj[, obj$edge_layer == 0 & obj$hole_layer == 0]
+```
+
+---
+
+### 12.5 Neighborhood Enrichment — `NeighborhoodEnrichment()`
+
+Tests pairwise cell-type co-localization in space by comparing the observed frequency of each (source, target) k-NN pair against a permutation null. Optionally clusters cells into "niches" based on their neighborhood composition.
+
+```r
+enrich <- NeighborhoodEnrichment(
+  obj,
+  celltype_col = "cell_type",
+  k            = 10,
+  n_perm       = 200,
+  assign_niches = TRUE,     # k-means clustering of neighborhood vectors
+  k_niches     = 6
+)
+enrich$results               # source x target enrichment z-scores
+obj$niche <- enrich$obj$niche
+```
+
+### 12.6 Niche Co-expression — `NicheCoExpress()`
+
+Differential co-expression across niches / regions using the Manders overlap coefficient, useful for asking whether two ligand-receptor genes are co-detected more often in specific tissue zones than expected.
+
+```r
+co <- NicheCoExpress(
+  obj,
+  gene_a       = "Vegfa",
+  gene_b       = "Kdr",
+  niche_col    = "niche",
+  layer        = "counts"
+)
+co$per_niche                 # Manders coefficient per niche + p-value
+co$plot                      # heatmap
+```
+
+### 12.7 Visium Deconvolution — `RunRCTD()`
+
+For Visium, per-spot cell-type calls are fundamentally the wrong output — each spot is 1-10 cells of mixed types. RCTD deconvolves each spot as a mixture using a reference single-cell dataset.
+
+```r
+visium <- RunRCTD(
+  visium,
+  reference    = pbmc_ref,
+  celltype_col = "cell_type",
+  mode         = "full",         # or "doublet" / "multi"
+  max_cells_per_ref_celltype = 10000,
+  n_cores      = 8
+)
+
+# Per-cell-type proportion columns
+colnames(visium@misc$rctd_weights)
+SpatialFeaturePlot(visium, features = c("rctd_T_cell", "rctd_B_cell"))
+
+# Winner-takes-all label per spot (for quick visualization)
+SpatialDimPlot(visium, group.by = "rctd_dominant")
+```
+
+`RunRCTD()` should be the primary annotation strategy for Visium; use `AnnotateClusters()` only as a quick sanity check.
+
+---
+
+## 13. scATAC-seq — `CreateATACObjects()`
 
 ```r
 atac_list <- CreateATACObjects(
@@ -604,9 +1237,92 @@ atac_list <- CreateATACObjectsFilter(
 
 ---
 
-## 7. Utility Functions
+## 14. scanpy Interoperability — `ToAnnData()` / `FromAnnData()`
 
-### 7.1 Gene ID Diagnostics
+Bidirectional conversion between Seurat objects and AnnData `.h5ad` files. Useful for hand-off to Python-based tools (scanpy, scVI, cellrank, CellPhoneDB) or for reading Python-produced data back into R.
+
+```r
+# Export to AnnData (writes .h5ad on disk)
+ToAnnData(integrated, file = "results/pbmc.h5ad", assay = "RNA", layer = "data")
+
+# Read AnnData back to a Seurat object
+obj <- FromAnnData(file = "data/tabula_sapiens/Lung.h5ad",
+                   reader = "python",   # "python" (via reticulate) or "R" (via zellkonverter)
+                   assay = "RNA")
+```
+
+The `reader = "python"` path uses `reticulate` + `anndata` (through `basilisk` when available). The `reader = "R"` path uses `zellkonverter::readH5AD`. A tryCatch fallback also handles the case where `as.Seurat` fails on Seurat v5 by building the object manually from the underlying SCE assays, colData, and reducedDims.
+
+Batch conversion of all `.h5ad` files in a directory:
+
+```r
+files <- list.files("data/tabula_sapiens", pattern = "\\.h5ad$",
+                    full.names = TRUE)
+objs  <- lapply(files, FromAnnData)
+names(objs) <- sub("\\.h5ad$", "", basename(files))
+```
+
+---
+
+## 15. Reproducibility
+
+### 15.1 `SaveWithProvenance()`
+
+Saves a Seurat object as `.rds` and, next to it, a `<name>_provenance.json` sidecar recording session info, package versions, `DefaultAssay`, layers per assay, reductions present, metadata column names, cell/gene counts, and — optionally — the git SHA and dirty flag of the calling script directory. Future-you (or a reviewer) can inspect the sidecar without loading the RDS.
+
+```r
+SaveWithProvenance(
+  integrated,
+  file    = "results/pbmc_annotated.rds",
+  git_dir = getwd(),
+  extra   = list(analyst = "K. Evensen", project = "study42")
+)
+# Writes results/pbmc_annotated.rds AND
+#        results/pbmc_annotated_provenance.json
+```
+
+### 15.2 `CellSuiteSummary()`
+
+One-command overview: cell/gene counts, assays, reductions, per-cluster and per-sample counts, standard QC metric summaries, and optionally top markers per cluster. Suitable for a README, a paper method section, or a hand-off document.
+
+```r
+s <- CellSuiteSummary(integrated,
+                      cluster_col = "cell_type",
+                      sample_col  = "orig.ident",
+                      top_markers = 5)
+print(s)
+```
+
+Sample output:
+
+```
+Seurat object summary
+---------------------------------------------
+  cells:         12345
+  genes:         21050
+  default assay: RNA
+  all assays:    RNA, SCT
+  reductions:    pca, harmony, umap
+  clusters:      12 (col: cell_type)
+
+Cluster sizes
+ cluster n_cells  pct
+ T cell     4210 34.1
+ Mono       3055 24.7
+ ...
+
+QC metric summaries
+        metric median   q25   q75 min   max
+    nCount_RNA   2500  1120  4800 500 22300
+  nFeature_RNA    950   540  1500 250  4820
+    percent.mt   3.10  1.80  5.60   0  19.9
+```
+
+---
+
+## 16. Utility Functions
+
+### 16.1 Gene ID Diagnostics
 
 Before merging objects from different sources, verify that gene identifiers are in the same format. Mixed symbol/Ensembl objects will silently lose most genes at merge.
 
@@ -627,7 +1343,7 @@ DetectGenes(integrated, genes = c("Sftpc", "Ager", "ENSMUG00000001234"))
 
 ---
 
-### 7.2 Cell-Cycle Scoring
+### 16.2 Cell-Cycle Scoring
 
 `assign_cell_cycle_phase()` uses UCell module scoring (rather than Seurat's `CellCycleScoring`) and is therefore more robust on datasets with lower sequencing depth.
 
@@ -647,7 +1363,7 @@ integrated <- SCTransform(integrated, vars.to.regress = c("percent.mt", "S.Score
 
 ---
 
-### 7.3 Spatial Niche Analysis
+### 16.3 Spatial Niche Assays
 
 `BuildMultipleNicheAssays()` constructs a spatial neighborhood ("niche") assay across a list of objects, then clusters niches with mini-batch k-means. This is useful for identifying recurring spatial patterns across multiple tissue sections.
 
@@ -665,7 +1381,7 @@ SpatialDimPlot(visium_list[["S1"]], group.by = "niche_cluster")
 
 ---
 
-### 7.4 Spatial Polygon Tools
+### 16.4 Spatial Polygon Tools
 
 These functions support region-of-interest (ROI) analysis in Xenium and other spatial modalities.
 
@@ -695,7 +1411,7 @@ clean <- subset_opt(integrated_xenium, seurat_clusters %in% c("0", "1", "3"))
 
 ---
 
-### 7.5 GO Term Children
+### 16.5 GO Term Children
 
 `get_all_children()` recursively collects all descendant GO terms for a given parent term. Useful for building gene sets from broad ontology categories.
 
@@ -717,7 +1433,7 @@ genes_in_terms <- AnnotationDbi::select(
 
 ---
 
-## 8. Tips and Common Pitfalls
+## 17. Tips and Common Pitfalls
 
 **Read the `?docs`.** Every function has documented parameters beyond what is shown here. Defaults are sensible but the knobs are worth knowing about — especially `to_regress`, `doublet_normalization`, and `cluster_resolution`.
 
@@ -731,11 +1447,21 @@ genes_in_terms <- AnnotationDbi::select(
 
 **Interactive variants for new data types.** `CreateRNAObjectsFilter()` and `CreateATACObjectsFilter()` are worth using the first time you analyze a new tissue or library prep. The interactive prompts force you to look at the distribution before committing to cutoffs.
 
-**For co-expression analysis**, this package deliberately doesn't cover it. See [katlande/scCoExpress](https://github.com/katlande/scCoExpress).
+**For co-expression analysis**, this package deliberately doesn't cover full functionality. See [katlande/scCoExpress](https://github.com/katlande/scCoExpress). `NicheCoExpress()` handles the specific case of niche-differential Manders overlap.
+
+**Use `PseudobulkDE()` — not `FindMarkers()` — for condition contrasts.** Per-cell tests dramatically inflate significance when cells from the same donor aren't treated as replicates. `PseudobulkDE()` aggregates per (sample, cluster) and runs DESeq2 on the pseudobulk matrix, which is the current best practice.
+
+**Use `RunRCTD()` — not `AnnotateClusters()` — for Visium.** Visium spots are cell-type mixtures by construction; a winner-takes-all classifier hides minority signal. Deconvolution is the right primary output.
+
+**In tumor samples, pass `tumor_mode = TRUE` to `AnnotateClusters()`.** The non-specific-gene filter is actively counterproductive when tumor cells drive up per-gene maxima; `tumor_mode` disables it and tightens `high_relative_to_max`. Better yet: identify malignant cells first (InferCNV / CopyKAT / SCEVAN), annotate the immune/stromal compartment normally, and score tumor programs separately.
+
+**Save with provenance.** `SaveWithProvenance()` writes a JSON sidecar next to your `.rds` recording package versions, layers, reductions, metadata columns, and (optionally) the git SHA. Small overhead, invaluable when the dataset outlives the analysis notebook.
+
+**Run `QCComparePlots()` after `ApplyQCFilters()`.** Confirms at a glance that the filter did what the report suggested — sometimes an outlier sample dominates the MAD estimate and the cutoffs are too tight.
 
 ---
 
-## 9. Session Info
+## 18. Session Info
 
 ```r
 sessionInfo()
@@ -745,15 +1471,23 @@ Expected key packages and versions:
 
 | Package | Minimum version |
 |---|---|
-| R | ≥ 2.10 |
+| R | ≥ 4.1 |
 | Seurat | ≥ 4.9.9 |
 | SeuratObject | ≥ 4.9.9 |
 | Signac | ≥ 1.9.0 |
 | DoubletFinder | latest GitHub |
 | EnsDb.Mmusculus.v79 | ≥ 2.99.0 |
 | UCell | ≥ 2.4.0 |
+| DESeq2 | ≥ 1.42 |
+| speckle | ≥ 1.2 |
+| slingshot | ≥ 2.10 |
+| Azimuth | ≥ 0.5 (GitHub) |
+| spacexr | ≥ 2.2 (GitHub) |
+| liana | ≥ 0.1 (GitHub) |
+| ks | ≥ 1.14 |
 | dplyr | ≥ 1.1.2 |
 | ggplot2 | ≥ 3.4.4 |
+| patchwork | ≥ 1.1.2 |
 
 ---
 

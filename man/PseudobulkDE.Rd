@@ -2,66 +2,132 @@
 % Please edit documentation in R/PseudobulkDE.R
 \name{PseudobulkDE}
 \alias{PseudobulkDE}
-\title{Pseudobulk differential expression between two conditions}
+\title{Pseudobulk differential expression with DESeq2}
 \usage{
 PseudobulkDE(
   obj,
   sample_col,
   condition_col,
-  ident_1,
-  ident_2,
+  ident_1 = NULL,
+  ident_2 = NULL,
+  cluster_col = NULL,
+  clusters = NULL,
   group_by = NULL,
   group_value = NULL,
   assay = NULL,
+  design = NULL,
+  contrast = NULL,
   min_cells_per_sample = 10,
-  min_samples_per_condition = 2
+  min_samples_per_condition = 2,
+  min_counts_per_gene = 10,
+  verbose = TRUE
 )
 }
 \arguments{
 \item{obj}{A Seurat object.}
 
 \item{sample_col}{Metadata column identifying the biological replicate
-(e.g. donor, mouse, well). Required.}
+(e.g. donor, mouse). Required.}
 
-\item{condition_col}{Metadata column identifying the condition to test
-(e.g. treatment vs vehicle).}
+\item{condition_col}{Metadata column identifying the condition. Required.}
 
-\item{ident_1, ident_2}{The two levels of \code{condition_col} to contrast.
-\code{ident_1} is the "numerator" in log-fold-changes
-(positive logFC = higher in \code{ident_1}).}
+\item{ident_1, ident_2}{Two levels of \code{condition_col} to contrast.
+\code{ident_1} is the numerator (positive log2FC = higher in
+\code{ident_1}). Required if \code{contrast} is not set.}
 
-\item{group_by}{Optional metadata column to subset to a single group
-before pseudobulking (e.g. a cluster or cell type). When supplied,
-only cells with \code{group_by == group_value} are used.}
+\item{cluster_col}{Optional metadata column holding cluster / cell-type
+ids. When supplied, DE runs per level and returns a named list.
+\code{NULL} (default) runs a single analysis on the whole object.}
 
-\item{group_value}{The value within \code{group_by} to keep. Required if
-\code{group_by} is supplied.}
+\item{clusters}{Character vector of \code{cluster_col} levels to run on;
+defaults to every level. Ignored when \code{cluster_col} is \code{NULL}.}
 
-\item{assay}{Assay to aggregate. Defaults to DefaultAssay.}
+\item{group_by, group_value}{Optional pre-filter to a single group before
+pseudobulking (e.g. one cluster). Ignored when \code{cluster_col} is
+supplied.}
 
-\item{min_cells_per_sample}{Drop pseudobulk samples that aggregate fewer
-than this many cells (the pseudobulk count for that sample is unstable).
+\item{assay}{Assay to aggregate. Default \code{DefaultAssay(obj)}.}
+
+\item{design}{Model design as formula or string. Default
+\code{~ condition}.}
+
+\item{contrast}{DESeq2 contrast spec. \code{NULL} builds
+\code{c("condition", ident_1, ident_2)}.}
+
+\item{min_cells_per_sample}{Drop pseudobulk samples below this cell count.
 Default 10.}
 
-\item{min_samples_per_condition}{Refuse to run if either condition has
-fewer than this many usable pseudobulk samples. Default 2.}
+\item{min_samples_per_condition}{Refuse the cluster / analysis if any
+condition has fewer than this many pseudobulk samples. Default 2.}
+
+\item{min_counts_per_gene}{Fallback low-count-gene threshold when
+\code{edgeR} isn't available. Default 10.}
+
+\item{verbose}{Print progress per cluster. Default TRUE.}
 }
 \value{
-A list with two elements:
-\describe{
-\item{\code{results}}{A data frame of DESeq2 results sorted by adjusted
-p-value, with gene names in the \code{gene} column.}
-\item{\code{normalized_counts}}{A data frame of DESeq2
-size-factor-normalized pseudobulk counts (\code{counts(dds,
-    normalized = TRUE)}), one row per gene (\code{gene} column) and one
-column per pseudobulk sample retained after filtering.}
-}
+In single-group mode, a list \code{list(results, normalized_counts)}.
+In multi-cluster mode, a named list of those lists, one per cluster.
 }
 \description{
-Aggregates single-cell counts per (sample, group) pair and runs DESeq2 to
-test the contrast between two levels of a condition column. This is the
-statistically correct way to compare conditions across donors with
-single-cell data — per-cell Wilcoxon DE treats each cell as
-independent and dramatically inflates type-I error when there are multiple
-cells per donor.
+Aggregates single-cell counts per (sample, condition) pair with
+\code{Seurat::AggregateExpression} and runs DESeq2 to test the contrast
+between conditions. This is the statistically correct way to compare
+conditions across donors with single-cell data — per-cell Wilcoxon DE
+treats each cell as independent and inflates type-I error when there
+are multiple cells per donor.
+}
+\details{
+Two usage modes, controlled by \code{cluster_col}:
+\describe{
+\item{Single-group mode (\code{cluster_col = NULL}, default)}{
+Runs DE on the whole object (or on the subset specified by
+\code{group_by} / \code{group_value}, e.g. one cell type). Returns
+a two-element list: \code{results} + \code{normalized_counts}.}
+\item{Multi-cluster mode (\code{cluster_col} supplied)}{
+Loops the analysis over each level of \code{cluster_col} (or the
+subset in \code{clusters}), returns a named list where each
+element is a two-element list per the single-group mode.}
+}
+
+Custom \code{design} and \code{contrast} are supported so batch
+adjustment, three-level factors, and interaction models all work. The
+default is \code{design = ~ condition} and a two-level contrast built
+from \code{ident_1} / \code{ident_2}.
+
+Gene filtering uses \code{edgeR::filterByExpr} when available, falling
+back to a simple row-sum threshold (\code{min_counts_per_gene}).
+}
+\examples{
+\dontrun{
+# Single cluster
+res <- PseudobulkDE(obj,
+                    sample_col    = "orig.ident",
+                    condition_col = "treatment",
+                    ident_1       = "drug",
+                    ident_2       = "vehicle",
+                    group_by      = "cell_type",
+                    group_value   = "T cell")
+head(res$results)
+
+# Every cluster at once
+res <- PseudobulkDE(obj,
+                    sample_col    = "orig.ident",
+                    condition_col = "treatment",
+                    ident_1       = "drug",
+                    ident_2       = "vehicle",
+                    cluster_col   = "seurat_clusters")
+names(res)
+head(res$`0`$results)
+
+# Batch-adjusted design
+res <- PseudobulkDE(obj,
+                    sample_col    = "orig.ident",
+                    condition_col = "treatment",
+                    ident_1       = "drug",
+                    ident_2       = "vehicle",
+                    cluster_col   = "seurat_clusters",
+                    design        = ~ batch + condition,
+                    contrast      = c("condition", "drug", "vehicle"))
+}
 }

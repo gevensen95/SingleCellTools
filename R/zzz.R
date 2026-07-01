@@ -32,14 +32,17 @@
 #' @keywords internal
 #' @noRd
 .scta_deps <- c(
+  # Core Seurat / SeuratObject / Signac
   "Seurat",
   "SeuratObject",
   "Signac",
   "EnsDb.Mmusculus.v79",
+  # Base R namespaces we lean on
   "Matrix",
   "methods",
   "grDevices",
   "grid",
+  # tidyverse tools
   "dplyr",
   "tibble",
   "tidyr",
@@ -48,16 +51,43 @@
   "stringr",
   "rlang",
   "purrr",
+  # Numerical / plotting
   "RANN",
   "ggplot2",
+  "patchwork",         # QCComparePlots grid layout
   "RColorBrewer",
   "ClusterR",
+  "irlba",
+  "RSpectra",
+  # Single-cell specific analysis
   "glmGamPoi",
   "GO.db",
   "UCell",
   "DoubletFinder",
-  "irlba",
-  "RSpectra"
+  # Differential expression (PseudobulkDE)
+  "DESeq2",
+  "SummarizedExperiment",
+  "S4Vectors",
+  "edgeR",             # optional pseudobulk backend
+  # Composition testing (CellComposition / CompositionalTest)
+  "speckle",           # propeller
+  "limma",             # speckle dependency; useful directly
+  # Ligand-receptor (RunLIANA)
+  "liana",
+  "OmnipathR",         # liana pulls resources through OmnipathR
+  # Reference-based annotation (AnnotateWithReference)
+  "Azimuth",
+  # Spatial deconvolution (RunRCTD)
+  "spacexr",
+  # Trajectory (PseudotimeWrapper)
+  "slingshot",
+  # Density plots (PlotFeatureDensity)
+  "ks",
+  "MASS",              # fallback KDE backend
+  # Silhouette / integration QC (BatchEffectQC)
+  "cluster",
+  # Provenance sidecars (SaveWithProvenance)
+  "jsonlite"
 )
 
 .onAttach <- function(libname, pkgname) {
