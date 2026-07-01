@@ -2,75 +2,143 @@
 % Please edit documentation in R/AnnotateWithReference.R
 \name{AnnotateWithReference}
 \alias{AnnotateWithReference}
-\title{Reference-based cell-type annotation with Azimuth}
+\title{Reference-based cell-type annotation (CellTypist / scANVI / scmap)}
 \usage{
 AnnotateWithReference(
   obj,
-  reference = "pbmcref",
+  method = c("celltypist", "scanvi", "scmap"),
   assay = NULL,
-  annotation_levels = NULL,
+  new_col = "predicted_cell_type",
   min_score = NULL,
   unassigned_label = "Unknown",
-  verbose = FALSE
+  ...
 )
 }
 \arguments{
 \item{obj}{A Seurat object (query).}
 
-\item{reference}{One of Azimuth's reference names; see Details. Default
-\code{"pbmcref"}.}
+\item{method}{Backend to use; see Details. Default \code{"celltypist"}.}
 
-\item{assay}{Assay to project. Default DefaultAssay.}
+\item{assay}{Assay on \code{obj} to project from. Default DefaultAssay.}
 
-\item{annotation_levels}{Character vector of prediction levels to keep
-(e.g. \code{c("l1", "l2")} for coarse and fine PBMC labels).
-\code{NULL} (default) keeps whatever Azimuth returns.}
+\item{new_col}{Metadata column to write the predicted label to. Default
+\code{"predicted_cell_type"}.}
 
-\item{min_score}{Optional numeric threshold; cells with prediction
-score below this get relabelled to \code{unassigned_label}.
-\code{NULL} (default) keeps all Azimuth calls.}
+\item{min_score}{Optional confidence threshold. Cells whose backend
+score is below this get relabelled to \code{unassigned_label}.
+\code{NULL} (default) keeps every call.}
 
 \item{unassigned_label}{Label applied to low-confidence cells when
 \code{min_score} is set. Default \code{"Unknown"}.}
 
-\item{verbose}{Passed to Azimuth. Default FALSE.}
+\item{...}{Backend-specific parameters — see the sections above.}
 }
 \value{
-The Seurat object with new \code{predicted.*} metadata columns
-(and a \code{prediction.score.*} column per level), plus the
-\code{"ref.umap"} reduction.
+The Seurat object with a new \code{new_col} column (and, where
+available, a companion \code{<new_col>_score} numeric column).
 }
 \description{
-Wraps \code{Azimuth::RunAzimuth} to project a query Seurat object onto
-one of Azimuth's curated references and transfer cell-type labels.
-Complements \code{AnnotateClusters} (marker / SingleR-based): Azimuth
-typically gives finer, more consistent labels for common tissues
-(PBMC, lung, kidney, adipose, ...), and is much faster than
-scoring against curated marker lists.
+Projects cell-type labels onto a query Seurat object using one of three
+backends. All three write a predicted label column and (where the method
+provides one) a confidence-score column into \code{obj@meta.data},
+returning the modified Seurat object.
 }
 \details{
-\strong{Which reference to use.} Common Azimuth references (as of
-writing): \code{"pbmcref"}, \code{"lungref"}, \code{"kidneyref"},
-\code{"adiposeref"}, \code{"fetusref"}, \code{"heartref"},
-\code{"tonsilref"}, \code{"bonemarrowref"}, \code{"mousecortexref"},
-\code{"humancortexref"}. Full list at
-\url{https://azimuth.hubmapconsortium.org}.
-
-After the projection, the reference's cell-type levels are written into
-\code{obj@meta.data} under columns prefixed with \code{prefix} (e.g.
-\code{predicted.celltype.l1}, \code{predicted.celltype.l2}). The
-matching prediction score columns are preserved so downstream code can
-threshold on confidence.
+\describe{
+\item{\code{method = "celltypist"} (default)}{Runs the Python
+\href{https://www.celltypist.org/}{CellTypist} logistic-regression
+classifier against one of its pre-trained models. Best default for
+broad tissue coverage — no user-supplied reference required, models
+for PBMC, tumor, lung, gut, kidney, developmental, and many others
+ship in the model zoo.
+Requires \code{reticulate} and a Python environment with
+\code{celltypist} installed (\code{pip install celltypist}).
+Uses the Seurat -> AnnData bridge from \code{ToAnnData()}.}
+\item{\code{method = "scanvi"}}{Runs
+\href{https://scvi-tools.org/}{scvi-tools} scANVI, a
+semi-supervised VAE that trains on a labeled reference and
+transfers labels to the query. Best when reference and query come
+from different technologies / protocols and you already have a
+high-quality reference.
+Requires \code{reticulate} + \code{scvi-tools} in Python, and a
+\code{reference} Seurat / AnnData object with cell-type labels.}
+\item{\code{method = "scmap"}}{Runs the Bioconductor package
+\code{scmap} (nearest-cluster or nearest-cell projection).
+R-native, no Python required. Requires a labeled \code{reference}
+(Seurat or SingleCellExperiment).}
 }
+}
+\section{CellTypist parameters}{
+
+\describe{
+\item{\code{model}}{Model name or file path. Default
+\code{"Immune_All_Low.pkl"} — good for PBMC-style data. Any model
+from \code{celltypist.models.get_all_models()} is valid. If not
+already downloaded, CellTypist fetches it on first use.}
+\item{\code{majority_voting}}{If TRUE (default), CellTypist first
+over-clusters the query and takes a majority vote within each
+cluster. Smoothes noisy per-cell calls.}
+\item{\code{python}}{Optional path to the Python executable used by
+\code{reticulate}. If \code{NULL}, uses the current
+\code{reticulate::use_python()} setting.}
+}
+}
+
+\section{scANVI parameters}{
+
+\describe{
+\item{\code{reference}}{A Seurat object (or path to an \code{.h5ad}
+file) containing labeled reference cells.}
+\item{\code{ref_label_col}}{Metadata column on \code{reference}
+holding cell-type labels. Cells with \code{NA} labels are treated
+as unlabeled during training (the semi-supervised setting).}
+\item{\code{batch_col}}{Metadata column identifying batches on the
+\emph{combined} reference + query. Optional — pass \code{NULL} to
+assume a single batch.}
+\item{\code{n_latent}}{scVI latent dimensions. Default 30.}
+\item{\code{max_epochs_scvi}}{Max epochs for the underlying scVI
+model. Default 400.}
+\item{\code{max_epochs_scanvi}}{Max epochs for scANVI. Default 20.}
+\item{\code{python}}{As for CellTypist.}
+}
+}
+
+\section{scmap parameters}{
+
+\describe{
+\item{\code{reference}}{A Seurat object or \code{SingleCellExperiment}
+with cell-type labels.}
+\item{\code{ref_label_col}}{Metadata column with the labels.}
+\item{\code{scmap_method}}{\code{"cluster"} (default; scmap-cluster)
+or \code{"cell"} (scmap-cell, product-quantization nearest neighbor).}
+\item{\code{threshold}}{Similarity threshold; scmap returns
+\code{"unassigned"} below this. Default 0.5 (scmap-cluster).}
+\item{\code{n_features}}{Number of features to select for the
+projection. Default 500.}
+}
+}
+
 \examples{
 \dontrun{
-# PBMC
-obj <- AnnotateWithReference(obj, reference = "pbmcref",
-                             annotation_levels = c("l1", "l2"))
-table(obj$predicted.celltype.l2)
+# 1. CellTypist (default) — no user-supplied reference
+obj <- AnnotateWithReference(obj,
+                             method          = "celltypist",
+                             model           = "Immune_All_Low.pkl",
+                             majority_voting = TRUE,
+                             min_score       = 0.5)
 
-# Threshold low-confidence calls
-obj <- AnnotateWithReference(obj, reference = "lungref",
-                             min_score = 0.75)
+# 2. scANVI — from a labeled reference Seurat object
+obj <- AnnotateWithReference(obj,
+                             method        = "scanvi",
+                             reference     = pbmc_ref_seurat,
+                             ref_label_col = "cell_type",
+                             batch_col     = "orig.ident")
+
+# 3. scmap-cluster — R-native
+obj <- AnnotateWithReference(obj,
+                             method        = "scmap",
+                             reference     = pbmc_ref_seurat,
+                             ref_label_col = "cell_type",
+                             scmap_method  = "cluster")
 }
 }
