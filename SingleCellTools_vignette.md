@@ -131,8 +131,16 @@ BiocManager::install(c(
 # Ligand-receptor inference
 remotes::install_github("saezlab/liana")
 
-# Reference-based annotation
-remotes::install_github("satijalab/azimuth")
+# scmap for the R-native branch of AnnotateWithReference
+BiocManager::install("scmap")
+
+# CellTypist (Python default backend of AnnotateWithReference)
+reticulate::py_install("celltypist")
+# Or: pip install celltypist
+
+# scANVI (optional Python backend of AnnotateWithReference)
+reticulate::py_install("scvi-tools")
+# Or: pip install scvi-tools
 
 # Visium deconvolution
 remotes::install_github("dmcable/spacexr")
@@ -592,20 +600,49 @@ res$scores            # cluster x cell-type matrix; heatmap this
 
 ### 3.8 Reference-based Annotation — `AnnotateWithReference()`
 
-Wraps `Azimuth::RunAzimuth` for reference-based annotation against common tissue atlases (PBMC, lung, kidney, adipose, cortex, ...). Faster and often more consistent than marker-scoring for standard tissues.
+Reference-based annotation with a choice of three backends. All write the predicted label to `new_col` and (where available) a confidence score to `<new_col>_score`.
+
+**Default: CellTypist.** A pre-trained logistic-regression classifier with a large model zoo (immune, gut, lung, kidney, tumor, developmental, and more). No user-supplied reference needed. Requires Python via `reticulate` + `pip install celltypist`.
 
 ```r
 integrated <- AnnotateWithReference(
   integrated,
-  reference          = "pbmcref",
-  annotation_levels  = c("l1", "l2"),
-  min_score          = 0.5,        # threshold low-confidence calls
-  unassigned_label   = "Unknown"
+  method          = "celltypist",
+  model           = "Immune_All_Low.pkl",   # or Immune_All_High, Lung, etc.
+  majority_voting = TRUE,                    # smoothing via over-clustering
+  min_score       = 0.5
 )
-table(integrated$predicted.celltype.l2)
+table(integrated$predicted_cell_type)
 ```
 
-Complements `AnnotateClusters` — use Azimuth for the coarse pass, then optionally refine sub-populations with marker-based scoring on a `SubsetAndRecluster` output.
+**scANVI** — semi-supervised VAE reference mapping via `scvi-tools`. Best when reference and query come from different technologies or protocols. Requires a labeled reference Seurat / `.h5ad`.
+
+```r
+integrated <- AnnotateWithReference(
+  integrated,
+  method        = "scanvi",
+  reference     = pbmc_ref_seurat,
+  ref_label_col = "cell_type",
+  batch_col     = "orig.ident",
+  n_latent      = 30
+)
+```
+
+**scmap** — R-native (Bioconductor), no Python required. Two variants: `scmap-cluster` (fast, cluster-level projection) and `scmap-cell` (product-quantization nearest neighbor). Requires a labeled reference.
+
+```r
+integrated <- AnnotateWithReference(
+  integrated,
+  method        = "scmap",
+  reference     = pbmc_ref_seurat,
+  ref_label_col = "cell_type",
+  scmap_method  = "cluster",     # or "cell"
+  threshold     = 0.5,
+  n_features    = 500
+)
+```
+
+Complements `AnnotateClusters()` — use CellTypist / scANVI / scmap for the coarse pass, then optionally refine sub-populations with marker-based scoring on a `SubsetAndRecluster` output.
 
 ---
 
