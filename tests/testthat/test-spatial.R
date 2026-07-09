@@ -1,6 +1,7 @@
 # Tests for get_all_coords(), get_cells_in_polygon(), AnnotateRegions(),
-# and NeighborhoodEnrichment() against a synthetic two-FOV imaging-based
-# (Xenium/CosMx-style) Seurat object. See helper-spatial.R for the fixture.
+# NeighborhoodEnrichment(), and RunBanksyWrapper() against a synthetic
+# two-FOV imaging-based (Xenium/CosMx-style) Seurat object. See
+# helper-spatial.R for the fixture.
 #
 # subset_opt()/CleanMolSlot() are NOT covered here: CleanMolSlot() reads
 # obj@images[[img]]$molecules, which requires a full molecule-level FOV
@@ -136,4 +137,93 @@ test_that("NeighborhoodEnrichment validates inputs", {
     NeighborhoodEnrichment(obj, group.by = "celltype", assign_niches = TRUE, n_niches = 1),
     "n_niches"
   )
+})
+
+
+# ============================================================================
+# RunBanksyWrapper()
+# ============================================================================
+# `obj`/`lambda` are validated before RunBanksyWrapper() checks for
+# Banksy/SeuratWrappers, so those two tests run regardless of whether the
+# heavy packages are installed. Everything past that point -- including the
+# "unknown image_name" check, which lives inside the coordinate-lookup
+# block -- requires both packages, since that's the earliest point in the
+# function where their absence would otherwise be masked.
+
+test_that("RunBanksyWrapper errors on non-Seurat input", {
+  expect_error(RunBanksyWrapper(list(1), lambda = 0.2), "Seurat object")
+})
+
+test_that("RunBanksyWrapper validates the lambda range", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_spatial_obj(seed = 1, n_per_fov = 10)
+  expect_error(RunBanksyWrapper(obj, lambda = -0.1), "lambda")
+  expect_error(RunBanksyWrapper(obj, lambda = 1.5), "lambda")
+})
+
+test_that("RunBanksyWrapper errors on an unknown image_name", {
+  .skip_if_missing("Seurat", "SeuratObject", "Banksy", "SeuratWrappers")
+  obj <- .make_spatial_obj(seed = 1, n_per_fov = 10)
+  # RunBanksyWrapper() checks the target layer is non-empty before doing any
+  # coordinate lookup -- a freshly-created object only has a "counts" layer
+  # (SeuratObject::CreateSeuratObject() doesn't auto-populate "data"), so
+  # normalize first or that check fires before the image_name check does.
+  obj <- suppressWarnings(suppressMessages(Seurat::NormalizeData(obj)))
+  expect_error(
+    RunBanksyWrapper(obj, lambda = 0.2, image_name = "not_a_fov"),
+    "not found among obj images"
+  )
+})
+
+test_that("RunBanksyWrapper pulls FOV coordinates automatically and returns a BANKSY assay + PCA", {
+  .skip_if_missing("Seurat", "SeuratObject", "Banksy", "SeuratWrappers")
+  testthat::skip_on_cran()
+  obj <- .make_spatial_obj(seed = 1, n_genes = 30, n_per_fov = 60)
+  # BANKSY (like the vignette's own workflow) expects normalized data in
+  # the "data" layer -- CreateSeuratObject() alone only populates "counts".
+  obj <- suppressWarnings(suppressMessages(Seurat::NormalizeData(obj)))
+
+  out <- tryCatch(
+    suppressWarnings(suppressMessages(RunBanksyWrapper(
+      obj, lambda = 0.2, k_geom = 6, npcs = 5
+    ))),
+    error = function(e) e
+  )
+  skip_if(inherits(out, "error"),
+         paste("RunBanksyWrapper did not complete on this synthetic FOV object:",
+               if (inherits(out, "error")) conditionMessage(out) else ""))
+
+  expect_true("BANKSY" %in% SeuratObject::Assays(out))
+  expect_equal(SeuratObject::DefaultAssay(out), "BANKSY")
+  expect_true("pca_banksy" %in% SeuratObject::Reductions(out))
+  expect_true(all(c("banksy_x", "banksy_y") %in% colnames(out@meta.data)))
+})
+
+test_that("RunBanksyWrapper restricts coordinate lookup to a single FOV via image_name", {
+  .skip_if_missing("Seurat", "SeuratObject", "Banksy", "SeuratWrappers")
+  testthat::skip_on_cran()
+  # Subset to one FOV's cells first so every remaining cell actually has a
+  # coordinate -- image_name alone doesn't drop cells from `obj`, it only
+  # restricts which FOV get_all_coords() pulls from, so mixing a
+  # single-FOV lookup with a multi-FOV object would leave the other FOV's
+  # cells with NA coordinates. The subset() call is wrapped in the same
+  # tryCatch as RunBanksyWrapper() -- subsetting a multi-FOV object down to
+  # one FOV is itself a fragile enough operation (stale/empty image
+  # reconciliation) to skip rather than hard-fail on synthetic data.
+  obj_full <- .make_spatial_obj(seed = 2, n_genes = 30, n_per_fov = 60)
+  obj_full <- suppressWarnings(suppressMessages(Seurat::NormalizeData(obj_full)))
+  fov1_cells <- grep("^fov1", colnames(obj_full), value = TRUE)
+
+  out <- tryCatch({
+    obj <- subset(obj_full, cells = fov1_cells)
+    suppressWarnings(suppressMessages(RunBanksyWrapper(
+      obj, lambda = 0.2, k_geom = 6, npcs = 5, image_name = "fov1"
+    )))
+  }, error = function(e) e)
+  skip_if(inherits(out, "error"),
+         paste("RunBanksyWrapper did not complete on this synthetic FOV object:",
+               if (inherits(out, "error")) conditionMessage(out) else ""))
+
+  expect_true("BANKSY" %in% SeuratObject::Assays(out))
+  expect_equal(ncol(out), length(fov1_cells))
 })

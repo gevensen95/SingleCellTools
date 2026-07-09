@@ -82,9 +82,13 @@ Suggests:
     org.Mm.eg.db,
     org.Hs.eg.db,
     spacexr,
+    Banksy,
+    SeuratWrappers,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Config/roxygen2/version: 8.0.0
 Config/testthat/edition: 3
 Remotes:
-    dmcable/spacexr
+    dmcable/spacexr,
+    prabhakarlab/Banksy,
+    satijalab/seurat-wrappers

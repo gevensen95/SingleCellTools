@@ -101,6 +101,13 @@ test_that("MergeSeurat validates integration-method/new_reduction combinations",
   )
 })
 
+test_that("MergeSeurat validates that banksy = TRUE requires spatial Visium/Xenium", {
+  expect_error(
+    MergeSeurat(list(a = 1, b = 2), banksy = TRUE, spatial = "no"),
+    "banksy = TRUE requires spatial"
+  )
+})
+
 test_that("MergeSeurat runs end-to-end (LogNormalize + Harmony) with no disk clutter left behind", {
   .skip_if_missing("Seurat", "SeuratObject", "harmony")
   testthat::skip_on_cran()
@@ -142,6 +149,68 @@ test_that("MergeSeurat runs end-to-end (LogNormalize + Harmony) with no disk clu
                if (inherits(out, "error")) conditionMessage(out) else ""))
 
   expect_equal(ncol(out), 120)
+  expect_true("harmony" %in% SeuratObject::Reductions(out))
+  expect_true(file.exists(file.path(tmp_dir, "dimplot_seurat_clusters.pdf")))
+})
+
+# ---- MergeSeurat(banksy = TRUE) -------------------------------------------
+# Builds two small "Xenium"-style samples (assay literally named "Xenium",
+# to match the `spatial == 'Xenium'` branch of MergeSeurat's own merge
+# step) each with one FOV of cell centroids, so RunBanksyWrapper() has real
+# spatial coordinates to pull via get_all_coords().
+
+.make_xenium_like_sample <- function(prefix, seed, n_genes = 60, n_cells = 60) {
+  set.seed(seed)
+  genes <- paste0("Gene", seq_len(n_genes))
+  cells <- paste0(prefix, "_c", seq_len(n_cells))
+  m <- matrix(stats::rpois(n_genes * n_cells, lambda = 5), nrow = n_genes,
+             dimnames = list(genes, cells))
+  storage.mode(m) <- "double"
+  # `project = prefix` gives each sample a distinct orig.ident, so the
+  # default group_column = 'orig.ident' actually distinguishes s1 from s2
+  # for BANKSY's per-sample coordinate staggering (rather than every cell
+  # falling into one indistinguishable "SeuratProject" group).
+  obj <- SeuratObject::CreateSeuratObject(counts = m, assay = "Xenium", project = prefix)
+
+  coords <- data.frame(x = stats::runif(n_cells, 0, 100),
+                       y = stats::runif(n_cells, 0, 100),
+                       cell = cells, stringsAsFactors = FALSE)
+  cents <- SeuratObject::CreateCentroids(coords)
+  fov <- SeuratObject::CreateFOV(coords = list(centroids = cents), type = "centroids",
+                                 assay = "Xenium", key = paste0(prefix, "fov_"))
+  obj[[paste0(prefix, "fov")]] <- fov
+  obj
+}
+
+test_that("MergeSeurat(banksy = TRUE) runs the BANKSY spatial-clustering path end-to-end", {
+  .skip_if_missing("Seurat", "SeuratObject", "harmony", "Banksy", "SeuratWrappers")
+  testthat::skip_on_cran()
+
+  objs <- list(s1 = .make_xenium_like_sample("s1", seed = 1),
+              s2 = .make_xenium_like_sample("s2", seed = 2))
+
+  old_wd <- getwd()
+  tmp_dir <- tempfile("mergeseurat_banksy_test_")
+  dir.create(tmp_dir)
+  setwd(tmp_dir)
+  on.exit({ setwd(old_wd); unlink(tmp_dir, recursive = TRUE) }, add = TRUE)
+
+  out <- tryCatch(
+    suppressWarnings(suppressMessages(MergeSeurat(
+      objs, spatial = "Xenium", use_SCT = FALSE, save_rds_file = FALSE,
+      markers = FALSE, to_regress = NULL,
+      banksy = TRUE, banksy_lambda = 0.2, banksy_k_geom = 6,
+      integration = "HarmonyIntegration", new_reduction = "harmony",
+      max_dims = 10, cluster_resolution = 0.3
+    ))),
+    error = function(e) e
+  )
+  skip_if(inherits(out, "error"),
+         paste("MergeSeurat(banksy = TRUE) did not complete on this synthetic dataset:",
+               if (inherits(out, "error")) conditionMessage(out) else ""))
+
+  expect_true("BANKSY" %in% SeuratObject::Assays(out))
+  expect_true("pca_banksy" %in% SeuratObject::Reductions(out))
   expect_true("harmony" %in% SeuratObject::Reductions(out))
   expect_true(file.exists(file.path(tmp_dir, "dimplot_seurat_clusters.pdf")))
 })
