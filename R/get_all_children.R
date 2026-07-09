@@ -14,8 +14,13 @@
 get_all_children <- function(go_term, verbose = FALSE) {
   if (verbose) message(sprintf('--- Collecting all child GO terms for %s ---', go_term))
 
-  # Get direct children of the GO term
-  children <- unlist(mget(go_term, GO.db::GOBPCHILDREN, ifnotfound = NA))  # 'ifnotfound = NA' prevents errors if no children
+  # Get direct children of the GO term. GOBPCHILDREN is a Bioconductor
+  # AnnDbBimap object, not a plain environment -- base::mget() requires an
+  # actual environment for its second argument and errors on this class
+  # ("second argument must be an environment") on current GO.db releases.
+  # AnnotationDbi provides an mget() S4 method that dispatches correctly
+  # on Bimap objects like this one.
+  children <- unlist(AnnotationDbi::mget(go_term, GO.db::GOBPCHILDREN, ifnotfound = NA))  # 'ifnotfound = NA' prevents errors if no children
 
   # If there are no children, return an empty vector
   if (all(is.na(children))) {

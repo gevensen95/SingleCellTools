@@ -129,8 +129,8 @@ ApplyQCFilters <- function(obj,
 
   # ---- Optional metric restriction ----------------------------------------
   if (!is.null(metrics)) {
-    keep <- cutoffs_df$metric_key %in% metrics ||
-            cutoffs_df$metric     %in% metrics  # accept either form
+    # (accept either the raw `metric` label or the log10-stripped
+    # `metric_key` form when matching against `metrics`)
     cutoffs_df <- cutoffs_df[cutoffs_df$metric_key %in% metrics |
                              cutoffs_df$metric     %in% metrics, ,
                              drop = FALSE]

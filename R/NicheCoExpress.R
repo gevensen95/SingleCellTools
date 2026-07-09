@@ -180,6 +180,11 @@ NicheCoExpress <- function(seurat_obj,
     pairs <- as.data.frame(genes, stringsAsFactors = FALSE)[, 1:2]
     colnames(pairs) <- c("geneA", "geneB")
   }
+  self_pair <- pairs$geneA == pairs$geneB
+  if (any(self_pair)) {
+    warning(sum(self_pair), " self-pair(s) (geneA == geneB) removed from `genes`.")
+    pairs <- pairs[!self_pair, , drop = FALSE]
+  }
   if (nrow(pairs) == 0) stop("No gene pairs to score.")
   if (verbose) message("Scoring ", nrow(pairs), " gene pair(s).")
 
@@ -208,6 +213,10 @@ NicheCoExpress <- function(seurat_obj,
   # layer's pieces first so `expr_all` covers every cell.
   obj_layers   <- SeuratObject::Layers(seurat_obj[[assay]])
   layer_pieces <- grep(paste0("^", layer, "($|\\.)"), obj_layers, value = TRUE)
+  if (length(layer_pieces) == 0) {
+    stop("Layer '", layer, "' not found in assay '", assay, "'. Available ",
+         "layers: ", paste(obj_layers, collapse = ", "))
+  }
   if (length(layer_pieces) > 1) {
     if (verbose) {
       message("Joining ", length(layer_pieces), " '", layer,
@@ -275,11 +284,14 @@ NicheCoExpress <- function(seurat_obj,
                              " (", length(cells), " cells < min_cells)")
         next
       }
-      cond_sp <- unique(as.character(md[cells, condition_col]))
-      if (length(cond_sp) != 1) {
-        warning("Sample ", sp, " spans >1 condition; using the first.")
-        cond_sp <- cond_sp[1]
+      cond_vals <- as.character(md[cells, condition_col])
+      cond_tab  <- sort(table(cond_vals), decreasing = TRUE)
+      if (length(cond_tab) != 1) {
+        warning("Sample ", sp, " (niche ", nz, ") spans >1 condition (",
+                paste(names(cond_tab), cond_tab, sep = ":", collapse = ", "),
+                "); using the majority condition '", names(cond_tab)[1], "'.")
       }
+      cond_sp <- names(cond_tab)[1]
       if (!cond_sp %in% cond_levels) next
 
       sub <- expr_all[, cells, drop = FALSE]
@@ -660,17 +672,43 @@ plotNicheCoExpress <- function(res,
 #' Cap the dominant cell type within a set of cells by downsampling
 #'
 #' Internal helper. Returns the kept cell IDs.
+#'
+#' Capping against the *original* cell count is not enough to guarantee the
+#' resulting subset satisfies \code{max_frac}: downsampling the dominant
+#' type also shrinks the total, which can push its own fraction straight
+#' back over the cap (e.g. an 80/20 split at \code{max_frac = 0.5},
+#' capped once to 50, leaves 50 of 70 cells -- 71%, still over). This
+#' iterates the cap against the shrinking total until it reaches a fixed
+#' point where every kept cell type is at or below \code{max_frac} of the
+#' kept total.
 #' @keywords internal
 #' @noRd
 .balance_cells <- function(ct, max_frac) {
-  n <- length(ct)
-  if (is.null(max_frac) || n == 0) return(names(ct))
-  cap <- floor(max_frac * n)
-  if (cap < 1) return(names(ct))
+  if (is.null(max_frac) || length(ct) == 0) return(names(ct))
+
+  sizes <- table(ct)
+  if (length(sizes) < 2) return(names(ct))  # nothing to balance against
+
+  keep_n <- as.numeric(sizes)
+  names(keep_n) <- names(sizes)
+
+  for (iter in seq_len(1000)) {
+    total <- sum(keep_n)
+    cap   <- floor(max_frac * total)
+    if (cap < 1) {
+      warning("`max_celltype_frac` = ", max_frac, " is too restrictive for ",
+              length(keep_n), " cell type(s) present; skipping downsampling.")
+      return(names(ct))
+    }
+    over <- keep_n > cap
+    if (!any(over)) break
+    keep_n[over] <- cap
+  }
+
   keep <- character(0)
-  for (lvl in unique(ct)) {
+  for (lvl in names(keep_n)) {
     ids <- names(ct)[ct == lvl]
-    if (length(ids) > cap) ids <- sample(ids, cap)
+    if (length(ids) > keep_n[[lvl]]) ids <- sample(ids, keep_n[[lvl]])
     keep <- c(keep, ids)
   }
   keep

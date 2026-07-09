@@ -72,8 +72,20 @@ AnnotateRegions <- function(obj,
   message(sprintf("  %-20s %d cells", unassigned_label,
                   sum(assignment == unassigned_label)))
 
-  # Push back to obj metadata, aligning by cell barcode
+  # Push back to obj metadata, aligning by cell barcode. `coords$cell` only
+  # covers the cells in `image_name` -- when the object has other
+  # FOVs/images too, those cells aren't in `to_add`'s names at all.
+  # Subsetting a named vector by a key it doesn't contain (to_add[colnames(obj)])
+  # returns NA for *both* the value and the name at that position (not the
+  # queried cell ID), which then breaks `[[<-`'s internal name-matching
+  # check (comparing a real colname against an NA name yields NA, not
+  # TRUE/FALSE, and `if (NA)` errors with "missing value where TRUE/FALSE
+  # needed"). Build a full-length, fully-named vector explicitly instead so
+  # every cell -- covered or not -- gets a real, non-NA name.
   to_add <- setNames(assignment, coords$cell)
-  obj[[region_col]] <- to_add[colnames(obj)]
+  region_vals <- setNames(rep(unassigned_label, ncol(obj)), colnames(obj))
+  common <- intersect(names(to_add), names(region_vals))
+  region_vals[common] <- to_add[common]
+  obj[[region_col]] <- unname(region_vals)
   obj
 }

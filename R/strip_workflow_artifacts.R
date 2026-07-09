@@ -48,14 +48,32 @@ strip_workflow_artifacts <- function(obj,
       rna@layers[[lyr]] <- NULL
     }
 
-    # Clear variable features. Assay5 stores them as vf_* meta.data columns;
-    # legacy Assay uses @var.features.
-    if (inherits(rna, "Assay5")) {
-      vf_cols <- grep("^vf_", colnames(rna@meta.data), value = TRUE)
-      if (length(vf_cols)) rna@meta.data[vf_cols] <- list(NULL)
-    } else if (.hasSlot(rna, "var.features")) {
-      rna@var.features <- character(0)
-    }
+    # Clear variable features. On Assay5 (SeuratObject >= 5), a plain
+    # VariableFeatures(obj) <- genes call stores the result in two
+    # feature-level meta.data columns literally named "var.features" (the
+    # gene names) and "var.features.rank" (their rank) -- NOT as
+    # "vf_<method>_variable" boolean columns (that naming is specific to
+    # FindVariableFeatures()'s per-method diagnostics) and NOT in an
+    # @var.features slot (Assay5 has no such slot at all).
+    #
+    # These columns must be DROPPED entirely, not just NA'd out.
+    # SeuratObject:::.GetVariableFeatures() -- what VariableFeatures()
+    # actually reads through -- has a real bug for the "everything is NA"
+    # case: it computes `nfeatures <- nfeatures %||% sum(label_mask)`,
+    # which is 0 when every label is NA/FALSE, and then does
+    # `variable_features[1:nfeatures]`. In R, `1:0` is `c(1, 0)`, not an
+    # empty sequence, so indexing a character(0) result at position 1
+    # returns a single out-of-bounds NA -- VariableFeatures() reports
+    # length 1 (one NA), never length 0, as long as the columns exist at
+    # all, however they're populated. Removing the columns instead makes
+    # .GetVariableFeatures() hit its very first check (neither column
+    # present -> return NULL) and skip that broken path entirely.
+    vf_cols <- c(
+      grep("^vf_", colnames(rna@meta.data), value = TRUE),
+      intersect(c("var.features", "var.features.rank"), colnames(rna@meta.data))
+    )
+    if (length(vf_cols)) rna@meta.data[vf_cols] <- list(NULL)
+    if (.hasSlot(rna, "var.features")) rna@var.features <- character(0)
     o[[assay]] <- rna
 
     # Drop ALL reductions except any the caller explicitly asked to keep.
