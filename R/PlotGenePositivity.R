@@ -93,7 +93,11 @@ PlotGenePositivity <- function(obj,
                             sample_col = sample_col,
                             drop_absent = drop_absent)
 
-  if (nrow(df) == 0) {
+  # .collect_positivity() returns NULL (not a 0-row data.frame) when no
+  # requested gene has a matching positivity column anywhere -- nrow(NULL)
+  # is itself NULL, so `nrow(df) == 0` alone would error ("argument is of
+  # length zero") instead of hitting this friendly message.
+  if (is.null(df) || nrow(df) == 0) {
     stop("No positivity data available; check that AddGenePositivity has ",
          "been run and that `genes` / `suffix` match the metadata columns.")
   }
@@ -172,7 +176,13 @@ PlotGenePositivity <- function(obj,
       return(do.call(rbind, dfs))
     } else {
       out <- .one(obj, "all")
-      out$sample <- NA_character_   # marker meaning "no sample facet"
+      # .one() returns NULL when none of the requested genes have a
+      # matching positivity column (e.g. drop_absent = TRUE and every
+      # column was missing). NULL$sample <- value silently turns NULL
+      # into a malformed one-element list rather than erroring, so guard
+      # against that instead of letting it slip through as a non-NULL,
+      # non-data.frame value.
+      if (!is.null(out)) out$sample <- NA_character_
       return(out)
     }
   }

@@ -429,7 +429,7 @@ AnnotateWithReference <- function(obj,
     ref_sce <- scmap::indexCluster(ref_sce, cluster_col = "cell_type1")
     proj <- scmap::scmapCluster(
       projection      = q_sce,
-      index_list      = list(ref = SingleCellExperiment::metadata(ref_sce)$scmap_cluster_index),
+      index_list      = list(ref = S4Vectors::metadata(ref_sce)$scmap_cluster_index),
       threshold       = threshold
     )
     labels <- proj$scmap_cluster_labs[, 1]
@@ -438,7 +438,7 @@ AnnotateWithReference <- function(obj,
     ref_sce <- scmap::indexCell(ref_sce)
     proj <- scmap::scmapCell(
       projection = q_sce,
-      index_list = list(ref = SingleCellExperiment::metadata(ref_sce)$scmap_cell_index)
+      index_list = list(ref = S4Vectors::metadata(ref_sce)$scmap_cell_index)
     )
     # Vote across the returned nearest neighbors
     # (proj$ref$cells is a nearest-neighbor index matrix)

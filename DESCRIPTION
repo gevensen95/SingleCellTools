@@ -45,6 +45,7 @@ Imports:
     RSpectra,
     glmGamPoi (>= 1.12.2),
     GO.db (>= 3.17.0),
+    AnnotationDbi,
     UCell (>= 2.4.0),
     DoubletFinder (>= 2.0.6),
     DESeq2,
@@ -81,8 +82,10 @@ Suggests:
     CellChat,
     org.Mm.eg.db,
     org.Hs.eg.db,
-    AnnotationDbi,
+    spacexr,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Config/roxygen2/version: 8.0.0
 Config/testthat/edition: 3
+Remotes:
+    dmcable/spacexr

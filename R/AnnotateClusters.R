@@ -342,8 +342,18 @@ AnnotateClusters <- function(obj,
     clusters <- as.character(obj@meta.data[[cluster_col]])
     score_mat <- as.matrix(obj@meta.data[, score_cols, drop = FALSE])
     colnames(score_mat) <- names(markers)  # strip "_score" suffix
-    avg_per_cluster <- t(sapply(split(seq_len(nrow(score_mat)), clusters),
-                                function(idx) colMeans(score_mat[idx, , drop = FALSE])))
+    # do.call(rbind, lapply(...)) rather than t(sapply(...)): when there's
+    # only one surviving cell type (e.g. every other signature got dropped
+    # for having no marker genes in the assay), score_mat has a single
+    # column, so each per-cluster colMeans() result is a length-1 vector.
+    # sapply() then simplifies the whole result to a plain vector (one
+    # entry per cluster, not per label) before t() ever sees it, producing
+    # a 1-row matrix instead of one row per cluster -- rbind() of the
+    # per-cluster vectors is robust to this regardless of column count.
+    avg_per_cluster <- do.call(rbind, lapply(
+      split(seq_len(nrow(score_mat)), clusters),
+      function(idx) colMeans(score_mat[idx, , drop = FALSE])
+    ))
     rownames(avg_per_cluster) <- levels(factor(clusters))
     colnames(avg_per_cluster) <- names(markers)
 
@@ -402,7 +412,10 @@ AnnotateClusters <- function(obj,
   names(per_cell_labels) <- colnames(test_mat)
   clusters <- as.character(obj@meta.data[[cluster_col]])
   uniq_labels <- sort(unique(per_cell_labels))
-  vote_frac <- t(sapply(split(seq_along(clusters), clusters), function(idx) {
+  # do.call(rbind, lapply(...)) rather than t(sapply(...)) -- see the
+  # matching comment in marker mode above; this has the identical failure
+  # mode when the reference contributes only a single label.
+  vote_frac <- do.call(rbind, lapply(split(seq_along(clusters), clusters), function(idx) {
     tab <- table(factor(per_cell_labels[idx], levels = uniq_labels))
     as.numeric(tab) / max(1, sum(tab))
   }))
