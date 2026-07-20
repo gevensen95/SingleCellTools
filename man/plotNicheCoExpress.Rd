@@ -36,7 +36,7 @@ A \code{ggplot} object.
 Two views:
 \describe{
 \item{\code{type = "heatmap"} (default)}{Niche (rows) by gene-pair
-(cols) heatmap of \code{delta_log2} — the change in
+(cols) heatmap of \code{delta} — the change in
 co-expression between the two conditions (test minus reference).
 Diverging palette centred at 0: red = gained co-expression in the
 test condition, blue = lost. Significance stars are drawn from

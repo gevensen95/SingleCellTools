@@ -40,7 +40,7 @@
 #'   path calls `harmony::RunHarmony()` directly on the BANKSY PCA
 #'   embedding instead of going through `IntegrateLayers()` at all (same
 #'   as the BANKSY-Seurat vignette's own Harmony workflow). Default FALSE.
-#' @param banksy_lambda Numeric in [0,1]; BANKSY's spatial weight parameter.
+#' @param banksy_lambda Numeric in `[0,1]`; BANKSY's spatial weight parameter.
 #'   Low values (~0.2, default) favor cell-typing, high values (~0.8) favor
 #'   spatial domain segmentation. Only used when `banksy = TRUE`.
 #' @param banksy_k_geom Number of spatial neighbors for BANKSY. Only used

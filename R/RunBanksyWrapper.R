@@ -23,7 +23,7 @@
 #'
 #' @param obj A Seurat object with spatial information (FOV images and/or
 #'   coordinate metadata columns).
-#' @param lambda Numeric in [0,1]; spatial weight. Low values (~0.2) favor
+#' @param lambda Numeric in `[0,1]`; spatial weight. Low values (~0.2) favor
 #'   cell-typing, high values (~0.8) favor spatial domain segmentation.
 #' @param assay Assay to compute BANKSY on. Defaults to
 #'   \code{DefaultAssay(obj)}.
