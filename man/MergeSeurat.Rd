@@ -26,7 +26,11 @@ MergeSeurat(
   markers = TRUE,
   group_column = "orig.ident",
   common_genes_only = FALSE,
-  common_genes_assay = NULL
+  common_genes_assay = NULL,
+  banksy = FALSE,
+  banksy_lambda = 0.2,
+  banksy_k_geom = 15,
+  banksy_assay = NULL
 )
 }
 \arguments{
@@ -73,6 +77,29 @@ present in every object before merging.}
 
 \item{common_genes_assay}{Assay to inspect for gene names when
 \code{common_genes_only = TRUE}.}
+
+\item{banksy}{Logical; if TRUE, run BANKSY spatial-aware clustering
+(via \code{RunBanksyWrapper()}) on the merged, normalized object instead of
+plain PCA. Requires \code{spatial} to be \code{'Visium'} or \code{'Xenium'} (BANKSY
+needs spatial coordinates) and \code{integration} to be
+\code{'HarmonyIntegration'} -- RunBanksy() produces a single consolidated
+(non-split-layer) assay, which \code{Seurat::IntegrateLayers()}'s
+anchor-based methods (RPCA/CCA/JointPCA) can't work with, so this
+path calls \code{harmony::RunHarmony()} directly on the BANKSY PCA
+embedding instead of going through \code{IntegrateLayers()} at all (same
+as the BANKSY-Seurat vignette's own Harmony workflow). Default FALSE.}
+
+\item{banksy_lambda}{Numeric in \verb{[0,1]}; BANKSY's spatial weight parameter.
+Low values (~0.2, default) favor cell-typing, high values (~0.8) favor
+spatial domain segmentation. Only used when \code{banksy = TRUE}.}
+
+\item{banksy_k_geom}{Number of spatial neighbors for BANKSY. Only used
+when \code{banksy = TRUE}.}
+
+\item{banksy_assay}{Assay to compute BANKSY on. Defaults to \code{'SCT'} when
+\code{use_SCT = TRUE}, else the technology-native assay actually normalized
+above (\code{'Spatial'} or \code{'Xenium'}, matching \code{spatial}). Only used when
+\code{banksy = TRUE}.}
 }
 \value{
 A merged, integrated, clustered Seurat object.

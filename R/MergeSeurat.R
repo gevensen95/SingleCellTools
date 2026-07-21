@@ -30,6 +30,25 @@
 #'   present in every object before merging.
 #' @param common_genes_assay Assay to inspect for gene names when
 #'   `common_genes_only = TRUE`.
+#' @param banksy Logical; if TRUE, run BANKSY spatial-aware clustering
+#'   (via `RunBanksyWrapper()`) on the merged, normalized object instead of
+#'   plain PCA. Requires `spatial` to be `'Visium'` or `'Xenium'` (BANKSY
+#'   needs spatial coordinates) and `integration` to be
+#'   `'HarmonyIntegration'` -- RunBanksy() produces a single consolidated
+#'   (non-split-layer) assay, which `Seurat::IntegrateLayers()`'s
+#'   anchor-based methods (RPCA/CCA/JointPCA) can't work with, so this
+#'   path calls `harmony::RunHarmony()` directly on the BANKSY PCA
+#'   embedding instead of going through `IntegrateLayers()` at all (same
+#'   as the BANKSY-Seurat vignette's own Harmony workflow). Default FALSE.
+#' @param banksy_lambda Numeric in `[0,1]`; BANKSY's spatial weight parameter.
+#'   Low values (~0.2, default) favor cell-typing, high values (~0.8) favor
+#'   spatial domain segmentation. Only used when `banksy = TRUE`.
+#' @param banksy_k_geom Number of spatial neighbors for BANKSY. Only used
+#'   when `banksy = TRUE`.
+#' @param banksy_assay Assay to compute BANKSY on. Defaults to `'SCT'` when
+#'   `use_SCT = TRUE`, else the technology-native assay actually normalized
+#'   above (`'Spatial'` or `'Xenium'`, matching `spatial`). Only used when
+#'   `banksy = TRUE`.
 #' @return A merged, integrated, clustered Seurat object.
 #' @export
 MergeSeurat <- function(seurat_objects,
@@ -53,7 +72,11 @@ MergeSeurat <- function(seurat_objects,
                         markers = TRUE,
                         group_column = 'orig.ident',
                         common_genes_only = FALSE,
-                        common_genes_assay = NULL) {
+                        common_genes_assay = NULL,
+                        banksy = FALSE,
+                        banksy_lambda = 0.2,
+                        banksy_k_geom = 15,
+                        banksy_assay = NULL) {
 
   # ---- Argument validation ------------------------------------------------
   if (integration != 'HarmonyIntegration' & new_reduction == 'harmony') {
@@ -68,6 +91,23 @@ MergeSeurat <- function(seurat_objects,
       is.null(k_weight)) {
     stop('\n\n  Error: Integration method is ', integration,
          '.\n  Specify k_weight to an integer value (recommend 100)')
+  }
+  if (isTRUE(banksy) && !spatial %in% c('Visium', 'Xenium')) {
+    stop('\n\n  Error: banksy = TRUE requires spatial = "Visium" or "Xenium"',
+         ' (BANKSY needs spatial coordinates on the merged object).',
+         '\n  For other spatial technologies (e.g. FOV-based Xenium/CosMx',
+         ' handled outside this function), call RunBanksyWrapper() directly',
+         ' on the merged object instead.')
+  }
+  if (isTRUE(banksy) && integration != 'HarmonyIntegration') {
+    stop('\n\n  Error: banksy = TRUE currently only supports',
+         ' integration = "HarmonyIntegration".',
+         '\n  RunBanksy() builds a single consolidated (non-split-layer)',
+         ' assay, which Seurat::IntegrateLayers()\'s anchor-based methods',
+         ' (RPCA/CCA/JointPCA) require split per-sample layers to work',
+         ' with. This mirrors the BANKSY-Seurat vignette\'s own workflow,',
+         ' which integrates via harmony::RunHarmony() directly rather than',
+         ' IntegrateLayers().')
   }
 
   # ---- Optional: restrict to genes common to every object before merging --
@@ -225,29 +265,85 @@ MergeSeurat <- function(seurat_objects,
     obj <- Seurat::ScaleData(obj, vars.to.regress = to_regress)
   }
 
-  # ---- PCA ----------------------------------------------------------------
-  message('--- Running PCA ---')
-  obj <- Seurat::RunPCA(obj)
+  # ---- BANKSY (optional spatial-aware clustering) --------------------------
+  if (isTRUE(banksy)) {
+    if (is.null(banksy_assay)) {
+      # SCTransform always names its output assay "SCT" regardless of
+      # `sct_assay`. Without SCT, NormalizeData()/ScaleData() above ran on
+      # whatever assay was DefaultAssay(obj) after merging -- for spatial
+      # objects that's the technology-native assay ("Spatial"/"Xenium"),
+      # *not* the "RNA" copy created during the merge step above.
+      banksy_assay <- if (use_SCT) {
+        'SCT'
+      } else if (spatial == 'Visium') {
+        'Spatial'
+      } else {
+        'Xenium'
+      }
+    }
+    # merge() leaves Seurat v5 assay layers split per input object (e.g.
+    # "data.1"/"data.2" rather than one unified "data" layer) until
+    # JoinLayers() is called -- NormalizeData()/ScaleData() above tolerate
+    # that split fine, but RunBanksy()'s GetAssayData(layer = slot) call
+    # does not ("GetAssayData doesn't work for multiple layers in v5
+    # assay."). Join defensively; a no-op if the assay is already joined
+    # (e.g. a single pre-merged object, or spatial = 'no').
+    obj <- tryCatch(SeuratObject::JoinLayers(obj, assay = banksy_assay),
+                    error = function(e) obj)
+    message('--- Running BANKSY (spatial-aware clustering) ---')
+    obj <- RunBanksyWrapper(obj, lambda = banksy_lambda, assay = banksy_assay,
+                            k_geom = banksy_k_geom, group = group_column,
+                            run_pca = TRUE, npcs = max_dims)
+    # Seurat::IntegrateLayers() only works on assays with split per-sample
+    # layers (e.g. "data.s1"/"data.s2") -- its HarmonyIntegration method
+    # reads that split to figure out batch membership via
+    # CreateIntegrationGroups(). RunBanksy() instead produces one already-
+    # consolidated matrix across every cell (there's no per-sample split to
+    # read), which makes CreateIntegrationGroups() fail internally with
+    # "attempt to set an attribute on NULL". The BANKSY-Seurat vignette's
+    # own multi-sample Harmony example sidesteps this the same way: skip
+    # IntegrateLayers() for this path and call harmony::RunHarmony()
+    # directly on the pca_banksy embedding instead (validated above that
+    # integration == 'HarmonyIntegration' when banksy = TRUE).
+    if (!requireNamespace('harmony', quietly = TRUE)) {
+      stop("'harmony' is required for banksy = TRUE integration. Install ",
+           "with: install.packages('harmony')")
+    }
+    message('--- Running Harmony directly on the BANKSY PCA embedding ---')
+    obj <- harmony::RunHarmony(obj, group.by.vars = group_column,
+                               reduction.use = 'pca_banksy',
+                               reduction.save = new_reduction)
+    skip_integrate_layers <- TRUE
+  } else {
+    skip_integrate_layers <- FALSE
+    # ---- PCA ----------------------------------------------------------------
+    message('--- Running PCA ---')
+    obj <- Seurat::RunPCA(obj)
+  }
 
   # ---- Choose dims (elbow prompt or fixed max_dims) -----------------------
   if (use_elbow_plot) {
-    elbow_plot <- Seurat::ElbowPlot(obj)
+    elbow_plot <- Seurat::ElbowPlot(obj, reduction = if (isTRUE(banksy)) 'pca_banksy' else 'pca')
     print(elbow_plot)
     dims_to_use <- as.numeric(readline(prompt = 'Enter # of PCs: '))
   } else {
     dims_to_use <- max_dims
   }
 
-  # ---- Integrate ----------------------------------------------------------
-  message(sprintf('--- Integrating layers (method: %s) ---', integration))
-  obj <- Seurat::IntegrateLayers(object = obj,
-                                 method = integration,
-                                 orig.reduction = integration_reduction,
-                                 assay = integration_assay,
-                                 normalization.method = integration_normalization,
-                                 new.reduction = new_reduction,
-                                 k.anchor = k_anchor,
-                                 k.weight = k_weight)
+  # ---- Integrate ------------------------------------------------------------
+  # Skipped for banksy = TRUE -- harmony::RunHarmony() already ran directly
+  # on the pca_banksy embedding above and produced `new_reduction`.
+  if (!skip_integrate_layers) {
+    message(sprintf('--- Integrating layers (method: %s) ---', integration))
+    obj <- Seurat::IntegrateLayers(object = obj,
+                                   method = integration,
+                                   orig.reduction = integration_reduction,
+                                   assay = integration_assay,
+                                   normalization.method = integration_normalization,
+                                   new.reduction = new_reduction,
+                                   k.anchor = k_anchor,
+                                   k.weight = k_weight)
+  }
 
   # ---- Cluster + UMAP -----------------------------------------------------
   message('--- Finding neighbors and clusters ---')

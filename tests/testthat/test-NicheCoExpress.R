@@ -153,7 +153,7 @@ test_that("NicheCoExpress runs end-to-end and returns the documented structure",
   expect_true(all(c("per_sample", "stats") %in% names(res)))
   expect_true(all(c("geneA", "geneB", "coexpr", "niche", "sample", "condition")
                  %in% colnames(res$per_sample)))
-  expect_true(all(c("niche", "pair", "delta_log2", "p_value", "p_adj")
+  expect_true(all(c("niche", "pair", "delta", "p_value", "p_adj")
                  %in% colnames(res$stats)))
   expect_equal(attr(res$stats, "conditions"), c("healthy", "tumor"))
 })
@@ -294,6 +294,101 @@ test_that("NicheCoExpress composition output respects max_celltype_frac (regress
   ))
   expect_true("composition" %in% names(res))
   expect_true(all(res$composition$dominant_frac <= 0.5 + 1e-9))
+})
+
+test_that("NicheCoExpress warns and coerces min_samples < 2 to 2", {
+  .skip_if_no_seurat()
+  obj <- .make_coexpr_object(seed = 1)
+  expect_warning(
+    res <- suppressMessages(
+      NicheCoExpress(obj, genes = c("G1", "G2"),
+                     conditions = c("healthy", "tumor"),
+                     min_cells = 5, min_samples = 1, verbose = FALSE,
+                     bg_mode = "local")
+    ),
+    "min_samples"
+  )
+  expect_type(res, "list")
+})
+
+test_that("NicheCoExpress supports test = 't' as an alternative to Wilcoxon", {
+  .skip_if_no_seurat()
+  obj <- .make_coexpr_object(seed = 1)
+  res <- suppressWarnings(suppressMessages(
+    NicheCoExpress(obj, genes = c("G1", "G2"),
+                   conditions = c("healthy", "tumor"),
+                   min_cells = 5, verbose = FALSE, bg_mode = "local",
+                   test = "t")
+  ))
+  expect_true(any(!is.na(res$stats$p_value)))
+})
+
+test_that("NicheCoExpress p_adjust_scope = 'niche' (default) corrects within each niche separately (regression)", {
+  .skip_if_no_seurat()
+  obj <- .make_coexpr_object(seed = 1)
+  res <- suppressWarnings(suppressMessages(
+    NicheCoExpress(obj, genes = c("G1", "G2", "G3"),
+                   conditions = c("healthy", "tumor"),
+                   min_cells = 5, verbose = FALSE, bg_mode = "local")
+  ))
+  expect_equal(attr(res$stats, "p_adjust_scope"), "niche")
+  for (nz in unique(res$stats$niche)) {
+    idx <- res$stats$niche == nz & !is.na(res$stats$p_value)
+    expect_equal(res$stats$p_adj[idx],
+                stats::p.adjust(res$stats$p_value[idx], method = "BH"))
+  }
+})
+
+test_that("NicheCoExpress p_adjust_scope = 'global' corrects jointly across all niche x pair tests", {
+  .skip_if_no_seurat()
+  obj <- .make_coexpr_object(seed = 1)
+  res <- suppressWarnings(suppressMessages(
+    NicheCoExpress(obj, genes = c("G1", "G2", "G3"),
+                   conditions = c("healthy", "tumor"),
+                   min_cells = 5, verbose = FALSE, bg_mode = "local",
+                   p_adjust_scope = "global")
+  ))
+  expect_equal(attr(res$stats, "p_adjust_scope"), "global")
+  idx <- !is.na(res$stats$p_value)
+  expect_equal(res$stats$p_adj[idx],
+              stats::p.adjust(res$stats$p_value[idx], method = "BH"))
+})
+
+test_that("NicheCoExpress reports comp_diff/comp_flag on stats when celltype_col is set (regression)", {
+  .skip_if_no_seurat()
+  obj <- .make_coexpr_object(seed = 1, with_celltypes = TRUE)
+  res <- suppressWarnings(suppressMessages(
+    NicheCoExpress(obj, genes = c("G1", "G2"), celltype_col = "celltype",
+                   conditions = c("healthy", "tumor"), min_cells = 5, verbose = FALSE,
+                   bg_mode = "local", comp_flag_thresh = 0.15)
+  ))
+  expect_true(all(c("comp_diff", "comp_flag") %in% colnames(res$stats)))
+  expect_type(res$stats$comp_flag, "logical")
+  present <- !is.na(res$stats$comp_diff)
+  expect_equal(res$stats$comp_flag[present],
+              res$stats$comp_diff[present] > 0.15)
+})
+
+test_that("NicheCoExpress sets score_type to log2ratio by default and zscore when center_celltype = TRUE", {
+  .skip_if_no_seurat()
+  obj <- .make_coexpr_object(seed = 1, with_celltypes = TRUE)
+
+  res_log2 <- suppressWarnings(suppressMessages(
+    NicheCoExpress(obj, genes = c("G1", "G2"),
+                   conditions = c("healthy", "tumor"), min_cells = 5, verbose = FALSE,
+                   bg_mode = "local")
+  ))
+  expect_equal(attr(res_log2$stats, "score_type"), "log2ratio")
+  expect_equal(attr(res_log2$per_sample, "score_type"), "log2ratio")
+
+  res_z <- suppressWarnings(suppressMessages(
+    NicheCoExpress(obj, genes = c("G1", "G2"), celltype_col = "celltype",
+                   center_celltype = TRUE,
+                   conditions = c("healthy", "tumor"), min_cells = 5, verbose = FALSE,
+                   bg_mode = "local")
+  ))
+  expect_equal(attr(res_z$stats, "score_type"), "zscore")
+  expect_equal(attr(res_z$per_sample, "score_type"), "zscore")
 })
 
 

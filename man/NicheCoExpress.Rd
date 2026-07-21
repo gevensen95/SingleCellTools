@@ -27,6 +27,7 @@ NicheCoExpress(
   min_samples = 2,
   test = c("wilcox", "t"),
   p_adjust_method = "BH",
+  p_adjust_scope = c("niche", "global"),
   seed = 1,
   verbose = TRUE
 )
@@ -96,6 +97,12 @@ are undefined, so values \code{< 2} are treated as 2.}
 
 \item{p_adjust_method}{Passed to \code{\link[stats]{p.adjust}}.}
 
+\item{p_adjust_scope}{\code{"niche"} (default) corrects p-values within
+each niche separately; \code{"global"} corrects jointly across every
+niche x pair test. \code{"niche"} matches the original behaviour of
+this function; switch to \code{"global"} if you plan to interpret
+\code{p_adj} across niches at once.}
+
 \item{seed}{RNG seed for reproducible background sampling.}
 
 \item{verbose}{Print progress.}
@@ -106,8 +113,10 @@ A list:
 \item{\code{per_sample}}{Long data.frame of per-sample x niche x
 pair co-expression scores.}
 \item{\code{stats}}{Per-niche x pair differential co-expression:
-means, \code{delta_log2}, statistic, p-value, BH-adjusted q-value.
-If \code{celltype_col} was set, also \code{comp_diff} and
+means, \code{delta} (test - reference; log2-ratio units, or
+z-score units if \code{center_celltype = TRUE} -- check the
+\code{score_type} attribute / see \code{\link{plotNicheCoExpress}}),
+statistic, p-value, BH-adjusted q-value. If \code{celltype_col} was set, also \code{comp_diff} and
 \code{comp_flag}.}
 \item{\code{composition}}{(only if \code{celltype_col} set)
 Per (sample x niche) cell-type fractions actually used, plus
@@ -168,7 +177,7 @@ res <- nicheCoExpress(
   condition_col = "condition",
   conditions    = c("healthy", "tumor")
 )
-subset(res$stats, p_adj < 0.05 & delta_log2 > 0)
+subset(res$stats, p_adj < 0.05 & delta > 0)
 plotNicheCoExpress(res, type = "heatmap")
 }
 

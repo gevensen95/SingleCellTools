@@ -84,6 +84,11 @@
 #'   are undefined, so values \code{< 2} are treated as 2.
 #' @param test \code{"wilcox"} (default) or \code{"t"}.
 #' @param p_adjust_method Passed to \code{\link[stats]{p.adjust}}.
+#' @param p_adjust_scope \code{"niche"} (default) corrects p-values within
+#'   each niche separately; \code{"global"} corrects jointly across every
+#'   niche x pair test. \code{"niche"} matches the original behaviour of
+#'   this function; switch to \code{"global"} if you plan to interpret
+#'   \code{p_adj} across niches at once.
 #' @param seed RNG seed for reproducible background sampling.
 #' @param verbose Print progress.
 #'
@@ -92,8 +97,10 @@
 #'     \item{\code{per_sample}}{Long data.frame of per-sample x niche x
 #'       pair co-expression scores.}
 #'     \item{\code{stats}}{Per-niche x pair differential co-expression:
-#'       means, \code{delta_log2}, statistic, p-value, BH-adjusted q-value.
-#'       If \code{celltype_col} was set, also \code{comp_diff} and
+#'       means, \code{delta} (test - reference; log2-ratio units, or
+#'       z-score units if \code{center_celltype = TRUE} -- check the
+#'       \code{score_type} attribute / see \code{\link{plotNicheCoExpress}}),
+#'       statistic, p-value, BH-adjusted q-value. If \code{celltype_col} was set, also \code{comp_diff} and
 #'       \code{comp_flag}.}
 #'     \item{\code{composition}}{(only if \code{celltype_col} set)
 #'       Per (sample x niche) cell-type fractions actually used, plus
@@ -111,7 +118,7 @@
 #'   condition_col = "condition",
 #'   conditions    = c("healthy", "tumor")
 #' )
-#' subset(res$stats, p_adj < 0.05 & delta_log2 > 0)
+#' subset(res$stats, p_adj < 0.05 & delta > 0)
 #' plotNicheCoExpress(res, type = "heatmap")
 #' }
 #'
@@ -142,11 +149,13 @@ NicheCoExpress <- function(seurat_obj,
                            min_samples       = 2,
                            test              = c("wilcox", "t"),
                            p_adjust_method   = "BH",
+                           p_adjust_scope    = c("niche", "global"),
                            seed              = 1,
                            verbose           = TRUE) {
 
-  bg_mode <- match.arg(bg_mode)
-  test    <- match.arg(test)
+  bg_mode        <- match.arg(bg_mode)
+  test           <- match.arg(test)
+  p_adjust_scope <- match.arg(p_adjust_scope)
   if (!is.null(seed)) set.seed(seed)
   if (min_samples < 2) {
     warning("`min_samples` must be >= 2 for the differential test; using 2.")
@@ -177,8 +186,23 @@ NicheCoExpress <- function(seurat_obj,
     pairs <- data.frame(geneA = cmb[1, ], geneB = cmb[2, ],
                         stringsAsFactors = FALSE)
   } else {
-    pairs <- as.data.frame(genes, stringsAsFactors = FALSE)[, 1:2]
+    pairs_in <- as.data.frame(genes, stringsAsFactors = FALSE)
+    if (ncol(pairs_in) < 2) {
+      stop("`genes` must have at least 2 columns when supplying explicit ",
+           "gene pairs (got ", ncol(pairs_in), ").")
+    }
+    if (all(c("geneA", "geneB") %in% colnames(pairs_in))) {
+      pairs <- pairs_in[, c("geneA", "geneB")]
+    } else {
+      if (ncol(pairs_in) > 2) {
+        warning("`genes` has ", ncol(pairs_in), " columns and no geneA/",
+                "geneB names; using the first two columns as the gene pairs.")
+      }
+      pairs <- pairs_in[, 1:2]
+    }
     colnames(pairs) <- c("geneA", "geneB")
+    pairs$geneA <- as.character(pairs$geneA)
+    pairs$geneB <- as.character(pairs$geneB)
   }
   self_pair <- pairs$geneA == pairs$geneB
   if (any(self_pair)) {
@@ -396,7 +420,7 @@ NicheCoExpress <- function(seurat_obj,
         n_test     = n2,
         mean_ref   = if (n1 > 0) mean(v1) else NA_real_,
         mean_test  = if (n2 > 0) mean(v2) else NA_real_,
-        delta_log2 = if (n1 > 0 && n2 > 0) mean(v2) - mean(v1) else NA_real_,
+        delta      = if (n1 > 0 && n2 > 0) mean(v2) - mean(v1) else NA_real_,
         statistic  = stat,
         p_value    = pval,
         stringsAsFactors = FALSE
@@ -407,12 +431,20 @@ NicheCoExpress <- function(seurat_obj,
   stats_df <- do.call(rbind, stats_list)
   rownames(stats_df) <- NULL
 
-  # Multiple-testing correction within niche
+  # Multiple-testing correction. Default scope is within each niche
+  # separately ("niche"); use p_adjust_scope = "global" to correct across
+  # every niche x pair test jointly instead.
   stats_df$p_adj <- NA_real_
-  for (nz in unique(stats_df$niche)) {
-    idx <- stats_df$niche == nz & !is.na(stats_df$p_value)
+  if (p_adjust_scope == "global") {
+    idx <- !is.na(stats_df$p_value)
     stats_df$p_adj[idx] <- stats::p.adjust(stats_df$p_value[idx],
                                            method = p_adjust_method)
+  } else {
+    for (nz in unique(stats_df$niche)) {
+      idx <- stats_df$niche == nz & !is.na(stats_df$p_value)
+      stats_df$p_adj[idx] <- stats::p.adjust(stats_df$p_value[idx],
+                                             method = p_adjust_method)
+    }
   }
 
   # Composition confound indicator
@@ -431,9 +463,10 @@ NicheCoExpress <- function(seurat_obj,
 
   stats_df <- stats_df[order(stats_df$niche, stats_df$p_adj), ]
 
-  attr(stats_df,   "conditions") <- cond_levels
-  attr(stats_df,   "score_type") <- score_type
-  attr(per_sample, "score_type") <- score_type
+  attr(stats_df,   "conditions")     <- cond_levels
+  attr(stats_df,   "score_type")     <- score_type
+  attr(stats_df,   "p_adjust_scope") <- p_adjust_scope
+  attr(per_sample, "score_type")     <- score_type
   out <- list(per_sample = per_sample, stats = stats_df)
   if (!is.null(comp_tab)) out$composition <- comp_tab
   out
@@ -445,7 +478,7 @@ NicheCoExpress <- function(seurat_obj,
 #' Two views:
 #' \describe{
 #'   \item{\code{type = "heatmap"} (default)}{Niche (rows) by gene-pair
-#'     (cols) heatmap of \code{delta_log2} &mdash; the change in
+#'     (cols) heatmap of \code{delta} &mdash; the change in
 #'     co-expression between the two conditions (test minus reference).
 #'     Diverging palette centred at 0: red = gained co-expression in the
 #'     test condition, blue = lost. Significance stars are drawn from
@@ -510,14 +543,14 @@ plotNicheCoExpress <- function(res,
     df <- stats_df[stats_df$pair %in% keep_pairs, ]
     df$label <- star(df$p_adj)
 
-    pair_order <- names(sort(tapply(df$delta_log2, df$pair,
+    pair_order <- names(sort(tapply(df$delta, df$pair,
                                     function(x) mean(x, na.rm = TRUE))))
     df$pair  <- factor(df$pair,  levels = pair_order)
     df$niche <- factor(df$niche, levels = sort(unique(df$niche)))
 
-    lim <- max(abs(df$delta_log2), na.rm = TRUE)
-    pair <- niche <- delta_log2 <- label <- NULL  # NSE silencing
-    ggplot2::ggplot(df, ggplot2::aes(x = pair, y = niche, fill = delta_log2)) +
+    lim <- max(abs(df$delta), na.rm = TRUE)
+    pair <- niche <- delta <- label <- NULL  # NSE silencing
+    ggplot2::ggplot(df, ggplot2::aes(x = pair, y = niche, fill = delta)) +
       ggplot2::geom_tile(color = "grey90") +
       ggplot2::geom_text(ggplot2::aes(label = label), size = 4,
                          vjust = 0.78, color = "black") +
@@ -646,13 +679,38 @@ plotNicheCoExpress <- function(res,
     if (length(cA) == 0 || length(cB) == 0) {
       moc_bg <- NA_real_; bg_sd <- NA_real_
     } else {
-      sA <- sample(cA, bg_n, replace = TRUE)
-      sB <- sample(cB, bg_n, replace = TRUE)
-      ok <- sA != sB
-      sA <- sA[ok]; sB <- sB[ok]
-      bg_vals <- vapply(seq_along(sA), function(j) moc(sA[j], sB[j]), numeric(1))
-      moc_bg <- mean(bg_vals, na.rm = TRUE)
-      bg_sd  <- stats::sd(bg_vals,  na.rm = TRUE)
+      # Draw sample(cA/cB, bg_n, replace=TRUE) pairs and drop any where the
+      # two draws coincide (a candidate pool can overlap between gA and gB).
+      # Those ties are re-drawn rather than just discarded, so the realized
+      # background sample size stays at bg_n instead of silently shrinking
+      # (which would understate bg_sd for pairs with small candidate pools).
+      # Capped at 20 rounds: if cA/cB are near-identical singletons, ties
+      # can't be fully avoided and we proceed with whatever was collected.
+      sA <- character(0); sB <- character(0)
+      attempt <- 0
+      while (length(sA) < bg_n && attempt < 20) {
+        need   <- bg_n - length(sA)
+        draw   <- max(need, ceiling(need * 1.5))
+        cand_a <- sample(cA, draw, replace = TRUE)
+        cand_b <- sample(cB, draw, replace = TRUE)
+        ok     <- cand_a != cand_b
+        sA <- c(sA, cand_a[ok]); sB <- c(sB, cand_b[ok])
+        attempt <- attempt + 1
+      }
+      if (length(sA) > bg_n) {
+        sA <- sA[seq_len(bg_n)]; sB <- sB[seq_len(bg_n)]
+      }
+      if (length(sA) == 0) {
+        moc_bg <- NA_real_; bg_sd <- NA_real_
+      } else {
+        # Vectorized dot product per sampled pair (equivalent to
+        # vapply(seq_along(sA), function(j) moc(sA[j], sB[j]), numeric(1))
+        # but avoids an R-level function call per background draw).
+        bg_vals <- rowSums(norm_expr[sA, , drop = FALSE] *
+                           norm_expr[sB, , drop = FALSE])
+        moc_bg <- mean(bg_vals, na.rm = TRUE)
+        bg_sd  <- stats::sd(bg_vals,  na.rm = TRUE)
+      }
     }
     coexpr <- if (center) {
       if (is.na(moc_bg) || is.na(bg_sd) || bg_sd == 0) NA_real_
