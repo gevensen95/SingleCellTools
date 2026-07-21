@@ -43,6 +43,7 @@ Imports:
     ClusterR,
     irlba,
     RSpectra,
+    mclust,
     glmGamPoi (>= 1.12.2),
     GO.db (>= 3.17.0),
     AnnotationDbi,
