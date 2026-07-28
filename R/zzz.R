@@ -78,7 +78,6 @@
   # Reference-based annotation (AnnotateWithReference)
   # CellTypist (default) + scANVI are Python-only (via reticulate); scmap is R.
   "scmap",
-  "reticulate",
   # Trajectory (PseudotimeWrapper)
   "slingshot",
   # Density plots (PlotFeatureDensity)
@@ -94,8 +93,16 @@
   attached <- character(0)
   missing  <- character(0)
 
+  # Verbose per-package progress -- lets a hang or crash during this loop
+  # be pinpointed to a single dependency instead of just "library() never
+  # returns" / "R died somewhere in here". Opt out with
+  # options(SingleCellTools.quiet_attach = TRUE).
+  verbose_attach <- !isTRUE(getOption("SingleCellTools.quiet_attach", FALSE))
+
   for (pkg in .scta_deps) {
     if (paste0("package:", pkg) %in% search()) next
+
+    if (verbose_attach) packageStartupMessage("  ...loading ", pkg)
 
     if (!requireNamespace(pkg, quietly = TRUE)) {
       missing <- c(missing, pkg)
