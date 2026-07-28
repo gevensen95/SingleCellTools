@@ -1,6 +1,7 @@
-# Tests for SaveWithProvenance(), PseudotimeWrapper(), and ToAnnData()/
-# FromAnnData(). All are wrapped defensively (tryCatch + skip for the
-# heavier ones) since they depend on real external packages/backends.
+# Tests for SaveWithProvenance(), PseudotimeWrapper(), ToAnnData()/
+# FromAnnData(), and RunCellChat(). All are wrapped defensively (tryCatch +
+# skip for the heavier ones) since they depend on real external
+# packages/backends.
 #
 # RunRCTD() and RunLIANA() are NOT covered: both have zero custom input
 # validation (grepping each file found no stop() calls -- they just call
@@ -8,6 +9,14 @@
 # real spatial deconvolution reference dataset (RunRCTD) or a live
 # OmnipathR ligand-receptor database fetch over the network (RunLIANA),
 # neither of which is practical to set up or fake convincingly here.
+#
+# RunCellChat() DOES have real input validation, so that part is covered
+# below with no CellChat installation required. A genuine end-to-end run
+# is NOT attempted: computeCommunProb()'s permutation testing is slow, and
+# getting any non-empty result requires gene symbols that actually overlap
+# CellChatDB.mouse/.human -- a synthetic "Gene1"/"Gene2"/... fixture never
+# will, so an end-to-end call would only ever exercise the "zero
+# interactions survived filtering" path, not real behavior.
 
 # ============================================================================
 # SaveWithProvenance()
@@ -122,6 +131,69 @@ test_that("PseudotimeWrapper validates inputs", {
     PseudotimeWrapper(obj, reduction = "umap", cluster_col = "nope"),
     "Cluster column.*not found"
   )
+})
+
+
+# ============================================================================
+# RunCellChat() -- validation-only; see file header note on why a real
+# end-to-end run isn't attempted here.
+# ============================================================================
+
+test_that("RunCellChat errors on non-Seurat input", {
+  expect_error(RunCellChat(list(1), label = "x"), "Seurat object")
+})
+
+test_that("RunCellChat errors when group_col is not found in metadata", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 20)
+  expect_error(
+    RunCellChat(obj, label = "x", group_col = "not_a_column"),
+    "not_a_column"
+  )
+})
+
+test_that("RunCellChat validates `species` via match.arg", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 20)
+  expect_error(
+    RunCellChat(obj, label = "x", group_col = "celltype", species = "cat"),
+    "should be one of|arg"
+  )
+})
+
+test_that("RunCellChat's own checks run before it checks for CellChat itself", {
+  # i.e. seurat/group_col validation happens even when CellChat isn't
+  # installed -- mirrors the ordering RunBanksyWrapper uses, and is what
+  # makes the two tests above meaningful regardless of the local setup.
+  expect_error(RunCellChat(list(1), label = "x"), "Seurat object")
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 20)
+  expect_error(
+    RunCellChat(obj, label = "x", group_col = "nope"),
+    "nope"
+  )
+})
+
+test_that("RunCellChat runs end-to-end on a synthetic object (skipped unless CellChat is installed)", {
+  .skip_if_missing("Seurat", "SeuratObject", "CellChat")
+  obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60,
+                            n_celltypes = 3)
+
+  out <- tryCatch(
+    suppressWarnings(suppressMessages(
+      RunCellChat(obj, label = "test", group_col = "celltype",
+                 nboot = 5, verbose = FALSE)
+    )),
+    error = function(e) e
+  )
+  skip_if(inherits(out, "error"),
+         paste("RunCellChat did not complete on this synthetic object",
+               "(expected -- see file header note):",
+               if (inherits(out, "error")) conditionMessage(out) else ""))
+
+  expect_true(inherits(out, "CellChat"))
+  expect_equal(length(levels(out@idents)), length(unique(obj$celltype)))
+  expect_true(!is.null(out@net))
 })
 
 

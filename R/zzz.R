@@ -79,8 +79,6 @@
   # CellTypist (default) + scANVI are Python-only (via reticulate); scmap is R.
   "scmap",
   "reticulate",
-  # Spatial deconvolution (RunRCTD)
-  "spacexr",
   # Trajectory (PseudotimeWrapper)
   "slingshot",
   # Density plots (PlotFeatureDensity)
