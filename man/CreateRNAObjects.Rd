@@ -59,3 +59,12 @@ feature matrix folder, a filtered feature matrix folder, or a .h5 file. You
 can directly give the output folder from cellranger into this function.
 It will preferentially choose the filtered_feature_matrix folder.
 }
+\details{
+Barcodes/features(or genes)/matrix files may use the standard CellRanger
+names (\code{barcodes.tsv.gz}, \code{features.tsv.gz}, \code{matrix.mtx.gz})
+or be prefixed with a sample name, e.g.
+\code{GSM9352918_con11_barcodes.tsv.gz} -- common when downloading 10X
+Supplementary Files from GEO. Any prefix in front of the standard suffix
+is matched automatically; \code{genes.tsv.gz} (CellRanger v2 naming) is
+also recognized alongside \code{features.tsv.gz}.
+}
