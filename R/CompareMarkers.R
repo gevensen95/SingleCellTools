@@ -160,7 +160,7 @@ CompareMarkers <- function(a, b,
         "opposite sign"                     = "purple"
       )) +
       ggplot2::labs(x = log2FC_a_name, y = log2FC_b_name, color = NULL) +
-      ggplot2::theme_bw()
+      Ol_Reliable()
     out$plot <- p
   }
 

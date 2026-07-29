@@ -230,7 +230,7 @@ regmatches_escape <- function(x) {
                        ggplot2::aes(x = group, y = pct_pos, fill = gene)) +
     ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2) +
     ggplot2::labs(x = NULL, y = "% positive", fill = "Gene") +
-    ggplot2::theme_bw() +
+    Ol_Reliable() +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
     )
@@ -258,7 +258,7 @@ regmatches_escape <- function(x) {
     ggplot2::scale_fill_gradient(low = colors[1], high = colors[2],
                                  limits = c(0, 100), name = "% positive") +
     ggplot2::labs(x = NULL, y = NULL) +
-    ggplot2::theme_linedraw() +
+    Ol_Reliable() +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
     )
@@ -343,7 +343,7 @@ regmatches_escape <- function(x) {
                        ggplot2::aes(x = group, y = prop, fill = combo)) +
     ggplot2::geom_col(color = "black", linewidth = 0.2) +
     ggplot2::labs(x = NULL, y = "Proportion", fill = "Combination") +
-    ggplot2::theme_bw() +
+    Ol_Reliable() +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
     )

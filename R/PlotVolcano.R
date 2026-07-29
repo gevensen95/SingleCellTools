@@ -153,7 +153,7 @@ PlotVolcano <- function(de,
     ggplot2::labs(x = expression(log[2]~"fold change"),
                   y = expression(-log[10]~"padj"),
                   title = title) +
-    ggplot2::theme_bw() +
+    Ol_Reliable() +
     ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
 
   if (nrow(labels_df)) {

@@ -54,7 +54,7 @@ CompositionBarplot <- function(x,
                                         y = if (y == "prop") prop else n_cells,
                                         fill = group)) +
     ggplot2::geom_col(position = position) +
-    ggplot2::theme_minimal() +
+    Ol_Reliable() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
     ggplot2::labs(x = NULL,
                   y = if (y == "prop") "Proportion" else "Number of cells",

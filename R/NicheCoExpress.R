@@ -563,7 +563,7 @@ plotNicheCoExpress <- function(res,
                        conds[2], " vs ", conds[1]),
         subtitle = "red = higher in test condition  |  * p_adj<.05  ** <.01  *** <.001"
       ) +
-      ggplot2::theme_minimal(base_size = 11) +
+      Ol_Reliable() +
       ggplot2::theme(
         axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
         panel.grid  = ggplot2::element_blank())
@@ -594,7 +594,7 @@ plotNicheCoExpress <- function(res,
         title = "Per-sample co-expression by niche",
         subtitle = paste0("each point = one sample; ", zero_note)
       ) +
-      ggplot2::theme_bw(base_size = 11) +
+      Ol_Reliable() +
       ggplot2::theme(legend.position   = "none",
                      strip.text.y.left = ggplot2::element_text(angle = 0))
   }

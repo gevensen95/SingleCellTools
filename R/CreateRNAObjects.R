@@ -179,30 +179,53 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
 
   message('--- Generating unfiltered QC plots ---')
   obj <- merge(seurat_objects[[1]], seurat_objects[-1])
-  orig.ident <- nFeature_RNA <- percent.mt <- Freq <- NULL  # silence R CMD check NSE notes
+  orig.ident <- nFeature_RNA <- percent.mt <- Freq <- pct <- label <- NULL  # silence R CMD check NSE notes
   gene.plot <- ggplot2::ggplot(obj@meta.data, ggplot2::aes(orig.ident, nFeature_RNA)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+    Ol_Reliable()
   mt.plot <- ggplot2::ggplot(obj@meta.data, ggplot2::aes(orig.ident, percent.mt)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+    Ol_Reliable()
 
   qc_plot <- gene.plot + mt.plot
 
-  # Third panel: number of doublets per sample. Only added when doublet
+  # Third panel: doublet composition per sample. Only added when doublet
   # calling actually ran (run_doublet_finder = TRUE), since otherwise
   # there's no doublet_finder column to plot.
+  #
+  # Raw doublet counts aren't comparable across samples with different
+  # cell numbers -- a sample with more cells shows more doublets even at
+  # the same underlying doublet rate, which is what actually reflects
+  # loading concentration and is what QC review cares about. Instead,
+  # plot the Singlet/Doublet proportion per sample (stacked to 100%) and
+  # label each bar with the doublet rate and the underlying n, so the
+  # rate is visible at a glance without losing the counts.
   if ("doublet_finder" %in% colnames(obj@meta.data)) {
     doublet_counts <- as.data.frame(table(
       orig.ident      = obj@meta.data$orig.ident,
       doublet_finder  = obj@meta.data$doublet_finder
     ))
-    doublet_counts <- doublet_counts[doublet_counts$doublet_finder == "Doublet", ]
+    doublet_counts <- doublet_counts |>
+      dplyr::group_by(orig.ident) |>
+      dplyr::mutate(pct = Freq / sum(Freq)) |>
+      dplyr::ungroup()
 
-    doublet.plot <- ggplot2::ggplot(doublet_counts, ggplot2::aes(orig.ident, Freq)) +
-      ggplot2::geom_col() +
-      ggplot2::labs(title = 'Doublets', y = 'Number of doublets') +
-      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+    doublet_labels <- doublet_counts[doublet_counts$doublet_finder == "Doublet", ]
+    doublet_labels$label <- sprintf('%.1f%%\n(n=%d)', 100 * doublet_labels$pct, doublet_labels$Freq)
+
+    doublet.plot <- ggplot2::ggplot(doublet_counts,
+                                    ggplot2::aes(orig.ident, pct, fill = doublet_finder)) +
+      ggplot2::geom_col(position = ggplot2::position_stack()) +
+      ggplot2::geom_text(data = doublet_labels,
+                         ggplot2::aes(orig.ident, 1, label = label),
+                         vjust = -0.3, size = 3, lineheight = 0.9) +
+      ggplot2::scale_fill_manual(values = c(Singlet = "grey80", Doublet = "firebrick")) +
+      ggplot2::labs(title = 'Doublet rate', y = 'Proportion of cells', fill = NULL) +
+      ggplot2::coord_cartesian(clip = 'off') +
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+      Ol_Reliable()
 
     qc_plot <- qc_plot + doublet.plot
   }

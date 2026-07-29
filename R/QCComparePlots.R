@@ -192,7 +192,7 @@ QCComparePlots <- function(pre,
     ggplot2::scale_fill_manual(values = c(pre = colors[1], post = colors[2]),
                                name = NULL) +
     ggplot2::labs(x = NULL, y = metric) +
-    ggplot2::theme_bw() +
+    Ol_Reliable() +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
     )
