@@ -187,7 +187,7 @@ MarkerPlot <- function(obj,
       colours = rev(RColorBrewer::brewer.pal(9, "RdBu"))
     ) +
     ggplot2::scale_size_continuous(range = c(0, maxsize)) +
-    ggplot2::theme_linedraw() +
+    Ol_Reliable() +
     ggplot2::geom_vline(xintercept = intersects) +
     ggplot2::xlab("") +
     ggplot2::ylab(" ") +

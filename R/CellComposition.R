@@ -111,7 +111,7 @@ CellComposition <- function(obj,
                        ggplot2::aes(x = sample, y = prop, fill = cluster)) +
     ggplot2::geom_col(color = "black", linewidth = 0.15) +
     ggplot2::labs(x = NULL, y = "Proportion", fill = "Cluster") +
-    ggplot2::theme_bw() +
+    Ol_Reliable() +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
     )
@@ -140,7 +140,7 @@ CellComposition <- function(obj,
     ggplot2::geom_boxplot(color = "black", outlier.size = 1) +
     ggplot2::facet_wrap(~ cluster, scales = "free_y") +
     ggplot2::labs(x = NULL, y = "Proportion", fill = "Group") +
-    ggplot2::theme_bw() +
+    Ol_Reliable() +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
     )
@@ -167,7 +167,7 @@ CellComposition <- function(obj,
     ggplot2::stat_summary(fun.data = "mean_se", geom = "pointrange") +
     ggplot2::stat_summary(fun = "mean", geom = "line") +
     ggplot2::labs(x = NULL, y = "Proportion", color = "Cluster") +
-    ggplot2::theme_bw()
+    Ol_Reliable()
   if (!is.null(colors)) {
     p <- p + ggplot2::scale_color_manual(values = colors)
   }

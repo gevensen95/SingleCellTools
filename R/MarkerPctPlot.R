@@ -285,7 +285,7 @@ MarkerPctPlot <- function(obj,
   )
 
   p <- p +
-    ggplot2::theme_linedraw() +
+    Ol_Reliable() +
     ggplot2::geom_segment(
       data    = hlines_df,
       mapping = ggplot2::aes(x = x, xend = xend, y = y, yend = yend),

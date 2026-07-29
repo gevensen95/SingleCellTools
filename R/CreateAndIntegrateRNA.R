@@ -161,9 +161,9 @@ CreateAndIntegrateRNA <-
 
     # Create plots
     gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
-      ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
+      ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
     mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
-      ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
+      ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
     print(gene.plot + mt.plot)
     ggplot2::ggsave('unfiltered_features_percentMT.pdf', height = 5, width = 7)
 
@@ -201,9 +201,9 @@ CreateAndIntegrateRNA <-
 
       obj <- merge(seurat_objects[[1]], seurat_objects[-1])
       gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
-        ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered')
+        ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered') + Ol_Reliable()
       mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
-        ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered')
+        ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered') + Ol_Reliable()
       print(gene.plot + mt.plot)
 
     } else {
@@ -230,9 +230,9 @@ CreateAndIntegrateRNA <-
 
       obj <- merge(seurat_objects[[1]], seurat_objects[-1])
       gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
-        ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered')
+        ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered') + Ol_Reliable()
       mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
-        ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered')
+        ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered') + Ol_Reliable()
       print(gene.plot + mt.plot)
     }
 

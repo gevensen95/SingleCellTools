@@ -67,9 +67,13 @@ StackedViolinPlot <- function(obj,
   p <- ggplot2::ggplot(long, ggplot2::aes(x = .group, y = expression, fill = .group)) +
     ggplot2::geom_violin(scale = "width", trim = TRUE, color = NA) +
     ggplot2::facet_grid(rows = ggplot2::vars(gene), switch = "y") +
-    ggplot2::theme_classic() +
+    Ol_Reliable() +
     ggplot2::theme(
-      strip.text.y.left = ggplot2::element_text(angle = 0, hjust = 1),
+      # Ol_Reliable() sets strip.text colour to white (for its usual black
+      # strip.background); since this plot blanks strip.background below
+      # for left-side gene labels, colour must be reset here or the labels
+      # render invisibly (white-on-white).
+      strip.text.y.left = ggplot2::element_text(angle = 0, hjust = 1, colour = "black"),
       strip.background  = ggplot2::element_blank(),
       axis.text.x       = ggplot2::element_text(angle = 45, hjust = 1),
       axis.title.y      = ggplot2::element_blank(),

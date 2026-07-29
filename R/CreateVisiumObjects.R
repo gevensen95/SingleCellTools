@@ -51,9 +51,9 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
   message('--- Generating unfiltered QC plots ---')
   obj <- merge(seurat_objects[[1]], seurat_objects[-1])
   gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_Spatial)) +
-    ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
+    ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
   count.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nCount_Spatial)) +
-    ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered')
+    ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
   print(gene.plot + count.plot)
 
   message('--- Running edge detection and attaching tissue images ---')

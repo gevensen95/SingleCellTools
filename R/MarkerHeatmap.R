@@ -93,7 +93,7 @@ MarkerHeatmap <- function(obj,
   ggplot2::ggplot(long, ggplot2::aes(x = cluster, y = gene, fill = value)) +
     ggplot2::geom_tile() +
     ggplot2::scale_fill_gradientn(colors = colors) +
-    ggplot2::theme_minimal() +
+    Ol_Reliable() +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
       panel.grid  = ggplot2::element_blank()

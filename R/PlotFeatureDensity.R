@@ -129,7 +129,7 @@ PlotFeatureDensity <- function(obj,
     ggplot2::labs(x = paste0(reduction, "_", dims[1]),
                   y = paste0(reduction, "_", dims[2])) +
     ggplot2::coord_fixed() +
-    ggplot2::theme_bw() +
+    Ol_Reliable() +
     ggplot2::theme(
       strip.text  = ggplot2::element_text(face = "bold"),
       panel.grid  = ggplot2::element_blank()

@@ -125,15 +125,15 @@ CreateATACObjectsFilter <-
     obj <- merge(seurat_objects[[1]], seurat_objects[-1])
 
     pct_reads_in_peaks.plot <- ggplot(obj@meta.data,
-                                      aes(orig.ident, pct_reads_in_peaks)) + geom_boxplot()
+                                      aes(orig.ident, pct_reads_in_peaks)) + geom_boxplot() + Ol_Reliable()
     peak_region_fragments.plot <- ggplot(obj@meta.data,
-                                         aes(orig.ident, peak_region_fragments)) + geom_boxplot()
+                                         aes(orig.ident, peak_region_fragments)) + geom_boxplot() + Ol_Reliable()
     TSS.enrichment.plot <- ggplot(obj@meta.data,
-                                  aes(orig.ident, TSS.enrichment)) + geom_boxplot()
+                                  aes(orig.ident, TSS.enrichment)) + geom_boxplot() + Ol_Reliable()
     blacklist_ratio.plot <- ggplot(obj@meta.data,
-                                   aes(orig.ident, blacklist_ratio)) + geom_boxplot()
+                                   aes(orig.ident, blacklist_ratio)) + geom_boxplot() + Ol_Reliable()
     nucleosome_signal.plot <- ggplot(obj@meta.data,
-                                     aes(orig.ident, nucleosome_signal)) + geom_boxplot()
+                                     aes(orig.ident, nucleosome_signal)) + geom_boxplot() + Ol_Reliable()
 
     print(pct_reads_in_peaks.plot + peak_region_fragments.plot +
             TSS.enrichment.plot +
@@ -167,15 +167,15 @@ CreateATACObjectsFilter <-
       obj <- merge(subsetted_objs[[1]], subsetted_objs[-1])
 
       pct_reads_in_peaks.plot <- ggplot(obj@meta.data,
-                                        aes(orig.ident, pct_reads_in_peaks)) + geom_boxplot()
+                                        aes(orig.ident, pct_reads_in_peaks)) + geom_boxplot() + Ol_Reliable()
       peak_region_fragments.plot <- ggplot(obj@meta.data,
-                                           aes(orig.ident, peak_region_fragments)) + geom_boxplot()
+                                           aes(orig.ident, peak_region_fragments)) + geom_boxplot() + Ol_Reliable()
       TSS.enrichment.plot <- ggplot(obj@meta.data,
-                                    aes(orig.ident, TSS.enrichment)) + geom_boxplot()
+                                    aes(orig.ident, TSS.enrichment)) + geom_boxplot() + Ol_Reliable()
       blacklist_ratio.plot <- ggplot(obj@meta.data,
-                                     aes(orig.ident, blacklist_ratio)) + geom_boxplot()
+                                     aes(orig.ident, blacklist_ratio)) + geom_boxplot() + Ol_Reliable()
       nucleosome_signal.plot <- ggplot(obj@meta.data,
-                                       aes(orig.ident, nucleosome_signal)) + geom_boxplot()
+                                       aes(orig.ident, nucleosome_signal)) + geom_boxplot() + Ol_Reliable()
 
       print(pct_reads_in_peaks.plot + peak_region_fragments.plot +
               TSS.enrichment.plot +
@@ -229,15 +229,15 @@ CreateATACObjectsFilter <-
 
       message('--- Generating filtered ATAC QC plots ---')
       pct_reads_in_peaks.plot <- ggplot(obj@meta.data,
-                                        aes(orig.ident, pct_reads_in_peaks)) + geom_boxplot()
+                                        aes(orig.ident, pct_reads_in_peaks)) + geom_boxplot() + Ol_Reliable()
       peak_region_fragments.plot <- ggplot(obj@meta.data,
-                                           aes(orig.ident, peak_region_fragments)) + geom_boxplot()
+                                           aes(orig.ident, peak_region_fragments)) + geom_boxplot() + Ol_Reliable()
       TSS.enrichment.plot <- ggplot(obj@meta.data,
-                                    aes(orig.ident, TSS.enrichment)) + geom_boxplot()
+                                    aes(orig.ident, TSS.enrichment)) + geom_boxplot() + Ol_Reliable()
       blacklist_ratio.plot <- ggplot(obj@meta.data,
-                                     aes(orig.ident, blacklist_ratio)) + geom_boxplot()
+                                     aes(orig.ident, blacklist_ratio)) + geom_boxplot() + Ol_Reliable()
       nucleosome_signal.plot <- ggplot(obj@meta.data,
-                                       aes(orig.ident, nucleosome_signal)) + geom_boxplot()
+                                       aes(orig.ident, nucleosome_signal)) + geom_boxplot() + Ol_Reliable()
 
       print(pct_reads_in_peaks.plot + peak_region_fragments.plot +
               TSS.enrichment.plot +
