@@ -72,9 +72,6 @@
   # Composition testing (CellComposition / CompositionalTest)
   "speckle",           # propeller
   "limma",             # speckle dependency; useful directly
-  # Ligand-receptor (RunLIANA)
-  "liana",
-  "OmnipathR",         # liana pulls resources through OmnipathR
   # Reference-based annotation (AnnotateWithReference)
   # CellTypist (default) + scANVI are Python-only (via reticulate); scmap is R.
   "scmap",
