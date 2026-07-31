@@ -1,13 +1,13 @@
 #' Call doublets on a Seurat object with DoubletFinder
 #'
 #' Runs the standard DoubletFinder workflow on a single Seurat object:
-#' normalize → PCA → choose # PCs → UMAP/clusters → pK sweep → doubletFinder.
+#' normalize → PCA → choose # PCs → clusters → pK sweep → doubletFinder.
 #'
 #' On return, the normalized \code{data} and \code{scale.data} layers, the
-#' variable features, and the \code{pca} / \code{umap} reductions created
-#' during the workflow are stripped from the object so the result carries
-#' only counts plus the new \code{doublet_finder} (and \code{seurat_clusters})
-#' metadata columns.
+#' variable features, and the \code{pca} reduction created during the
+#' workflow are stripped from the object so the result carries only counts
+#' plus the new \code{doublet_finder} (and \code{seurat_clusters}) metadata
+#' columns.
 #'
 #' @param obj A Seurat object.
 #' @param samplenameIndex Passed through unchanged from the original API
@@ -40,7 +40,12 @@ calldoublet <- function(obj,
   } else {
     obj <- Seurat::NormalizeData(obj, verbose = FALSE)
     obj <- Seurat::FindVariableFeatures(obj, verbose = FALSE)
+    # Explicitly restrict to variable features rather than relying on
+    # ScaleData()'s default (which, depending on Seurat version, may scale
+    # every gene) -- scaling ~2000 genes instead of the whole transcriptome
+    # is a meaningful speedup with no effect on the PCA used downstream.
     obj <- Seurat::ScaleData(obj, vars.to.regress = vars.to.regress,
+                             features = SeuratObject::VariableFeatures(obj),
                              verbose = FALSE)
   }
 
@@ -58,8 +63,10 @@ calldoublet <- function(obj,
 
   # ---- Finish pre-processing ----------------------------------------------
   # NB: irlba and RSpectra are pulled in via the package Imports so that the
-  # PCA/UMAP code that needs them can find them — no library() calls here.
-  obj <- Seurat::RunUMAP(obj, dims = 1:min.pc, verbose = FALSE)
+  # PCA code that needs them can find them — no library() calls here.
+  # (No RunUMAP() here: DoubletFinder only needs the PCA space and cluster
+  # labels below, and nothing else in this function ever reads a UMAP
+  # embedding -- computing one was pure wasted work.)
   obj <- Seurat::FindNeighbors(obj, dims = 1:min.pc, verbose = FALSE)
   obj <- Seurat::FindClusters(obj, resolution = cluster_resolution, verbose = FALSE)
 
@@ -116,8 +123,8 @@ calldoublet <- function(obj,
     SeuratObject::VariableFeatures(obj, assay = "RNA") <- character(0)
   }, error = function(e) invisible(NULL))
 
-  # Drop the PCA and UMAP reductions we computed for the pK sweep.
-  for (red in intersect(c("pca", "umap"), SeuratObject::Reductions(obj))) {
+  # Drop the PCA reduction we computed for the pK sweep.
+  for (red in intersect("pca", SeuratObject::Reductions(obj))) {
     obj[[red]] <- NULL
   }
 

@@ -68,7 +68,9 @@ Imports:
     utils,
     stats,
     rmarkdown,
-    knitr
+    knitr,
+    future,
+    future.apply
 Suggests:
     SingleR,
     SingleCellExperiment,

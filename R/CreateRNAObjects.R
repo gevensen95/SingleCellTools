@@ -73,6 +73,15 @@
 #' @param filter_doublets Logical; if TRUE, subset each object to
 #'   \code{doublet_finder == "Singlet"} after doublet calling. Default
 #'   \code{FALSE} so the doublet labels are preserved for downstream review.
+#' @param workers Number of parallel workers to use (via
+#'   \code{future.apply}) for reading/creating each sample's Seurat object
+#'   and for the per-sample \code{calldoublet} calls -- the two most
+#'   expensive steps, and both fully independent across samples. Default
+#'   \code{1} runs sequentially exactly as before (with per-sample progress
+#'   messages); \code{workers > 1} spins up that many background R
+#'   sessions via \code{future::plan(multisession)}, restored on exit.
+#'   Note each worker holds its own copy of that sample's data, so peak
+#'   memory scales with \code{workers}.
 #' @return A list of Seurat objects
 #' @export
 
@@ -84,14 +93,27 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                              doublet_normalization = c("LogNormalize", "SCT"),
                              doublet_vars_to_regress = "percent.mt",
                              doublet_cluster_resolution = 0.1,
-                             filter_doublets = FALSE) {
+                             filter_doublets = FALSE,
+                             workers = 1) {
   doublet_normalization <- match.arg(doublet_normalization)
 
-  message(sprintf('--- Reading data and creating Seurat objects (%d directories) ---',
-                  length(data_dirs)))
-  # Use lapply to read the data and create Seurat objects
+  if (workers > 1) {
+    if (!requireNamespace("future.apply", quietly = TRUE)) {
+      stop("Package 'future.apply' is required for workers > 1. ",
+           "install.packages('future.apply')")
+    }
+    old_plan <- future::plan(future::multisession, workers = workers)
+    on.exit(future::plan(old_plan), add = TRUE)
+  }
 
-  seurat_objects <- lapply(data_dirs, function(dir) {
+  message(sprintf('--- Reading data and creating Seurat objects (%d directories)%s ---',
+                  length(data_dirs),
+                  if (workers > 1) sprintf(', %d parallel workers', workers) else ''))
+  # Reading + CreateSeuratObject is fully independent per directory, so this
+  # runs in parallel when workers > 1 (see .read_one below); otherwise a
+  # plain sequential lapply, unchanged from before.
+
+  .read_one <- function(dir) {
     # Look for a (possibly sample-prefixed) barcodes/features(or genes)/
     # matrix triplet directly in `dir`, then in the two conventional
     # CellRanger subdirectories, before falling back to a .h5 file.
@@ -127,7 +149,13 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
 
     stop("Could not find a barcodes/features/matrix triplet or a .h5 file ",
         "in '", dir, "' (or its filtered_feature_bc_matrix subdirectories).")
-  })
+  }
+
+  seurat_objects <- if (workers > 1) {
+    future.apply::future_lapply(data_dirs, .read_one, future.seed = TRUE)
+  } else {
+    lapply(data_dirs, .read_one)
+  }
   # Name the list elements with the base names of the directories
   if (is.null(object_names) == TRUE) {
     names(seurat_objects) <- basename(data_dirs)
@@ -156,13 +184,30 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
   }), names(seurat_objects))
 
   # ---- Doublet detection --------------------------------------------------
+  # This is normally the dominant cost of the whole function (DoubletFinder's
+  # pK parameter sweep fits many models per sample), and each sample's call
+  # is fully independent of every other's, so it parallelizes cleanly.
   if (isTRUE(run_doublet_finder)) {
-    message(sprintf('--- Calling doublets with DoubletFinder (%s) ---',
-                    doublet_normalization))
-    seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {
-      lab <- names(seurat_objects)[i]
-      message(sprintf('  [%d/%d] %s', i, length(seurat_objects), lab))
-      out <- calldoublet(seurat_objects[[i]],
+    message(sprintf('--- Calling doublets with DoubletFinder (%s)%s ---',
+                    doublet_normalization,
+                    if (workers > 1) sprintf(', %d parallel workers', workers) else ''))
+    sample_labels <- names(seurat_objects)
+    n_samples     <- length(seurat_objects)
+
+    # NB: mapply/future_mapply over `seurat_objects` (rather than lapply-ing
+    # over an index into a captured `seurat_objects` list) so each worker
+    # only ever receives the one sample it's processing. Indexing into a
+    # shared list from inside the worker function would instead export the
+    # *entire* list of objects to *every* worker, multiplying peak memory
+    # by `workers` for no reason.
+    .call_one <- function(obj, i, lab) {
+      # Per-sample progress messages only make sense when running
+      # sequentially -- with workers > 1 these run in background sessions
+      # and wouldn't surface here in order anyway.
+      if (workers == 1) {
+        message(sprintf('  [%d/%d] %s', i, n_samples, lab))
+      }
+      out <- calldoublet(obj,
                          samplenameIndex    = i,
                          normalization      = doublet_normalization,
                          vars.to.regress    = doublet_vars_to_regress,
@@ -170,21 +215,37 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
       if (isTRUE(filter_doublets)) {
         n_before <- ncol(out)
         out      <- subset(out, doublet_finder == "Singlet")
-        message(sprintf('    %s: dropped %d doublets (%d singlets remaining)',
-                        lab, n_before - ncol(out), ncol(out)))
+        if (workers == 1) {
+          message(sprintf('    %s: dropped %d doublets (%d singlets remaining)',
+                          lab, n_before - ncol(out), ncol(out)))
+        }
       }
       out
-    }), names(seurat_objects))
+    }
+
+    results <- if (workers > 1) {
+      future.apply::future_mapply(
+        .call_one, seurat_objects, seq_len(n_samples), sample_labels,
+        SIMPLIFY = FALSE, future.seed = TRUE
+      )
+    } else {
+      mapply(.call_one, seurat_objects, seq_len(n_samples), sample_labels,
+             SIMPLIFY = FALSE)
+    }
+    seurat_objects <- setNames(results, sample_labels)
   }
 
   message('--- Generating unfiltered QC plots ---')
-  obj <- merge(seurat_objects[[1]], seurat_objects[-1])
+  # Row-bind just the metadata rather than Seurat::merge()-ing the objects --
+  # merge() would also combine the count matrices, which the QC plots below
+  # never touch, so it's wasted work (and memory) for large/many-sample runs.
+  meta <- dplyr::bind_rows(lapply(seurat_objects, function(x) x@meta.data))
   orig.ident <- nFeature_RNA <- percent.mt <- Freq <- pct <- label <- NULL  # silence R CMD check NSE notes
-  gene.plot <- ggplot2::ggplot(obj@meta.data, ggplot2::aes(orig.ident, nFeature_RNA)) +
+  gene.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, nFeature_RNA)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
     Ol_Reliable()
-  mt.plot <- ggplot2::ggplot(obj@meta.data, ggplot2::aes(orig.ident, percent.mt)) +
+  mt.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, percent.mt)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
     Ol_Reliable()
@@ -202,10 +263,10 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
   # plot the Singlet/Doublet proportion per sample (stacked to 100%) and
   # label each bar with the doublet rate and the underlying n, so the
   # rate is visible at a glance without losing the counts.
-  if ("doublet_finder" %in% colnames(obj@meta.data)) {
+  if ("doublet_finder" %in% colnames(meta)) {
     doublet_counts <- as.data.frame(table(
-      orig.ident      = obj@meta.data$orig.ident,
-      doublet_finder  = obj@meta.data$doublet_finder
+      orig.ident      = meta$orig.ident,
+      doublet_finder  = meta$doublet_finder
     ))
     doublet_counts <- doublet_counts |>
       dplyr::group_by(orig.ident) |>
