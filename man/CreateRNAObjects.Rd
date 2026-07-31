@@ -15,7 +15,8 @@ CreateRNAObjects(
   doublet_normalization = c("LogNormalize", "SCT"),
   doublet_vars_to_regress = "percent.mt",
   doublet_cluster_resolution = 0.1,
-  filter_doublets = FALSE
+  filter_doublets = FALSE,
+  workers = 1
 )
 }
 \arguments{
@@ -48,6 +49,16 @@ has already been computed above; set to \code{NULL} to skip regression.}
 \item{filter_doublets}{Logical; if TRUE, subset each object to
 \code{doublet_finder == "Singlet"} after doublet calling. Default
 \code{FALSE} so the doublet labels are preserved for downstream review.}
+
+\item{workers}{Number of parallel workers to use (via
+\code{future.apply}) for reading/creating each sample's Seurat object
+and for the per-sample \code{calldoublet} calls -- the two most
+expensive steps, and both fully independent across samples. Default
+\code{1} runs sequentially exactly as before (with per-sample progress
+messages); \code{workers > 1} spins up that many background R
+sessions via \code{future::plan(multisession)}, restored on exit.
+Note each worker holds its own copy of that sample's data, so peak
+memory scales with \code{workers}.}
 }
 \value{
 A list of Seurat objects
