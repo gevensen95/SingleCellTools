@@ -112,16 +112,18 @@ test_that("NeighborhoodEnrichment finds same-type spatial enrichment (cells clus
   expect_true(all(same_type$z > 0))
 })
 
-test_that("NeighborhoodEnrichment assign_niches = TRUE returns niche labels and can update obj in place", {
+test_that("NeighborhoodEnrichment assign_niches = TRUE returns niche labels and an updated obj", {
   .skip_if_missing("Seurat", "SeuratObject")
   obj <- .make_spatial_obj(seed = 1, n_per_fov = 150)
   res <- NeighborhoodEnrichment(obj, group.by = "celltype", k = 10, n_perm = 30,
                                 assign_niches = TRUE, n_niches = 2, add_to_meta = TRUE)
   expect_true("niche" %in% names(res))
   expect_true("composition" %in% names(res))
-  # add_to_meta = TRUE + obj passed as a plain variable name -> obj itself
-  # should now carry the niche column in this environment.
-  expect_true("niche" %in% colnames(obj@meta.data))
+  # add_to_meta = TRUE -> the updated Seurat object comes back as res$obj,
+  # carrying the new niche column; the caller's own `obj` is untouched.
+  expect_true("obj" %in% names(res))
+  expect_true("niche" %in% colnames(res$obj@meta.data))
+  expect_false("niche" %in% colnames(obj@meta.data))
 })
 
 test_that("NeighborhoodEnrichment validates inputs", {

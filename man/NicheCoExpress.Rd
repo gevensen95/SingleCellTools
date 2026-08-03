@@ -47,7 +47,11 @@ specific gene pairs (columns \code{geneA}, \code{geneB}).}
 \item{condition_col}{meta.data column with the condition / group.}
 
 \item{conditions}{Length-2 character vector: \code{c(reference, test)}.
-Defaults to the two levels found.}
+Defaults to the two levels found in \code{condition_col}, sorted
+alphabetically -- so with e.g. \code{"Pre"}/\code{"Post"} labels the
+default reference would be \code{"Post"} (alphabetically first), not
+necessarily the chronological baseline. Pass explicitly to control
+which is reference vs. test.}
 
 \item{niches}{Subset of niches to analyse. Default: all present.}
 
@@ -79,8 +83,8 @@ cell type exceeding this fraction.}
 \item{center_celltype}{If TRUE, mean-centre each gene within each
 cell type before computing MOC.}
 
-\item{comp_flag_thresh}{Threshold above which the per-niche
-dominant-cell-type-fraction difference flips \code{comp_flag} to
+\item{comp_flag_thresh}{Threshold above which the per-niche composition
+total variation distance (\code{comp_diff}) flips \code{comp_flag} to
 TRUE. Default 0.15.}
 
 \item{min_cells}{Minimum cells per (sample x niche) to be scored.}
@@ -162,14 +166,20 @@ to "z-score vs background" and removes between-type composition
 effects fully. The strongest available control.
 }
 When \code{celltype_col} is set, the output also gains a per-niche
-\code{comp_diff} column (absolute difference in dominant-cell-type
-fraction between conditions) and a \code{comp_flag} boolean, so
-compositional confounds in the differential test are visible.
+\code{comp_diff} column and a \code{comp_flag} boolean, so compositional
+confounds in the differential test are visible. \code{comp_diff} is the
+total variation distance between the two conditions' mean per-cell-type
+composition vectors (half the sum of absolute per-type fraction
+differences) -- 0 means identical composition, 1 means completely
+disjoint. Using the full composition vector rather than just the
+dominant type's fraction means a niche where the \emph{identity} of the
+dominant cell type flips between conditions is still flagged, not just
+one where a fixed dominant type's share changes.
 }
 \examples{
 \dontrun{
 panel <- c("Cd3e", "Cd8a", "Pdcd1", "Foxp3", "Ifng", "Gzmb")
-res <- nicheCoExpress(
+res <- NicheCoExpress(
   seurat_obj    = so,
   genes         = panel,
   niche_col     = "niche",

@@ -19,6 +19,12 @@
 #' @param spatial One of `'no'`, `'Visium'`, `'Xenium'`.
 #' @param integration Integration method (e.g. `'HarmonyIntegration'`,
 #'   `'RPCAIntegration'`, `'CCAIntegration'`, `'JointPCAIntegration'`).
+#'   `'HarmonyIntegration'` is always run via `harmony::RunHarmony()` called
+#'   directly rather than `Seurat::IntegrateLayers()`, since Seurat's
+#'   built-in `HarmonyIntegration` wrapper depends on
+#'   `harmony::HarmonyMatrix()`, which was removed from the harmony package
+#'   in its 1.0 rewrite (current CRAN harmony only exports `RunHarmony()`).
+#'   Every other method still goes through `IntegrateLayers()` unchanged.
 #' @param integration_normalization,integration_assay,integration_reduction
 #'   Arguments passed through to `IntegrateLayers`.
 #' @param new_reduction Name of the reduction created by integration.
@@ -36,10 +42,12 @@
 #'   needs spatial coordinates) and `integration` to be
 #'   `'HarmonyIntegration'` -- RunBanksy() produces a single consolidated
 #'   (non-split-layer) assay, which `Seurat::IntegrateLayers()`'s
-#'   anchor-based methods (RPCA/CCA/JointPCA) can't work with, so this
-#'   path calls `harmony::RunHarmony()` directly on the BANKSY PCA
-#'   embedding instead of going through `IntegrateLayers()` at all (same
-#'   as the BANKSY-Seurat vignette's own Harmony workflow). Default FALSE.
+#'   anchor-based methods (RPCA/CCA/JointPCA) can't work with. Since
+#'   `'HarmonyIntegration'` already bypasses `IntegrateLayers()` entirely
+#'   (see `integration`), this isn't a special case any more -- Harmony
+#'   runs directly on the `pca_banksy` embedding the same way it runs on
+#'   `pca` otherwise (same as the BANKSY-Seurat vignette's own Harmony
+#'   workflow). Default FALSE.
 #' @param banksy_lambda Numeric in `[0,1]`; BANKSY's spatial weight parameter.
 #'   Low values (~0.2, default) favor cell-typing, high values (~0.8) favor
 #'   spatial domain segmentation. Only used when `banksy = TRUE`.
@@ -294,28 +302,7 @@ MergeSeurat <- function(seurat_objects,
     obj <- RunBanksyWrapper(obj, lambda = banksy_lambda, assay = banksy_assay,
                             k_geom = banksy_k_geom, group = group_column,
                             run_pca = TRUE, npcs = max_dims)
-    # Seurat::IntegrateLayers() only works on assays with split per-sample
-    # layers (e.g. "data.s1"/"data.s2") -- its HarmonyIntegration method
-    # reads that split to figure out batch membership via
-    # CreateIntegrationGroups(). RunBanksy() instead produces one already-
-    # consolidated matrix across every cell (there's no per-sample split to
-    # read), which makes CreateIntegrationGroups() fail internally with
-    # "attempt to set an attribute on NULL". The BANKSY-Seurat vignette's
-    # own multi-sample Harmony example sidesteps this the same way: skip
-    # IntegrateLayers() for this path and call harmony::RunHarmony()
-    # directly on the pca_banksy embedding instead (validated above that
-    # integration == 'HarmonyIntegration' when banksy = TRUE).
-    if (!requireNamespace('harmony', quietly = TRUE)) {
-      stop("'harmony' is required for banksy = TRUE integration. Install ",
-           "with: install.packages('harmony')")
-    }
-    message('--- Running Harmony directly on the BANKSY PCA embedding ---')
-    obj <- harmony::RunHarmony(obj, group.by.vars = group_column,
-                               reduction.use = 'pca_banksy',
-                               reduction.save = new_reduction)
-    skip_integrate_layers <- TRUE
   } else {
-    skip_integrate_layers <- FALSE
     # ---- PCA ----------------------------------------------------------------
     message('--- Running PCA ---')
     obj <- Seurat::RunPCA(obj)
@@ -331,9 +318,35 @@ MergeSeurat <- function(seurat_objects,
   }
 
   # ---- Integrate ------------------------------------------------------------
-  # Skipped for banksy = TRUE -- harmony::RunHarmony() already ran directly
-  # on the pca_banksy embedding above and produced `new_reduction`.
-  if (!skip_integrate_layers) {
+  # HarmonyIntegration always goes through harmony::RunHarmony() directly
+  # rather than Seurat::IntegrateLayers(method = "HarmonyIntegration").
+  # Seurat's built-in HarmonyIntegration wrapper calls the legacy
+  # harmony::HarmonyMatrix(), which was removed from the harmony package as
+  # part of its 1.0 rewrite (current CRAN harmony only exports
+  # RunHarmony()) -- so IntegrateLayers() errors with "'HarmonyMatrix' is
+  # not an exported object from 'namespace:harmony'" on any current harmony
+  # install. Calling RunHarmony() ourselves sidesteps Seurat's broken
+  # wrapper entirely and works regardless of harmony version.
+  #
+  # This also covers banksy = TRUE (validated above that integration must
+  # be 'HarmonyIntegration' in that case): RunBanksy() produces a single
+  # consolidated (non-split-layer) assay that IntegrateLayers()'s
+  # anchor-based methods can't work with anyway, and RunHarmony() operates
+  # directly on the PCA cell embeddings, so the split-layer requirement
+  # doesn't apply to it (same as the BANKSY-Seurat vignette's own Harmony
+  # workflow).
+  if (identical(integration, 'HarmonyIntegration')) {
+    if (!requireNamespace('harmony', quietly = TRUE)) {
+      stop("'harmony' is required for integration = 'HarmonyIntegration'. ",
+           "Install with: install.packages('harmony')")
+    }
+    harmony_reduction <- if (isTRUE(banksy)) 'pca_banksy' else integration_reduction
+    message(sprintf('--- Running Harmony directly on the %s embedding ---',
+                    harmony_reduction))
+    obj <- harmony::RunHarmony(obj, group.by.vars = group_column,
+                               reduction.use = harmony_reduction,
+                               reduction.save = new_reduction)
+  } else {
     message(sprintf('--- Integrating layers (method: %s) ---', integration))
     obj <- Seurat::IntegrateLayers(object = obj,
                                    method = integration,

@@ -37,9 +37,15 @@
 #'     effects fully. The strongest available control.
 #' }
 #' When \code{celltype_col} is set, the output also gains a per-niche
-#' \code{comp_diff} column (absolute difference in dominant-cell-type
-#' fraction between conditions) and a \code{comp_flag} boolean, so
-#' compositional confounds in the differential test are visible.
+#' \code{comp_diff} column and a \code{comp_flag} boolean, so compositional
+#' confounds in the differential test are visible. \code{comp_diff} is the
+#' total variation distance between the two conditions' mean per-cell-type
+#' composition vectors (half the sum of absolute per-type fraction
+#' differences) -- 0 means identical composition, 1 means completely
+#' disjoint. Using the full composition vector rather than just the
+#' dominant type's fraction means a niche where the *identity* of the
+#' dominant cell type flips between conditions is still flagged, not just
+#' one where a fixed dominant type's share changes.
 #'
 #' @param seurat_obj A pre-processed Seurat object; cells must already be
 #'   assigned to niches.
@@ -50,7 +56,11 @@
 #' @param sample_col meta.data column identifying biological samples.
 #' @param condition_col meta.data column with the condition / group.
 #' @param conditions Length-2 character vector: \code{c(reference, test)}.
-#'   Defaults to the two levels found.
+#'   Defaults to the two levels found in \code{condition_col}, sorted
+#'   alphabetically -- so with e.g. \code{"Pre"}/\code{"Post"} labels the
+#'   default reference would be \code{"Post"} (alphabetically first), not
+#'   necessarily the chronological baseline. Pass explicitly to control
+#'   which is reference vs. test.
 #' @param niches Subset of niches to analyse. Default: all present.
 #' @param assay,layer Assay and layer to read. Default \code{RNA} /
 #'   \code{data}. If the assay has the requested layer split into
@@ -71,8 +81,8 @@
 #'   cell type exceeding this fraction.
 #' @param center_celltype If TRUE, mean-centre each gene within each
 #'   cell type before computing MOC.
-#' @param comp_flag_thresh Threshold above which the per-niche
-#'   dominant-cell-type-fraction difference flips \code{comp_flag} to
+#' @param comp_flag_thresh Threshold above which the per-niche composition
+#'   total variation distance (\code{comp_diff}) flips \code{comp_flag} to
 #'   TRUE. Default 0.15.
 #' @param min_cells Minimum cells per (sample x niche) to be scored.
 #' @param min_samples Minimum samples per condition to run the differential
@@ -110,7 +120,7 @@
 #' @examples
 #' \dontrun{
 #' panel <- c("Cd3e", "Cd8a", "Pdcd1", "Foxp3", "Ifng", "Gzmb")
-#' res <- nicheCoExpress(
+#' res <- NicheCoExpress(
 #'   seurat_obj    = so,
 #'   genes         = panel,
 #'   niche_col     = "niche",
@@ -222,6 +232,29 @@ NicheCoExpress <- function(seurat_obj,
   if (verbose) {
     message("Comparing conditions: ", cond_levels[1],
             " (ref) vs ", cond_levels[2], " (test).")
+  }
+
+  # Each (sample, niche) subset below resolves its own condition by
+  # majority vote and warns if that one subset isn't unanimous -- but that
+  # check is local to a single niche. Check once, globally, whether any
+  # sample maps to more than one condition across *all* of its cells; this
+  # catches metadata problems (e.g. a few mislabeled cells) that a
+  # per-niche-only check could miss, including the case where the same
+  # sample ends up on different sides of the comparison in different
+  # niches purely due to which condition happened to win the local vote.
+  sample_cond_tab <- table(as.character(md[[sample_col]]),
+                           as.character(md[[condition_col]]))
+  n_conds_per_sample <- rowSums(sample_cond_tab > 0)
+  bad_samples <- names(n_conds_per_sample)[n_conds_per_sample > 1]
+  if (length(bad_samples)) {
+    warning(length(bad_samples), " sample(s) in '", sample_col, "' span ",
+            "more than one '", condition_col, "' value across all cells: ",
+            paste(utils::head(bad_samples, 5), collapse = ", "),
+            if (length(bad_samples) > 5) ", ...",
+            ". Per (sample, niche) subsets are resolved by majority vote ",
+            "below, but this means the same sample could be assigned ",
+            "different conditions in different niches -- check '",
+            condition_col, "' for mislabeled cells if that's unexpected.")
   }
 
   # ---- Resolve niches ------------------------------------------------------
@@ -447,13 +480,26 @@ NicheCoExpress <- function(seurat_obj,
     }
   }
 
-  # Composition confound indicator
+  # Composition confound indicator: total variation distance (half the L1
+  # distance) between the two conditions' mean per-cell-type composition
+  # vectors, using every type's fraction rather than just whichever type
+  # happens to be locally dominant -- so a niche where the *dominant type
+  # itself* flips between conditions is still caught, not just one where a
+  # fixed dominant type's share changes. Ranges 0 (identical mean
+  # composition) to 1 (completely disjoint).
   if (!is.null(comp_tab)) {
+    frac_cols <- grep("^frac_", colnames(comp_tab), value = TRUE)
     comp_diff_by_niche <- vapply(unique(stats_df$niche), function(nz) {
-      d  <- comp_tab[comp_tab$niche == nz, ]
-      m1 <- mean(d$dominant_frac[d$condition == cond_levels[1]], na.rm = TRUE)
-      m2 <- mean(d$dominant_frac[d$condition == cond_levels[2]], na.rm = TRUE)
-      if (is.nan(m1) || is.nan(m2)) NA_real_ else abs(m2 - m1)
+      if (length(frac_cols) == 0) return(NA_real_)
+      d  <- comp_tab[comp_tab$niche == nz, , drop = FALSE]
+      d1 <- d[d$condition == cond_levels[1], frac_cols, drop = FALSE]
+      d2 <- d[d$condition == cond_levels[2], frac_cols, drop = FALSE]
+      if (nrow(d1) == 0 || nrow(d2) == 0) return(NA_real_)
+      m1 <- colMeans(d1, na.rm = TRUE)
+      m2 <- colMeans(d2, na.rm = TRUE)
+      m1[is.na(m1)] <- 0
+      m2[is.na(m2)] <- 0
+      0.5 * sum(abs(m2 - m1))
     }, numeric(1))
     names(comp_diff_by_niche) <- unique(stats_df$niche)
     stats_df$comp_diff <- comp_diff_by_niche[as.character(stats_df$niche)]
@@ -473,7 +519,7 @@ NicheCoExpress <- function(seurat_obj,
 }
 
 
-#' Visualise the output of nicheCoExpress
+#' Visualise the output of NicheCoExpress
 #'
 #' Two views:
 #' \describe{
@@ -489,7 +535,7 @@ NicheCoExpress <- function(seurat_obj,
 #'     statistics are testing.}
 #' }
 #'
-#' @param res The list returned by \code{\link{nicheCoExpress}}.
+#' @param res The list returned by \code{\link{NicheCoExpress}}.
 #' @param type \code{"heatmap"} or \code{"scores"}.
 #' @param pairs (scores mode) character vector of pair IDs
 #'   (\code{"geneA_geneB"}) to show; default = top \code{top_n} most
@@ -499,7 +545,7 @@ NicheCoExpress <- function(seurat_obj,
 #'   in scores: number of top pairs if \code{pairs} is NULL.
 #' @param sig_levels Named thresholds for significance stars.
 #' @return A \code{ggplot} object.
-#' @seealso \code{\link{nicheCoExpress}}
+#' @seealso \code{\link{NicheCoExpress}}
 #' @importFrom ggplot2 ggplot aes geom_tile geom_text geom_hline geom_boxplot geom_jitter scale_fill_gradient2 facet_grid labs theme_minimal theme_bw theme element_text element_blank
 #' @export
 plotNicheCoExpress <- function(res,
@@ -607,7 +653,7 @@ plotNicheCoExpress <- function(res,
 
 #' Observed + background MOC for a set of target gene pairs in one subset
 #'
-#' Internal helper for \code{nicheCoExpress}. Not exported.
+#' Internal helper for \code{NicheCoExpress}. Not exported.
 #' @keywords internal
 #' @noRd
 .subset_coexpr <- function(expr, pairs, bg_n = 100,

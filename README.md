@@ -197,7 +197,7 @@ MarkerPlot(merged, markers)
 | `get_cells_in_polygon()` | Point-in-polygon test using `sf` &mdash; which cells fall inside a hand-drawn region? |
 | `parse_polygons()` | Parse polygon definitions for use with the above. |
 | `AnnotateRegions()` | Label every cell with the name of the polygon it falls inside (or `"unassigned"`), given a named list of `x`/`y` polygon data frames &mdash; pairs with `get_cells_in_polygon()` / `parse_polygons()`. |
-| `NeighborhoodEnrichment()` | Permutation-based cell-type neighborhood enrichment (z-scores, empirical p-values, BH q-values) within and pooled across FOVs; optionally clusters each cell's neighborhood composition into spatial "niches" and writes the niche labels back onto the input object. |
+| `NeighborhoodEnrichment()` | Permutation-based cell-type neighborhood enrichment (z-scores, empirical p-values, BH q-values) within and pooled across FOVs; optionally clusters each cell's neighborhood composition into spatial "niches" and returns an updated copy of the object (with the niche column added) as `$obj`. |
 | `NicheCoExpress()` | Per-sample, per-niche gene-pair co-expression (Manders Overlap Coefficient vs. an abundance-matched background), with differential testing between two conditions and optional cell-type-composition controls. |
 | `plotNicheCoExpress()` | Heatmap of differential co-expression (`delta`, with significance stars) or per-sample score plots for `NicheCoExpress()` results. |
 

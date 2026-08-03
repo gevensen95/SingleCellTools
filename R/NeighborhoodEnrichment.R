@@ -16,15 +16,10 @@
 #' clusters cells across all FOVs into \code{n_niches} groups using the
 #' chosen method, and returns the per-cell niche labels in \code{$niche}.
 #' If \code{add_to_meta = TRUE} (the default), these labels are also written
-#' to \code{obj@meta.data[[niche_col]]} \emph{on the object passed in by the
-#' caller}: \code{obj} is updated in place in the calling environment as a
-#' side effect, so after calling, e.g., \code{NeighborhoodEnrichment(combined,
-#' ...)}, \code{combined} itself will have the new \code{niche_col} column,
-#' separate from (and in addition to) the stats list returned by this
-#' function. This requires \code{obj} to be passed as a plain variable name;
-#' if it is not (e.g. it is the result of a function call or \code{$}/\code{[[}
-#' expression), a warning is issued and the calling environment is left
-#' untouched. Cells not covered by any requested FOV (or with an \code{NA}
+#' to \code{obj@meta.data[[niche_col]]} on a copy of \code{obj}, which is
+#' returned as \code{$obj} in the result list alongside the stats -- e.g.
+#' \code{res <- NeighborhoodEnrichment(combined, ...); combined <- res$obj}.
+#' Cells not covered by any requested FOV (or with an \code{NA}
 #' \code{group.by} label) get \code{NA} in this column.
 #'
 #' \strong{P-value calculation.} Two-sided empirical p-value: for each pair
@@ -33,16 +28,18 @@
 #' \eqn{2 \cdot \min(p_{up}, p_{down})}, capped at 1.
 #'
 #' @param obj A Seurat object with spatial coordinates.
+#' @param group.by Metadata column with cell-type / cluster labels.
 #' @param fovs Character vector of FOV / image names. \code{NULL} (default)
 #'   uses every image attached to the object.
-#' @param group.by Metadata column with cell-type / cluster labels.
 #' @param k Number of nearest neighbors per cell. Default 10.
 #' @param n_perm Number of permutations for the null. Default 100.
-#' @param seed Random seed.
-#' @param assign_niches Logical; if TRUE, cluster cells by their
-#'   neighborhood composition into \code{n_niches} groups and return the
-#'   per-cell niche labels. Default \code{TRUE} (preserves the original
-#'   return shape; only stats are computed).
+#' @param seed Random seed. Also reset immediately before niche clustering
+#'   (when \code{assign_niches = TRUE}), so the niche assignment is
+#'   reproducible on its own and doesn't shift when \code{n_perm} changes.
+#' @param assign_niches Logical; if TRUE (default), also cluster cells by
+#'   their neighborhood composition into \code{n_niches} groups and return
+#'   the per-cell niche labels. If \code{FALSE}, only the enrichment stats
+#'   are computed/returned.
 #' @param n_niches Number of niche clusters to produce when
 #'   \code{assign_niches = TRUE}. Default 5.
 #' @param niche_method Clustering method: \code{"kmeans"} (default, scales
@@ -51,10 +48,10 @@
 #' @param niche_prefix String prepended to each numeric cluster id to form
 #'   the niche label. Default \code{"niche_"} (e.g. \code{"niche_3"}).
 #' @param add_to_meta Logical; if TRUE (default) and \code{assign_niches =
-#'   TRUE}, write the per-cell niche labels to
-#'   \code{obj@meta.data[[niche_col]]} \emph{on the caller's copy of
-#'   \code{obj}}, updating it in place in the calling environment (see
-#'   Details). Has no effect if \code{assign_niches = FALSE}.
+#'   TRUE}, attach a copy of \code{obj} with the per-cell niche labels
+#'   written to \code{obj@meta.data[[niche_col]]} as \code{$obj} in the
+#'   returned list (see Details). Has no effect if \code{assign_niches =
+#'   FALSE}.
 #' @param niche_col Name of the metadata column to write niche labels to
 #'   when \code{add_to_meta = TRUE}. Default \code{"niche"}.
 #'
@@ -74,20 +71,18 @@
 #'     \item{\code{composition}}{(only if \code{assign_niches = TRUE})
 #'       cells x cell-type matrix of neighborhood composition fractions
 #'       (rows sum to ~1).}
+#'     \item{\code{obj}}{(only if \code{assign_niches = TRUE} and
+#'       \code{add_to_meta = TRUE}) a copy of the input Seurat object with
+#'       the per-cell niche labels written to
+#'       \code{obj@meta.data[[niche_col]]} (see Details).}
 #'   }
-#'   If \code{assign_niches = TRUE} and \code{add_to_meta = TRUE}, the
-#'   variable passed in as \code{obj} is \emph{also} updated in place in the
-#'   calling environment with a new \code{obj@meta.data[[niche_col]]} column
-#'   (see Details) -- i.e. this function produces two separate, independently
-#'   useful results: the returned stats list, and the modified Seurat object
-#'   under its original variable name.
 #' @importFrom Seurat GetTissueCoordinates
 #' @importFrom RANN nn2
 #' @importFrom stats sd p.adjust kmeans dist hclust cutree
 #' @export
 NeighborhoodEnrichment <- function(obj,
-                                   fovs          = NULL,
                                    group.by,
+                                   fovs          = NULL,
                                    k             = 10,
                                    n_perm        = 100,
                                    seed          = 1,
@@ -97,11 +92,6 @@ NeighborhoodEnrichment <- function(obj,
                                    niche_prefix  = "niche_",
                                    add_to_meta   = TRUE,
                                    niche_col     = "niche") {
-
-  # Captured before any argument matching/promises change `obj` itself, so
-  # that (if it's a plain variable name) we can write the updated object
-  # back to that same variable in the caller's environment below.
-  obj_expr <- substitute(obj)
 
   niche_method <- match.arg(niche_method)
   if (!inherits(obj, "Seurat")) stop("`obj` must be a Seurat object.")
@@ -146,13 +136,21 @@ NeighborhoodEnrichment <- function(obj,
     matrix(0, nrow = n_types, ncol = n_types,
            dimnames = list(all_types, all_types))
   }
+  # Vectorized cross-tab rather than one table()/factor() call per cell:
+  # flattening `neighbor_idx_mat` (n cells x k neighbors) column-major and
+  # repeating `focal_lab` once per neighbor column lines each neighbor slot
+  # up with its own cell's focal label, so a single 2-D table() over all
+  # (cell, neighbor-slot) pairs reproduces exactly what the old per-cell
+  # loop accumulated -- just without the per-cell R-level overhead, which
+  # matters here since this runs once per permutation (n_perm + 1 times
+  # per FOV).
   count_table <- function(focal_lab, neighbor_idx_mat, label_vec) {
-    m <- empty_mat()
-    for (i in seq_along(focal_lab)) {
-      tab <- table(factor(label_vec[neighbor_idx_mat[i, ]], levels = all_types))
-      m[focal_lab[i], ] <- m[focal_lab[i], ] + tab
-    }
-    m
+    focal_rep     <- rep(focal_lab, times = ncol(neighbor_idx_mat))
+    neighbor_flat <- label_vec[as.vector(neighbor_idx_mat)]
+    tab <- table(factor(focal_rep,     levels = all_types),
+                factor(neighbor_flat, levels = all_types))
+    matrix(as.numeric(tab), nrow = n_types, ncol = n_types,
+           dimnames = list(all_types, all_types))
   }
 
   # ---- Observed and per-permutation counts, summed across FOVs -----------
@@ -182,13 +180,17 @@ NeighborhoodEnrichment <- function(obj,
       perms_array[, , p] <- perms_array[, , p] + count_table(shuf, nn, shuf)
     }
 
-    # Per-cell neighborhood composition for clustering
+    # Per-cell neighborhood composition for clustering. Vectorized the same
+    # way as count_table() above: reshape the looked-up neighbor labels back
+    # into an n-cell x k-neighbor matrix, then count matches per type with
+    # rowSums() (looping over the -- typically small -- number of types
+    # rather than over every cell).
     if (assign_niches) {
+      neighbor_lab_mat <- matrix(labels[as.vector(nn)], nrow = nrow(nn))
       comp <- matrix(0, nrow = nrow(coords), ncol = n_types,
                      dimnames = list(rownames(coords), all_types))
-      for (i in seq_len(nrow(nn))) {
-        tab <- table(factor(labels[nn[i, ]], levels = all_types))
-        comp[i, ] <- as.numeric(tab)
+      for (t in seq_len(n_types)) {
+        comp[, t] <- rowSums(neighbor_lab_mat == all_types[t])
       }
       per_cell_comp_list[[fov]] <- comp
     }
@@ -244,6 +246,11 @@ NeighborhoodEnrichment <- function(obj,
     row_n[row_n == 0] <- 1
     comp_frac <- all_comp / row_n
 
+    # Reset the seed here rather than relying on whatever RNG state the
+    # permutation loop above left behind -- otherwise the niche clustering
+    # (a logically independent step) would silently change whenever n_perm
+    # changes, even with the same `seed`.
+    set.seed(seed)
     if (niche_method == "kmeans") {
       km <- stats::kmeans(comp_frac, centers = n_niches, nstart = 25,
                           iter.max = 50)
@@ -257,7 +264,7 @@ NeighborhoodEnrichment <- function(obj,
     out$niche       <- niche_labels
     out$composition <- comp_frac
 
-    # ---- Optionally write the niche labels back onto `obj` ---------------
+    # ---- Optionally attach obj (with niche labels) to the return list ----
     # Cells outside the requested FOV(s), or with an NA `group.by` label
     # (and therefore no neighborhood composition), get NA here.
     if (isTRUE(add_to_meta)) {
@@ -266,23 +273,7 @@ NeighborhoodEnrichment <- function(obj,
       common <- intersect(names(niche_labels), names(niche_col_vals))
       niche_col_vals[common] <- niche_labels[common]
       obj@meta.data[[niche_col]] <- unname(niche_col_vals)
-
-      # Write the updated object back to the variable the caller passed in
-      # for `obj`, so it ends up alongside `out` as a second, independent
-      # object in the caller's environment. Only possible if `obj` was
-      # passed as a plain variable name (not e.g. `my_list$obj` or the
-      # result of a function call).
-      if (is.symbol(obj_expr)) {
-        assign(deparse(obj_expr), obj, envir = parent.frame())
-      } else {
-        warning("`add_to_meta = TRUE` but `obj` was not passed as a plain ",
-                "variable name, so the updated object with the '", niche_col,
-                "' column could not be written back to the calling ",
-                "environment. Pass a variable (e.g. ",
-                "`NeighborhoodEnrichment(my_obj, ...)`), or set ",
-                "`add_to_meta = FALSE` and add the niche column yourself ",
-                "from `$niche` in the returned list.")
-      }
+      out$obj <- obj
     }
   }
 
