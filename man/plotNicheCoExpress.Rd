@@ -2,7 +2,7 @@
 % Please edit documentation in R/NicheCoExpress.R
 \name{plotNicheCoExpress}
 \alias{plotNicheCoExpress}
-\title{Visualise the output of nicheCoExpress}
+\title{Visualise the output of NicheCoExpress}
 \usage{
 plotNicheCoExpress(
   res,
@@ -14,7 +14,7 @@ plotNicheCoExpress(
 )
 }
 \arguments{
-\item{res}{The list returned by \code{\link{nicheCoExpress}}.}
+\item{res}{The list returned by \code{\link{NicheCoExpress}}.}
 
 \item{type}{\code{"heatmap"} or \code{"scores"}.}
 
@@ -48,5 +48,5 @@ statistics are testing.}
 }
 }
 \seealso{
-\code{\link{nicheCoExpress}}
+\code{\link{NicheCoExpress}}
 }

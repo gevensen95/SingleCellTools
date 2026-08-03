@@ -59,7 +59,13 @@ MergeSeurat(
 \item{spatial}{One of \code{'no'}, \code{'Visium'}, \code{'Xenium'}.}
 
 \item{integration}{Integration method (e.g. \code{'HarmonyIntegration'},
-\code{'RPCAIntegration'}, \code{'CCAIntegration'}, \code{'JointPCAIntegration'}).}
+\code{'RPCAIntegration'}, \code{'CCAIntegration'}, \code{'JointPCAIntegration'}).
+\code{'HarmonyIntegration'} is always run via \code{harmony::RunHarmony()} called
+directly rather than \code{Seurat::IntegrateLayers()}, since Seurat's
+built-in \code{HarmonyIntegration} wrapper depends on
+\code{harmony::HarmonyMatrix()}, which was removed from the harmony package
+in its 1.0 rewrite (current CRAN harmony only exports \code{RunHarmony()}).
+Every other method still goes through \code{IntegrateLayers()} unchanged.}
 
 \item{integration_normalization, integration_assay, integration_reduction}{Arguments passed through to \code{IntegrateLayers}.}
 
@@ -84,10 +90,12 @@ plain PCA. Requires \code{spatial} to be \code{'Visium'} or \code{'Xenium'} (BAN
 needs spatial coordinates) and \code{integration} to be
 \code{'HarmonyIntegration'} -- RunBanksy() produces a single consolidated
 (non-split-layer) assay, which \code{Seurat::IntegrateLayers()}'s
-anchor-based methods (RPCA/CCA/JointPCA) can't work with, so this
-path calls \code{harmony::RunHarmony()} directly on the BANKSY PCA
-embedding instead of going through \code{IntegrateLayers()} at all (same
-as the BANKSY-Seurat vignette's own Harmony workflow). Default FALSE.}
+anchor-based methods (RPCA/CCA/JointPCA) can't work with. Since
+\code{'HarmonyIntegration'} already bypasses \code{IntegrateLayers()} entirely
+(see \code{integration}), this isn't a special case any more -- Harmony
+runs directly on the \code{pca_banksy} embedding the same way it runs on
+\code{pca} otherwise (same as the BANKSY-Seurat vignette's own Harmony
+workflow). Default FALSE.}
 
 \item{banksy_lambda}{Numeric in \verb{[0,1]}; BANKSY's spatial weight parameter.
 Low values (~0.2, default) favor cell-typing, high values (~0.8) favor

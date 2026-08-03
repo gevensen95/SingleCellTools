@@ -6,8 +6,8 @@
 \usage{
 NeighborhoodEnrichment(
   obj,
-  fovs = NULL,
   group.by,
+  fovs = NULL,
   k = 10,
   n_perm = 100,
   seed = 1,
@@ -22,21 +22,23 @@ NeighborhoodEnrichment(
 \arguments{
 \item{obj}{A Seurat object with spatial coordinates.}
 
+\item{group.by}{Metadata column with cell-type / cluster labels.}
+
 \item{fovs}{Character vector of FOV / image names. \code{NULL} (default)
 uses every image attached to the object.}
-
-\item{group.by}{Metadata column with cell-type / cluster labels.}
 
 \item{k}{Number of nearest neighbors per cell. Default 10.}
 
 \item{n_perm}{Number of permutations for the null. Default 100.}
 
-\item{seed}{Random seed.}
+\item{seed}{Random seed. Also reset immediately before niche clustering
+(when \code{assign_niches = TRUE}), so the niche assignment is
+reproducible on its own and doesn't shift when \code{n_perm} changes.}
 
-\item{assign_niches}{Logical; if TRUE, cluster cells by their
-neighborhood composition into \code{n_niches} groups and return the
-per-cell niche labels. Default \code{TRUE} (preserves the original
-return shape; only stats are computed).}
+\item{assign_niches}{Logical; if TRUE (default), also cluster cells by
+their neighborhood composition into \code{n_niches} groups and return
+the per-cell niche labels. If \code{FALSE}, only the enrichment stats
+are computed/returned.}
 
 \item{n_niches}{Number of niche clusters to produce when
 \code{assign_niches = TRUE}. Default 5.}
@@ -49,10 +51,10 @@ distance; quadratic memory, suitable for < ~10k cells).}
 the niche label. Default \code{"niche_"} (e.g. \code{"niche_3"}).}
 
 \item{add_to_meta}{Logical; if TRUE (default) and \code{assign_niches =
-TRUE}, write the per-cell niche labels to
-\code{obj@meta.data[[niche_col]]} \emph{on the caller's copy of
-\code{obj}}, updating it in place in the calling environment (see
-Details). Has no effect if \code{assign_niches = FALSE}.}
+TRUE}, attach a copy of \code{obj} with the per-cell niche labels
+written to \code{obj@meta.data[[niche_col]]} as \code{$obj} in the
+returned list (see Details). Has no effect if \code{assign_niches =
+FALSE}.}
 
 \item{niche_col}{Name of the metadata column to write niche labels to
 when \code{add_to_meta = TRUE}. Default \code{"niche"}.}
@@ -74,13 +76,11 @@ character vector of niche labels, one per cell across all FOVs.}
 \item{\code{composition}}{(only if \code{assign_niches = TRUE})
 cells x cell-type matrix of neighborhood composition fractions
 (rows sum to ~1).}
+\item{\code{obj}}{(only if \code{assign_niches = TRUE} and
+\code{add_to_meta = TRUE}) a copy of the input Seurat object with
+the per-cell niche labels written to
+\code{obj@meta.data[[niche_col]]} (see Details).}
 }
-If \code{assign_niches = TRUE} and \code{add_to_meta = TRUE}, the
-variable passed in as \code{obj} is \emph{also} updated in place in the
-calling environment with a new \code{obj@meta.data[[niche_col]]} column
-(see Details) -- i.e. this function produces two separate, independently
-useful results: the returned stats list, and the modified Seurat object
-under its original variable name.
 }
 \description{
 For each pair of \code{group.by} labels, counts how often they appear as
@@ -100,15 +100,10 @@ the function also computes a per-cell neighborhood composition vector
 clusters cells across all FOVs into \code{n_niches} groups using the
 chosen method, and returns the per-cell niche labels in \code{$niche}.
 If \code{add_to_meta = TRUE} (the default), these labels are also written
-to \code{obj@meta.data[[niche_col]]} \emph{on the object passed in by the
-caller}: \code{obj} is updated in place in the calling environment as a
-side effect, so after calling, e.g., \code{NeighborhoodEnrichment(combined,
-...)}, \code{combined} itself will have the new \code{niche_col} column,
-separate from (and in addition to) the stats list returned by this
-function. This requires \code{obj} to be passed as a plain variable name;
-if it is not (e.g. it is the result of a function call or \code{$}/\code{[[}
-expression), a warning is issued and the calling environment is left
-untouched. Cells not covered by any requested FOV (or with an \code{NA}
+to \code{obj@meta.data[[niche_col]]} on a copy of \code{obj}, which is
+returned as \code{$obj} in the result list alongside the stats -- e.g.
+\code{res <- NeighborhoodEnrichment(combined, ...); combined <- res$obj}.
+Cells not covered by any requested FOV (or with an \code{NA}
 \code{group.by} label) get \code{NA} in this column.
 
 \strong{P-value calculation.} Two-sided empirical p-value: for each pair
