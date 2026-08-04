@@ -695,21 +695,21 @@ Tests pairwise cell-type co-localization by comparing observed k-NN pair frequen
 ```r
 enrich <- NeighborhoodEnrichment(
   integrated,
-  celltype_col  = "domain",       # or rctd_dominant, or predicted labels
+  group.by      = "domain",       # or rctd_dominant, or predicted labels
   k             = 10,
   n_perm        = 200,
   assign_niches = TRUE,
-  k_niches      = 6
+  n_niches      = 6
 )
-enrich$results                     # source x target z-score matrix
-integrated <- enrich$obj           # now carries a 'niche' metadata column
+enrich$z                            # source x target z-score matrix
+integrated <- enrich$obj            # now carries a 'niche' metadata column
 
 # Visualize niches on the tissue
 SpatialDimPlot(integrated, group.by = "niche")
 
 # Enrichment heatmap
 library(pheatmap)
-pheatmap::pheatmap(enrich$results, cluster_rows = FALSE, cluster_cols = FALSE)
+pheatmap::pheatmap(enrich$z, cluster_rows = FALSE, cluster_cols = FALSE)
 ```
 
 Complementary to `BuildMultipleNicheAssays()` — this one focuses on statistical enrichment of specific cell-type pairings; the other builds a full neighborhood assay usable in downstream Seurat workflows.
@@ -718,18 +718,28 @@ Complementary to `BuildMultipleNicheAssays()` — this one focuses on statistica
 
 ## 12. Niche Co-expression — `NicheCoExpress()`
 
-Differential co-expression of two genes across niches using the Manders overlap coefficient. Answers "is this ligand-receptor pair co-detected more often in the vascular niche than elsewhere?"
+Differential co-expression of a gene pair across niches using the Manders overlap coefficient, comparing two *conditions* (each needing at least 2 samples for the statistical test). Answers "is this ligand-receptor pair co-detected more often in the vascular niche in condition B than condition A?"
+
+> **A note on sample size.** `NicheCoExpress()` needs `>= 2` samples *per condition* to
+> run a real differential test. This vignette's `integrated` object only has two Visium
+> sections total (`anterior1`/`posterior1`) from the same animal — not two conditions
+> with biological replicates — so there's no way to demonstrate a real comparison on it.
+> The call below is a syntax reference: swap `sample_col`/`condition_col` for columns
+> from your own dataset where each condition actually has multiple samples.
 
 ```r
 co <- NicheCoExpress(
-  integrated,
-  gene_a    = "Vegfa",
-  gene_b    = "Kdr",
-  niche_col = "niche",
-  layer     = "counts"
+  seurat_obj    = integrated,
+  genes         = c("Vegfa", "Kdr"),   # or a 2-column data.frame of specific pairs
+  niche_col     = "niche",
+  sample_col    = "sample_id",         # your per-sample identifier
+  condition_col = "condition",         # a metadata column with >= 2 samples per level
+  layer         = "data"
 )
-co$per_niche          # Manders coefficient per niche + p-value
-co$plot               # heatmap
+co$stats               # per niche x pair: delta, statistic, p, p_adj
+co$per_sample           # long-form per-sample x niche x pair co-expression scores
+
+plotNicheCoExpress(co, type = "heatmap")
 ```
 
 ---

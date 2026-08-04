@@ -1201,30 +1201,35 @@ Tests pairwise cell-type co-localization in space by comparing the observed freq
 ```r
 enrich <- NeighborhoodEnrichment(
   obj,
-  celltype_col = "cell_type",
-  k            = 10,
-  n_perm       = 200,
+  group.by      = "cell_type",
+  k             = 10,
+  n_perm        = 200,
   assign_niches = TRUE,     # k-means clustering of neighborhood vectors
-  k_niches     = 6
+  n_niches      = 6
 )
-enrich$results               # source x target enrichment z-scores
-obj$niche <- enrich$obj$niche
+enrich$z                      # source x target enrichment z-score matrix
+enrich$results                 # same info as a long-form data frame (focal, neighbor, observed, expected, z, p, padj)
+obj <- enrich$obj              # a copy of `obj` with niche labels already written to meta.data$niche
 ```
 
 ### 12.6 Niche Co-expression — `NicheCoExpress()`
 
-Differential co-expression across niches / regions using the Manders overlap coefficient, useful for asking whether two ligand-receptor genes are co-detected more often in specific tissue zones than expected.
+Differential co-expression across niches / regions using the Manders overlap coefficient, useful for asking whether a gene pair (e.g. a ligand-receptor pair) is co-detected more often in specific tissue zones than expected, and whether that co-detection shifts between two conditions.
 
 ```r
 co <- NicheCoExpress(
   obj,
-  gene_a       = "Vegfa",
-  gene_b       = "Kdr",
-  niche_col    = "niche",
-  layer        = "counts"
+  genes         = c("Vegfa", "Kdr"),   # or a 2-column data.frame of specific pairs
+  niche_col     = "niche",
+  sample_col    = "sample",            # meta.data column identifying biological samples
+  condition_col = "condition",         # meta.data column with exactly 2 levels to compare
+  layer         = "data"
 )
-co$per_niche                 # Manders coefficient per niche + p-value
-co$plot                      # heatmap
+co$stats                      # per niche x pair: delta, statistic, p, p_adj (+ comp_diff/comp_flag if celltype_col set)
+co$per_sample                 # long-form per-sample x niche x pair co-expression scores
+
+plotNicheCoExpress(co, type = "heatmap")   # niche x pair heatmap of delta, significance stars from p_adj
+plotNicheCoExpress(co, type = "scores")    # per-sample score plots for top/selected pairs
 ```
 
 ### 12.7 Visium Deconvolution — `RunRCTD()`
