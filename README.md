@@ -147,6 +147,7 @@ MarkerPlot(merged, markers)
 | Function | What it does |
 |---|---|
 | `calldoublet()` | DoubletFinder wrapper. Pick `LogNormalize` or `SCT`, regress covariates, returns object tagged with `doublet_finder`. Strips intermediate layers/reductions on return. |
+| `PlotQCMetrics()` | Multi-panel QC figure from a Seurat object (or list) &mdash; auto-detects `nFeature`/`nCount`/`percent.mt`/doublet-calling columns and grouping column (default `orig.ident`), or pass `qc_cols` to specify exactly which columns to plot. |
 | `EdgeDetectionVisium()` | Flags Visium spots at the edge of the capture area, around tissue boundaries, and at tears &mdash; the spots with weird counts that you almost certainly want to drop. |
 | `detect_fov_edges()` | Flags cells near the outer boundary of any spatial FOV (Visium, Xenium, MERFISH, ...) using an angular-gap + local-density test, with iterative ring labeling. |
 | `detect_tissue_holes()` | Flags cells bordering internal gaps/holes within a spatial FOV via a 2D occupancy grid and flood fill &mdash; complements `detect_fov_edges()`. |
@@ -163,7 +164,8 @@ MarkerPlot(merged, markers)
 
 | Function | What it does |
 |---|---|
-| `MergeSeurat()` | Merge a list, normalize (SCT or LogNormalize), PCA, integrate (`HarmonyIntegration`/`RPCA`/`CCA`/`JointPCA`), cluster, UMAP, and (optionally) run `FindAllMarkers`. Supports spatial assays (`Visium`, `Xenium`). |
+| `MergeSeurat()` | Merge a list, normalize (SCT or LogNormalize), PCA, integrate (`HarmonyIntegration`/`RPCA`/`CCA`/`JointPCA`), cluster, UMAP, and (optionally) run `FindAllMarkers`. Supports spatial assays (`Visium`, `Xenium`); pass `banksy = TRUE` (with `spatial = "Visium"`/`"Xenium"`) to run BANKSY spatial-aware clustering instead of plain PCA. `HarmonyIntegration` calls `harmony::RunHarmony()` directly rather than `Seurat::IntegrateLayers()`, so it works with current `harmony` releases. |
+| `RunBanksyWrapper()` | Thin wrapper around `SeuratWrappers::RunBanksy()` that resolves spatial x/y coordinates automatically (via `get_all_coords()` for imaging-based FOVs, or Seurat's native spatial framework for Visium) and optionally runs `RunPCA()` on the resulting BANKSY assay. Used internally by `MergeSeurat(banksy = TRUE)`, but can be called directly. |
 | `subset_opt()` | Subset variant that keeps spatial FOVs / images in sync with the cell list &mdash; avoids stale-image errors after subsetting. |
 | `SubsetAndRecluster()` | Subset cells by identity, metadata column/value, or an explicit cell list, drop empty cells/genes left behind, then re-run PCA &rarr; integrate (optional) &rarr; UMAP &rarr; clustering on the subset. Useful for cell-type-specific re-analysis. |
 | `combine_metadata()` | Stack `@meta.data` from a list of Seurat objects into one long tibble, tagging each row with its source sample and original cell barcode. |
@@ -231,6 +233,7 @@ MarkerPlot(merged, markers)
 | `MarkerHeatmap()` | Heatmap of the top N markers per cluster (from `FindAllMarkers` or computed on the fly), z-scored across clusters with optional row/column clustering. |
 | `StackedViolinPlot()` | Compact, scanpy-style stacked violin plot &mdash; one row per gene, one violin per group, optionally scaled per gene. |
 | `CompositionBarplot()` | Stacked or grouped bar plot of cell-type composition (proportions or counts), optionally faceted by condition; pairs with `CompositionAnalysis()`. |
+| `Ol_Reliable()` | Shared `ggplot2` theme (clean panel borders, subtle gridlines, bold black-and-white facet strips) applied by default across this package's plotting functions. Add it to your own `ggplot()` calls (`+ Ol_Reliable()`) to match. |
 
 </details>
 
