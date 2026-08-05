@@ -56,6 +56,7 @@ Key things it does:
 - **[Vignette & function reference](SingleCellTools_vignette.md)** — covers every function group with worked examples, parameter tables, and tips for common pitfalls.
 - **[ifnb tutorial](SingleCellTools_vignette_ifnb.md)** — end-to-end walkthrough using the built-in `ifnb` PBMC dataset from `SeuratData`; no raw data download required.
 - **[Spatial tutorial](SingleCellTools_vignette_spatial.md)** — Visium workflow (edge detection, integration, annotation, niche analysis) using the public `stxBrain` mouse brain dataset from `SeuratData`.
+- **[scATAC-seq tutorial](SingleCellTools_vignette_atac.md)** — object creation, QC, LSI, cross-sample integration, gene activity scoring, motif enrichment, and differential accessibility. Mouse-only (see the vignette's top note on `CreateATACObjects()`'s hardcoded genome).
 
 ---
 
@@ -180,11 +181,16 @@ MarkerPlot(merged, markers)
 | Function | What it does |
 |---|---|
 | `AddGenePositivity()` | For a vector of genes, adds a logical `<gene>_pos` metadata column per cell. Accepts a single object or a list. |
+| `GenePositivityAnalysis()` | Per-gene, per-sample positivity rates (optionally stratified by cell type/cluster/niche), with an optional chi-square or Fisher's exact test comparing rates across conditions &mdash; the `AddGenePositivity()` counterpart to `CompositionAnalysis()`. |
+| `GenePositivityEstimationPlot()` | Bootstrap effect-size ("estimation") plots (via `dabestr`) for a `GenePositivityAnalysis()` result &mdash; per-gene positivity-rate shift between two conditions with a 95% CI, as a complement to its p-value, in the same spirit as `CompositionEstimationPlot()`. |
 | `assign_cell_cycle_phase()` | Cell-cycle phase assignment via UCell &mdash; like `CellCycleScoring` but with `AddModuleScore_UCell` under the hood. |
 | `AnnotateClusters()` | Assign per-cluster cell-type labels: either average UCell marker-set scores per cluster ("marker" mode) or run SingleR against a reference and take a per-cluster majority vote ("singler" mode), with optional score/margin thresholds for an "Unknown" label. |
 | `CompositionAnalysis()` | Cell counts and within-sample proportions per group (cluster/cell type) and sample, with an optional chi-square or Fisher's exact test comparing distributions across conditions. |
 | `CompositionEstimationPlot()` | Bootstrap effect-size ("estimation") plots (via `dabestr`) for a `CompositionAnalysis()` result &mdash; per-cell-type proportion shift between two conditions with a 95% CI, alongside the raw per-sample values, as a complement to `CompositionAnalysis()`'s p-value. |
 | `get_all_children()` | Recursively walk a GO term to collect every descendant. |
+| `RunCellChat()` | Wraps the full `CellChat` pipeline (`createCellChat` through `aggregateNet`) into one call for a single Seurat subset (e.g. one condition/sample) &mdash; pairs naturally with `RunLIANA()` for a second, complementary ligand-receptor method. |
+| `call_mixture_states()` | Fits a Gaussian mixture model (via `mclust`) on one or more numeric metadata columns and returns a BIC-selected, ranked state call per row plus posterior-probability confidence/severity scores &mdash; a principled alternative to a hand-picked quantile cutoff on a module/composite score. |
+| `call_stress_states()` | Thin convenience wrapper around `call_mixture_states()` reproducing a fixed legacy column-naming convention (`annotation_first_pass` cell-type column, `stress_composite` score column by default). |
 
 </details>
 

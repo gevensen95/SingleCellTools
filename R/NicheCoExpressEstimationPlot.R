@@ -34,7 +34,13 @@
 #'   shares this same set of options) for notes on each.
 #' @return A single \code{dabestr} estimation plot if the (niche, pair)
 #'   filter resolves to exactly one combination, otherwise a named list of
-#'   plots (names formatted as \code{"<niche> | <pair>"}).
+#'   plots (names formatted as \code{"<niche> | <pair>"}). A (niche, pair)
+#'   combination present in only one of the two \code{idx} conditions (e.g.
+#'   a niche only sampled in one condition's sections) is skipped with a
+#'   \code{warning()} naming it and the missing condition, rather than
+#'   erroring the whole call -- this is expected with imbalanced spatial
+#'   data and errors only if \emph{no} requested combination has both
+#'   conditions represented.
 #' @examples
 #' \dontrun{
 #' res <- NicheCoExpress(obj, genes = c("Vegfa", "Kdr"), niche_col = "niche",

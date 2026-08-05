@@ -90,11 +90,14 @@ test_that("CompositionAnalysis attaches a condition column when condition_col is
   expect_true("condition" %in% colnames(res$counts))
 })
 
-test_that("CompositionAnalysis runs a chisq test when requested", {
+test_that("CompositionAnalysis runs a chisq test when requested (with a pseudoreplication warning)", {
   .skip_if_missing("Seurat", "SeuratObject")
   obj <- .make_small_seurat(seed = 1, n_cells = 150, n_samples = 6)
-  res <- CompositionAnalysis(obj, group_col = "seurat_clusters", sample_col = "sample",
-                             condition_col = "condition", test = "chisq")
+  expect_warning(
+    res <- CompositionAnalysis(obj, group_col = "seurat_clusters", sample_col = "sample",
+                               condition_col = "condition", test = "chisq"),
+    "CompositionalTest"
+  )
   expect_s3_class(res$test, "htest")
 })
 
@@ -192,6 +195,47 @@ test_that(".dabest_from_long returns dabestr effect-size objects, named by group
   )
   out <- .dabest_from_long(df, "group", "prop", "condition", idx = c("A", "B"))
   expect_setequal(names(out), c("g1", "g2"))
+})
+
+test_that(".dabest_from_long skips (with a warning) a group present in only one condition, keeping the rest", {
+  .skip_if_missing("dabestr")
+  set.seed(1)
+  df <- data.frame(
+    sample    = c(paste0("S", 1:6), paste0("S", 7:9)),
+    group     = c(rep("g1", 6), rep("g2", 3)),
+    prop      = stats::runif(9),
+    # g1: both conditions present (3 vs 3). g2: "A" only -- no "B" rows at all.
+    condition = c(rep(c("A", "B"), each = 3), rep("A", 3)),
+    stringsAsFactors = FALSE
+  )
+  expect_warning(
+    out <- .dabest_from_long(df, "group", "prop", "condition", idx = c("A", "B")),
+    "g2.*B"
+  )
+  expect_setequal(names(out), "g1")
+})
+
+test_that(".dabest_from_long errors when every requested group is missing a condition", {
+  .skip_if_missing("dabestr")
+  # g1 has only condition "A", g2 has only condition "B" -- so both idx
+  # levels exist SOMEWHERE in the data (passing the top-level "does idx
+  # exist at all" check), but no individual group has both conditions
+  # represented, so every group gets skipped and the final "no group had
+  # both levels" stop() is what should actually fire.
+  df <- data.frame(
+    sample    = paste0("S", 1:6),
+    group     = c(rep("g1", 3), rep("g2", 3)),
+    prop      = stats::runif(6),
+    condition = c(rep("A", 3), rep("B", 3)),
+    stringsAsFactors = FALSE
+  )
+  expect_warning(
+    expect_error(
+      .dabest_from_long(df, "group", "prop", "condition", idx = c("A", "B")),
+      "No requested group"
+    ),
+    "g1.*B"
+  )
 })
 
 

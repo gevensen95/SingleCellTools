@@ -36,7 +36,12 @@ BuildMultipleNicheAssays(
 
 \item{num_init}{Number of times the algorithm will be run with different centroid seeds for ClusterR::MiniBatchKmeans}
 
-\item{type}{Spatial Techology (specify "visium" if not true single, otherwise NULL is sufficient)}
+\item{type}{Spatial Technology (specify "visium" if not true single, otherwise NULL is sufficient).
+Kept for backward compatibility; coordinate columns from
+\code{GetTissueCoordinates()} are now auto-detected regardless of this
+value (handles both the older Visium \code{imagecol}/\code{imagerow}
+layout and the current \code{x}/\code{y} layout used by newer Visium
+objects and all FOV-based platforms).}
 }
 \value{
 Seurat object containing a new assay

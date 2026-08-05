@@ -12,13 +12,13 @@
 #' @importFrom Seurat as.SingleCellExperiment DefaultAssay
 #' @export
 ToAnnData <- function(obj, file, assay = NULL) {
-  if (!requireNamespace("zellkonverter", quietly = TRUE)) {
-    stop("Package 'zellkonverter' is required. Install with: ",
-         "BiocManager::install('zellkonverter')")
-  }
   if (!inherits(obj, "Seurat")) stop("`obj` must be a Seurat object.")
   if (!grepl("\\.h5ad$", file)) {
     warning("Output file does not end in '.h5ad'; writing anyway.")
+  }
+  if (!requireNamespace("zellkonverter", quietly = TRUE)) {
+    stop("Package 'zellkonverter' is required. Install with: ",
+         "BiocManager::install('zellkonverter')")
   }
   a <- if (is.null(assay)) Seurat::DefaultAssay(obj) else assay
 
@@ -71,6 +71,7 @@ FromAnnData <- function(file,
                         data   = "logcounts",
                         reader = c("python", "R")) {
   reader <- match.arg(reader)
+  if (!file.exists(file)) stop("File not found: ", file)
   if (!requireNamespace("zellkonverter", quietly = TRUE)) {
     stop("Package 'zellkonverter' is required. Install with: ",
          "BiocManager::install('zellkonverter')")
@@ -78,7 +79,6 @@ FromAnnData <- function(file,
   if (!requireNamespace("SummarizedExperiment", quietly = TRUE)) {
     stop("Package 'SummarizedExperiment' is required.")
   }
-  if (!file.exists(file)) stop("File not found: ", file)
 
   message(sprintf("--- Reading AnnData from %s (%s reader) ---", file, reader))
   sce <- tryCatch(

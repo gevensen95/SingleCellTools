@@ -23,7 +23,9 @@ Imports:
     Seurat (>= 4.9.9.9050),
     SeuratObject (>= 4.9.9),
     Signac (>= 1.9.0.9000),
-    EnsDb.Mmusculus.v79 (>= 2.99.0),
+    GenomicRanges,
+    IRanges,
+    GenomeInfoDb,
     Matrix,
     methods,
     grDevices,
@@ -89,6 +91,10 @@ Suggests:
     Banksy,
     SeuratWrappers,
     dabestr,
+    EnsDb.Mmusculus.v79 (>= 2.99.0),
+    BSgenome.Mmusculus.UCSC.mm10,
+    EnsDb.Hsapiens.v86,
+    BSgenome.Hsapiens.UCSC.hg38,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Config/roxygen2/version: 8.0.0

@@ -9,6 +9,8 @@ CreateATACObjectsFilter(
   treatment = NULL,
   filter = TRUE,
   interactive = FALSE,
+  genome = c("mm10", "hg38"),
+  object_names = NULL,
   peak_region_fragments_min = 3000,
   peak_region_fragments_max = 1e+05,
   pct_reads_in_peaks_min = 40,
@@ -27,6 +29,18 @@ CreateATACObjectsFilter(
 \item{treatment}{Treatment metadata value (vector)}
 
 \item{interactive}{Whether to run the filtering step in interactive mode}
+
+\item{genome}{One of \code{"mm10"} (default) or \code{"hg38"}. Selects the gene
+annotation (\code{EnsDb.Mmusculus.v79} / \code{EnsDb.Hsapiens.v86}) and genome
+sequence (\code{BSgenome.Mmusculus.UCSC.mm10} / \code{BSgenome.Hsapiens.UCSC.hg38})
+used for scaffold-chromosome filtering and the \code{ChromatinAssay} annotation.
+Both are optional (Suggests) packages -- only the one matching your chosen
+\code{genome} needs to be installed, and you'll get an actionable error naming
+it if it's missing.}
+
+\item{object_names}{Optional character vector of names for the returned list,
+the same length as \code{data_dirs}. \code{NULL} (default) uses
+\code{basename(data_dirs)}.}
 
 \item{peak_region_fragments_min}{Min peak region fragments value for
 filtering}
@@ -48,8 +62,6 @@ filtering}
 
 \item{passed_filters_value}{Min value for filtering cells based on
 passed_filters column}
-
-\item{add_treatment}{Whether to add a treatment column to metadata}
 }
 \value{
 A list of filtered Seurat objects

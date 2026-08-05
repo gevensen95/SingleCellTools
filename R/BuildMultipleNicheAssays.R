@@ -13,7 +13,12 @@
 #' @param niches.k.range Number of clusters to return based on the niche assay.  provide a range
 #' @param batch_size Number of mini-batches for ClusterR::MiniBatchKmeans
 #' @param num_init  Number of times the algorithm will be run with different centroid seeds for ClusterR::MiniBatchKmeans
-#' @param type Spatial Techology (specify "visium" if not true single, otherwise NULL is sufficient)
+#' @param type Spatial Technology (specify "visium" if not true single, otherwise NULL is sufficient).
+#'   Kept for backward compatibility; coordinate columns from
+#'   \code{GetTissueCoordinates()} are now auto-detected regardless of this
+#'   value (handles both the older Visium \code{imagecol}/\code{imagerow}
+#'   layout and the current \code{x}/\code{y} layout used by newer Visium
+#'   objects and all FOV-based platforms).
 #' @return Seurat object containing a new assay
 #' @export
 #'
@@ -67,16 +72,33 @@ BuildMultipleNicheAssays <- function(
     group.idx <- match(group.labels, groups)
     cell.type.mtx[cbind(cells.idx, group.idx)] <- 1
 
-    # Retrieve tissue coordinates based on type
-    if (!is.null(type) && type == "visium") {
-      coords <- Seurat::GetTissueCoordinates(object[[fov]], which = "centroids")
-      coords <- as.matrix(coords[, c("imagecol", "imagerow")])
-      colnames(coords) <- c("x", "y")
+    # Retrieve tissue coordinates. GetTissueCoordinates() column names vary by
+    # Seurat/image-class version rather than strictly by `type`:
+    #   - Visium, older Seurat (VisiumV1 image class): imagecol, imagerow
+    #     (pixel coordinates; rownames = barcodes)
+    #   - Visium, current Seurat/SeuratData (VisiumV2 image class) and all
+    #     FOV-based platforms (Xenium/CosMx): x, y (column 'cell' = barcodes)
+    # `type` is kept for backward compatibility but coordinate columns are
+    # now auto-detected so this doesn't break when a Visium object returns
+    # the newer x/y layout (see also EdgeDetectionVisium(), which normalizes
+    # the same way).
+    coords_df <- as.data.frame(
+      Seurat::GetTissueCoordinates(object[[fov]], which = "centroids")
+    )
+    if (all(c("imagecol", "imagerow") %in% colnames(coords_df))) {
+      coord_cols <- c("imagecol", "imagerow")
+    } else if (all(c("x", "y") %in% colnames(coords_df))) {
+      coord_cols <- c("x", "y")
     } else {
-      coords <- Seurat::GetTissueCoordinates(object[[fov]], which = "centroids")
-      rownames(coords) <- coords[["cell"]]
-      coords <- as.matrix(coords[, c("x", "y")])
+      stop("Could not find coordinate columns in GetTissueCoordinates() ",
+           "output for FOV '", fov, "' (got: ",
+           paste(colnames(coords_df), collapse = ", "), ").")
     }
+    if ("cell" %in% colnames(coords_df)) {
+      rownames(coords_df) <- coords_df[["cell"]]
+    }
+    coords <- as.matrix(coords_df[, coord_cols])
+    colnames(coords) <- c("x", "y")
 
     # Find neighbors using tissue coordinates
     neighbors <- Seurat::FindNeighbors(object = coords,
