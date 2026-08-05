@@ -1,14 +1,26 @@
-#' Attach SingleCellTools' dependencies on `library(SingleCellTools)`
+#' Attach SingleCellTools' core dependencies on `library(SingleCellTools)`
 #'
 #' By default, R only \emph{loads} (but does not \emph{attach}) the packages
 #' listed under \code{Imports} in DESCRIPTION -- their exported functions
 #' are available to SingleCellTools' own code (which calls them via
 #' \code{::}), but not directly to the user's session. This package is meant
-#' to set up a full single-cell analysis environment, so on
+#' to set up a core single-cell analysis environment, so on
 #' \code{library(SingleCellTools)} this hook also attaches (i.e. puts on
-#' \code{search()}) every package listed under \code{Imports} in
-#' DESCRIPTION, so things like \code{ggplot()}, \code{%>%}, \code{filter()},
-#' etc. are available without qualifying them.
+#' \code{search()}) the small set of packages listed in \code{.scta_deps}
+#' below -- the ones actually worth having unqualified in an interactive
+#' session (\code{Seurat}/\code{Signac}, the tidyverse core, \code{ggplot2}
+#' and friends) -- so things like \code{ggplot()}, \code{%>%},
+#' \code{filter()}, etc. are available without qualifying them.
+#'
+#' \strong{This is a deliberately curated subset of \code{Imports}, not all
+#' of it.} The many single-function dependencies (\code{DESeq2},
+#' \code{slingshot}, \code{scmap}, \code{GO.db}, \code{UCell},
+#' \code{DoubletFinder}, \code{MASS}, etc.) are intentionally left
+#' unattached -- they're only ever used inside one or two specific
+#' SingleCellTools functions (via \code{::}), so forcing them onto every
+#' user's search path would slow down \code{library(SingleCellTools)} and
+#' risk name-masking (e.g. \code{MASS::select}, \code{edgeR}/\code{limma}
+#' exports) for no benefit to sessions that never call those functions.
 #'
 #' \strong{Notes / caveats:}
 #' \itemize{
@@ -17,26 +29,22 @@
 #'   \item If a listed dependency isn't installed, a single
 #'     \code{packageStartupMessage()} names it and it is skipped --
 #'     \code{library(SingleCellTools)} itself still succeeds.
-#'   \item Attaching this many packages at once can introduce masking
-#'     (e.g. \code{dplyr::filter} vs \code{stats::filter}); R prints the
-#'     usual conflict messages, which are left visible (not suppressed)
-#'     for that reason.
-#'   \item \code{EnsDb.Mmusculus.v79} and \code{GO.db} are annotation/DB
-#'     packages and can take a moment to load. To exclude any package from
-#'     this auto-attach behavior, just remove it from \code{.scta_deps}
-#'     below (it will still be available via \code{::} as long as it
-#'     remains in DESCRIPTION's \code{Imports}).
+#'   \item R prints the usual conflict messages for any masking these
+#'     packages introduce (e.g. \code{dplyr::filter} vs \code{stats::filter});
+#'     these are left visible (not suppressed).
+#'   \item To attach an additional package yourself, just add it to
+#'     \code{.scta_deps} below (it will still be available via \code{::}
+#'     either way, as long as it remains in DESCRIPTION's \code{Imports}).
 #' }
 #'
 #' @param libname,pkgname Standard \code{.onAttach} arguments; supplied by R.
 #' @keywords internal
 #' @noRd
 .scta_deps <- c(
-  # Core Seurat / SeuratObject / Signac
+  # Core Seurat / Signac
   "Seurat",
   "SeuratObject",
   "Signac",
-  "EnsDb.Mmusculus.v79",
   # Base R namespaces we lean on
   "Matrix",
   "methods",
@@ -51,39 +59,11 @@
   "stringr",
   "rlang",
   "purrr",
-  # Numerical / plotting
+  # Numerical / plotting used pervasively across plotting functions
   "RANN",
   "ggplot2",
   "patchwork",         # QCComparePlots grid layout
-  "RColorBrewer",
-  "ClusterR",
-  "irlba",
-  "RSpectra",
-  # Single-cell specific analysis
-  "glmGamPoi",
-  "GO.db",
-  "UCell",
-  "DoubletFinder",
-  # Differential expression (PseudobulkDE)
-  "DESeq2",
-  "SummarizedExperiment",
-  "S4Vectors",
-  "edgeR",             # optional pseudobulk backend
-  # Composition testing (CellComposition / CompositionalTest)
-  "speckle",           # propeller
-  "limma",             # speckle dependency; useful directly
-  # Reference-based annotation (AnnotateWithReference)
-  # CellTypist (default) + scANVI are Python-only (via reticulate); scmap is R.
-  "scmap",
-  # Trajectory (PseudotimeWrapper)
-  "slingshot",
-  # Density plots (PlotFeatureDensity)
-  "ks",
-  "MASS",              # fallback KDE backend
-  # Silhouette / integration QC (BatchEffectQC)
-  "cluster",
-  # Provenance sidecars (SaveWithProvenance)
-  "jsonlite"
+  "RColorBrewer"
 )
 
 .onAttach <- function(libname, pkgname) {
