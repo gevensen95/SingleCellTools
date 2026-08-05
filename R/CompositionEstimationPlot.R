@@ -37,7 +37,12 @@
 #'   data -- see the dabestr documentation for details on each.
 #' @return A single \code{dabestr} estimation plot if \code{group_levels}
 #'   resolves to exactly one level, otherwise a named list of plots (one
-#'   per \code{group_levels} entry, names = the group level).
+#'   per \code{group_levels} entry, names = the group level). A requested
+#'   group present in only one of the two \code{idx} conditions (e.g. a
+#'   cell type only sampled under one condition) is skipped with a
+#'   \code{warning()} naming the group and missing condition, rather than
+#'   erroring the whole call -- errors only if \emph{no} requested group has
+#'   both conditions represented.
 #' @examples
 #' \dontrun{
 #' comp <- CompositionAnalysis(obj, group_col = "cell_type",

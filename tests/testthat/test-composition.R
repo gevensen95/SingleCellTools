@@ -194,6 +194,38 @@ test_that(".dabest_from_long returns dabestr effect-size objects, named by group
   expect_setequal(names(out), c("g1", "g2"))
 })
 
+test_that(".dabest_from_long skips (with a warning) a group present in only one condition, keeping the rest", {
+  .skip_if_missing("dabestr")
+  set.seed(1)
+  df <- data.frame(
+    sample    = c(paste0("S", 1:6), paste0("S", 7:9)),
+    group     = c(rep("g1", 6), rep("g2", 3)),
+    prop      = stats::runif(9),
+    # g1: both conditions present (3 vs 3). g2: "A" only -- no "B" rows at all.
+    condition = c(rep(c("A", "B"), each = 3), rep("A", 3)),
+    stringsAsFactors = FALSE
+  )
+  expect_warning(
+    out <- .dabest_from_long(df, "group", "prop", "condition", idx = c("A", "B")),
+    "g2.*B"
+  )
+  expect_setequal(names(out), "g1")
+})
+
+test_that(".dabest_from_long errors when every requested group is missing a condition", {
+  .skip_if_missing("dabestr")
+  df <- data.frame(sample = paste0("S", 1:3), group = "g1",
+                   prop = stats::runif(3), condition = "A",
+                   stringsAsFactors = FALSE)
+  expect_warning(
+    expect_error(
+      .dabest_from_long(df, "group", "prop", "condition", idx = c("A", "B")),
+      "No requested group"
+    ),
+    "g1.*B"
+  )
+})
+
 
 # ============================================================================
 # CompositionEstimationPlot()

@@ -77,17 +77,30 @@
     sub[[condition_col]] <- factor(as.character(sub[[condition_col]]), levels = idx)
     sub[[y_col]] <- as.numeric(sub[[y_col]])
 
-    if (nrow(sub) == 0) {
-      stop("No rows left for group '", g, "' after restricting to idx = c(",
-           paste(idx, collapse = ", "), "). Check `condition_col` values.")
+    # Both idx levels must have >= 1 row for THIS group. Checking nrow(sub)
+    # > 0 isn't enough: a group can have plenty of rows but all from one
+    # condition (e.g. a niche/cluster only present in "anterior" samples,
+    # none in "posterior"). dabestr::load() itself would fail on that with
+    # an opaque "<level> not present in x" error deep inside dabestr; catch
+    # it here instead with a message that names the group and the missing
+    # level(s), and skip this group rather than aborting the whole batch --
+    # relevant when group_levels spans many groups (e.g. group_levels =
+    # NULL / niches = NULL) and only some of them actually have both
+    # conditions represented.
+    present <- idx %in% as.character(sub[[condition_col]])
+    if (!all(present)) {
+      warning("Skipping group '", g, "': idx level(s) ",
+              paste(idx[!present], collapse = ", "),
+              " have 0 rows for this group after filtering `condition_col`. ",
+              "This group isn't present in both conditions in the ",
+              "underlying data -- not a bug, just nothing to compare here.")
+      next
     }
 
     # dabestr::load() takes `x`/`y` as bare (tidy-eval) column references,
     # not strings -- rlang::inject() + sym() builds the call with the
     # actual column-name symbols substituted in before dispatch, so this
-    # works regardless of how load() captures its own arguments internally
-    # (NB: this NSE bridging hasn't been run against a live dabestr
-    # install in this environment -- verify on first real use).
+    # works regardless of how load() captures its own arguments internally.
     loaded <- rlang::inject(dabestr::load(
       data = sub,
       x    = !!rlang::sym(condition_col),
@@ -96,6 +109,13 @@
     ))
 
     out[[g]] <- effect_fn(loaded)
+  }
+
+  out <- out[!vapply(out, is.null, logical(1))]
+  if (length(out) == 0) {
+    stop("No requested group had both idx levels (", paste(idx, collapse = ", "),
+         ") represented -- nothing to plot. Requested group(s): ",
+         paste(group_levels, collapse = ", "), ".")
   }
 
   out
