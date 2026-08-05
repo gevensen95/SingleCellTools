@@ -5,6 +5,21 @@
 #' or Fisher's exact test comparing distributions across a
 #' \code{condition_col} grouping of the samples.
 #'
+#' @details
+#' The optional \code{test} is computed on cells pooled across all samples
+#' within each condition (a single \code{group_col} x \code{condition_col}
+#' contingency table). That treats every \emph{cell} as an independent
+#' replicate rather than every \emph{sample} -- with few samples and many
+#' cells per sample (the usual case in scRNA-seq), this inflates the
+#' effective sample size the test sees and can report significance that
+#' isn't actually supported at the sample level (the "pseudoreplication"
+#' problem well documented for single-cell composition testing). Treat it as
+#' a rough, descriptive check of the pooled data, not a substitute for a
+#' proper sample-level test. \code{\link{CompositionalTest}} (propeller /
+#' betareg / Wilcoxon, all operating on per-sample proportions) is the
+#' function to reach for when you need a test whose p-value actually
+#' reflects the number of biological replicates.
+#'
 #' @param obj A Seurat object.
 #' @param group_col Metadata column with the grouping to analyze (cluster
 #'   or cell-type labels).
@@ -13,7 +28,9 @@
 #'   conditions for testing.
 #' @param test One of \code{"none"} (default), \code{"chisq"}, or
 #'   \code{"fisher"}. Tests whether group proportions differ across
-#'   \code{condition_col}.
+#'   \code{condition_col}. See Details for an important caveat about what
+#'   this test's p-value does and doesn't account for -- emits a
+#'   \code{warning()} to that effect whenever it's requested.
 #' @return A list with elements:
 #'   \describe{
 #'     \item{\code{counts}}{Long-format tibble of cell counts.}
@@ -70,6 +87,16 @@ CompositionAnalysis <- function(obj,
     if (is.null(condition_col)) {
       stop("`condition_col` must be supplied to run a test.")
     }
+    warning(
+      "This ", test, " test is computed on cells pooled across all samples ",
+      "within each condition -- it treats every cell as an independent ",
+      "replicate, not just every sample. With few samples and many cells ",
+      "per sample (the common case), this inflates the effective sample ",
+      "size and can report significance that isn't actually supported at ",
+      "the sample level (pseudoreplication). Use CompositionalTest() ",
+      "instead for a test that operates on per-sample proportions.",
+      call. = FALSE
+    )
     cond_lookup <- unique(md[, c(sample_col, condition_col)])
     cond <- cond_lookup[match(as.character(sample), cond_lookup[[sample_col]]),
                         condition_col]

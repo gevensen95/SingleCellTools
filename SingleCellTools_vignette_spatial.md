@@ -11,7 +11,7 @@
 1. [Setup](#1-setup)
 2. [Load the Data](#2-load-the-data)
 3. [QC and Percent Mitochondrial Reads](#3-qc-and-percent-mitochondrial-reads)
-4. [Edge Detection — `EdgeDetectionVisium()`](#4-edge-detection--edgedetectionvisium)
+4. [Edge & Hole Detection — `detect_fov_edges()` / `detect_tissue_holes()`](#4-edge--hole-detection--detect_fov_edges--detect_tissue_holes)
 5. [Merge and Integrate — `MergeSeurat()`](#5-merge-and-integrate--mergeseurat)
 6. [Annotate Spatial Domains](#6-annotate-spatial-domains)
    - 6.1 [Marker Dot Plots — `MarkerPlot()` / `MarkerPctPlot()`](#61-marker-dot-plots--markerplot--markerpctplot)
@@ -19,7 +19,9 @@
 7. [Visium Deconvolution — `RunRCTD()`](#7-visium-deconvolution--runrctd)
 8. [Feature Density on the Tissue — `PlotFeatureDensity()`](#8-feature-density-on-the-tissue--plotfeaturedensity)
 9. [Gene Positivity — `AddGenePositivity()` / `PlotGenePositivity()`](#9-gene-positivity--addgenepositivity--plotgenepositivity)
+    - 9.1 [`GenePositivityAnalysis()` and `GenePositivityEstimationPlot()`](#91-genepositivityanalysis-and-genepositivityestimationplot)
 10. [Spatial Niche Analysis — `BuildMultipleNicheAssays()`](#10-spatial-niche-analysis--buildmultiplenicheassays)
+    - 10.1 [An Alternative: Spatial Domain Segmentation via `RunBanksyWrapper()`](#101-an-alternative-spatial-domain-segmentation-via-runbanksywrapper)
 11. [Neighborhood Enrichment — `NeighborhoodEnrichment()`](#11-neighborhood-enrichment--neighborhoodenrichment)
 12. [Niche Co-expression — `NicheCoExpress()`](#12-niche-co-expression--nicheco express)
     - 12.1 [Estimation Plot — `NicheCoExpressEstimationPlot()`](#121-estimation-plot--nichecoexpressestimationplot)
@@ -183,81 +185,82 @@ sapply(brain_list, ncol)
 
 ---
 
-## 4. Edge Detection — `EdgeDetectionVisium()`
+## 4. Edge & Hole Detection — `detect_fov_edges()` / `detect_tissue_holes()`
 
-Spots at the capture-area boundary, tissue edge, and tissue tears have systematically
-lower UMI counts and higher noise. `EdgeDetectionVisium()` runs four iterative rounds
-of nearest-neighbor filtering to flag these spots.
+Spots at the capture-area boundary have systematically lower UMI counts and higher
+noise; spots bordering internal tissue tears or holes have the same problem.
+`detect_fov_edges()` flags the former (outer boundary), `detect_tissue_holes()`
+flags the latter (internal gaps) — both work on any spatial modality since they
+pull coordinates via `Seurat::GetTissueCoordinates()` rather than assuming a
+hex-grid layout.
 
-Pass `seurat.obj` directly rather than pointing `coord_path` at a spaceranger
-`spatial/` folder — `EdgeDetectionVisium()` pulls coordinates itself via
-`Seurat::GetTissueCoordinates()`, which dispatches correctly regardless of whether
-your installed Seurat/SeuratData version stores each image as the older `VisiumV1`
-class or the newer `VisiumV2` class. (An earlier draft of this vignette reached
-into `obj@images[[image_name]]@coordinates` directly to build a fake
-`tissue_positions_list.csv` — that slot doesn't exist on `VisiumV2` objects, which
-is what current `SeuratData` installs return, so that approach breaks. Letting
-`EdgeDetectionVisium()` call `GetTissueCoordinates()` itself avoids depending on
-that internal layout at all.)
-
-> **Working with real CellRanger output?** You can still point `coord_path` at
-> your `outs/spatial/` folder (which already contains `tissue_positions_list.csv`)
-> instead of passing `seurat.obj` — see `coord_path` in `?EdgeDetectionVisium`.
-
-Now run edge detection on every section. Four filter iterations are returned as
-columns `Filter`, `Filter2`, `Filter3`, `Filter4` — each one is progressively more
-aggressive at peeling back the boundary.
+> **`detect_fov_edges()` vs. `EdgeDetectionVisium()`.** SingleCellTools also ships
+> `EdgeDetectionVisium()`, which flags a spot as an edge if it has too few
+> neighbors within a radius — a good fit for Visium's fixed hex-grid spacing
+> (every interior spot has exactly 6 neighbors). `detect_fov_edges()`'s default
+> `method = "bbox"`, used below, instead flags spots close to the axis-aligned
+> bounding box of the tissue — fast and simple, but it assumes the tissue is
+> roughly convex within each section. A coronal brain section is convex enough
+> for this to work well; a tissue with a very irregular or crescent-shaped
+> outline may need `method = "angular"` (also available on `detect_fov_edges()`)
+> or `EdgeDetectionVisium()`'s neighbor-count approach instead. Neither method is
+> a strict upgrade over the other — pick based on tissue shape.
 
 ```r
-edge_results <- lapply(names(brain_list), function(nm) {
-  EdgeDetectionVisium(
-    seurat.obj = brain_list[[nm]],
-    image      = nm,
-    search     = "radius",
-    neighbors  = 7
-  )
+brain_list <- lapply(brain_list, function(obj) {
+  obj <- detect_fov_edges(obj,
+                          method       = "bbox",
+                          bbox_factor  = 2,
+                          n_iterations = 2,
+                          label_col    = "edge_layer")
+  obj <- detect_tissue_holes(obj,
+                             min_hole_size = 4,
+                             n_iterations  = 2,
+                             label_col     = "hole_layer")
+  obj
 })
-names(edge_results) <- names(brain_list)
 
-# Inspect how many spots are flagged at each iteration (anterior1 shown)
-table(edge_results$anterior1$Filter)   # iteration 1 (least aggressive)
-table(edge_results$anterior1$Filter4)  # iteration 4 (most aggressive)
+# 0 = interior, 1 = outermost ring/layer, 2 = next ring/layer, ... (anterior1 shown)
+table(brain_list$anterior1$edge_layer)
+table(brain_list$anterior1$hole_layer)
 ```
 
-Add the filter results to metadata and visualize before committing to a cutoff:
+Visualize both layers before committing to a cutoff:
 
 ```r
-# Add Filter4 (outermost 4 rings removed) as metadata on each section
-brain_list <- lapply(names(brain_list), function(nm) {
-  AddMetaData(
-    brain_list[[nm]],
-    metadata = setNames(edge_results[[nm]]$Filter4, edge_results[[nm]]$barcode),
-    col.name = "edge_filter"
-  )
-})
-names(brain_list) <- names(edge_results)
+SpatialDimPlot(brain_list$anterior1, group.by = "edge_layer") +
+  ggtitle("Edge layers — anterior 1")
 
-# Visualize — spots to remove shown in red (anterior1 shown; repeat per section)
-SpatialDimPlot(brain_list$anterior1, group.by = "edge_filter",
-               cols = c("Keep" = "grey80", "Filter" = "red3")) +
-  ggtitle("Edge detection — anterior 1 (Filter4)")
+SpatialDimPlot(brain_list$anterior1, group.by = "hole_layer") +
+  ggtitle("Hole layers — anterior 1")
 ```
 
-If the red spots align with the visible tissue boundary and tears, apply the filter
-to every section:
+> **Marker-gene exclusion for biologically meaningful gaps.** If a "hole" is real
+> anatomy rather than a tear (a ventricle, a large vessel, a central vein), pass
+> `exclude_gene` to `detect_tissue_holes()` so bins bordered by high expression of
+> that gene are skipped rather than flagged — see Section 13 for a worked example
+> with `Glul` in liver tissue. Not needed for this mouse brain dataset, but worth
+> knowing about before you discard real anatomical structures in your own tissue.
+
+If both layers look right, keep only interior spots (`layer == 0` in both —
+mirroring exactly how Section 13 combines the same two columns for Xenium data):
 
 ```r
-brain_list <- lapply(brain_list, function(obj) subset(obj, edge_filter == "Keep"))
+brain_list <- lapply(brain_list, function(obj) {
+  subset(obj, edge_layer == 0 & hole_layer == 0)
+})
 
 sapply(brain_list, ncol)
 #>  anterior1  anterior2 posterior1 posterior2
-#>       2554       2681       3178       3109
+#>       2558       2685       3181       3115
 ```
 
-> **How conservative to be?** `Filter` (1 iteration) removes only the outermost ring;
-> `Filter4` removes the outer four rings. Start with `Filter2` or `Filter3` for most
-> experiments — it captures tissue-edge effects without discarding too much of the
-> boundary. Validate by comparing UMI distributions of "Keep" vs. "Filter" spots.
+> **Choosing `n_iterations`, `bbox_factor`, and `min_hole_size`.** `n_iterations = 2`
+> peels back two rings/layers on each function; raise it for noisier tissue edges.
+> `bbox_factor` (edge detection) and `min_hole_size` (hole detection, in grid bins)
+> both trade off aggressiveness vs. over-trimming — validate by comparing UMI
+> distributions of kept vs. flagged spots before committing, the same way you would
+> with `EdgeDetectionVisium()`'s `Filter`/`Filter4` columns.
 
 ---
 
@@ -495,7 +498,18 @@ For laminar cortex or clearly zoned tissue, RCTD proportions map cleanly onto th
 
 `PlotFeatureDensity()` gives a much cleaner view of sparse markers than `SpatialFeaturePlot()` when combined with the UMAP or a spatial 2D coordinate reduction. On a UMAP:
 
+`PlotFeatureDensity()` isn't limited to genes — any numeric metadata column works,
+including a module score. `AddModuleScore()` writes a column named `<name>1`; copy
+it to a fixed, readable name so the call below doesn't depend on that numbering:
+
 ```r
+integrated <- AddModuleScore(
+  integrated,
+  features = list(c("Mbp", "Mog", "Plp1")),   # oligodendrocyte / myelination markers
+  name     = "OligoScore"
+)
+integrated$module_score_oligo <- integrated$OligoScore1
+
 PlotFeatureDensity(
   integrated,
   features  = c("Mbp", "Gad1", "Slc17a7"),
@@ -505,7 +519,7 @@ PlotFeatureDensity(
 # On the spatial coordinates directly (works when 'spatial' is registered
 # as a reduction; otherwise use SpatialFeaturePlot for the tissue view).
 PlotFeatureDensity(integrated,
-                   features  = "module_score_ISG",
+                   features  = "module_score_oligo",
                    reduction = "umap")
 ```
 
@@ -568,6 +582,90 @@ PlotGenePositivity(integrated,
                    group.by = "spatial_domain",
                    style    = "combo")
 ```
+
+### 9.1 `GenePositivityAnalysis()` and `GenePositivityEstimationPlot()`
+
+The summary above is pooled across all spots regardless of section. `GenePositivityAnalysis()`
+computes positivity rates per **sample** (section) instead — stratified by `spatial_domain`
+here — plus an optional chi-square/Fisher test across `region`, the same
+`orig.ident`/`region` anterior-vs-posterior design `NicheCoExpress()` (Section 12) uses.
+With only 4 sections total (2 per region) that test pools spots across sections rather
+than testing on the 2-vs-2 sample-level rates, so it emits a `warning()` and shouldn't
+be read as a real significance result here -- `GenePositivityEstimationPlot()` below,
+which works directly off the per-sample rates, is the honest view of this comparison:
+
+```r
+gpa <- GenePositivityAnalysis(
+  integrated,
+  genes         = c("Gfap", "Mbp"),
+  sample_col    = "orig.ident",
+  condition_col = "region",
+  group_col     = "spatial_domain",
+  test          = "chisq"
+)
+gpa$proportions                    # sample, gene, group, n_pos, n_total, prop_pos, condition
+gpa$test[["Mbp | Oligodendrocyte"]]   # chi-square result for that gene x domain combination (pooled-spot caveat above)
+```
+
+As with `CompositionAnalysis()`/`CompositionEstimationPlot()` in the other two
+vignettes, the test above answers "is there a difference"; `GenePositivityEstimationPlot()`
+answers "by how much, with what uncertainty" using per-sample positivity rates and a
+bootstrap 95% CI -- the same caveat from Section 2 applies here too: "anterior" vs
+"posterior" is an anatomical grouping (2 sections each), not a treatment arm.
+
+```r
+# Mbp positivity in the oligodendrocyte domain, anterior vs posterior
+GenePositivityEstimationPlot(gpa, genes = "Mbp", group_levels = "Oligodendrocyte",
+                             idx = c("anterior", "posterior"))
+
+# Every gene x domain combination present, as a named list of plots
+plots <- GenePositivityEstimationPlot(gpa, idx = c("anterior", "posterior"))
+plots[["Mbp | Oligodendrocyte"]]
+
+# Cohen's h -- the effect size designed specifically for comparing two proportions
+GenePositivityEstimationPlot(gpa, genes = "Mbp", group_levels = "Oligodendrocyte",
+                             idx = c("anterior", "posterior"), effect = "cohens_h")
+```
+
+#### How to read a `dabestr` estimation plot
+
+This is the first estimation plot in this vignette, so it's worth spelling out what's
+actually on it -- the same layout applies to `NicheCoExpressEstimationPlot()` (12.1)
+later on too ([`dabestr`](https://acclab.github.io/dabestr/) implements "estimation
+statistics": Ho et al. 2019, *Moving beyond P values: data analysis with estimation
+graphics*, Nature Methods).
+
+Each plot has two stacked panels sharing an x-axis (the two `idx` conditions, here
+`anterior`/`posterior`):
+
+- **Top panel — raw data.** Every individual value feeding the comparison is plotted
+  as a swarm along its condition's column. That's one point per *section*
+  (`orig.ident`), not per spot -- with only 4 sections total (2 per region) you'll
+  literally see all 4 points, which is the honest picture this comparison can
+  support, rather than a p-value implying more precision than 2-vs-2 actually gives.
+- **Bottom panel — effect size.** The chosen `effect` (`mean_diff` by default) between
+  posterior and anterior, drawn as a single point with a vertical bar for its 95%
+  bootstrap confidence interval (5000 resamples, by default). A dashed horizontal
+  line marks the reference condition's (anterior's) value, so the effect-size
+  point/CI can be read directly against it.
+
+Because the CI comes from resampling the actual sections rather than a parametric
+formula, it doesn't assume normality -- but with only 2 sections per condition here,
+resampling has very little to work with, so expect a wide CI; that width is itself
+useful information (this comparison can detect large effects only, not subtle ones).
+There's no p-value threshold to eyeball; instead look at whether the CI includes zero
+(no effect) and how wide it is.
+
+`effect` options, all available on every `*EstimationPlot()` function in this package:
+
+| `effect` | What it measures |
+|---|---|
+| `mean_diff` (default) | Test mean − reference mean, in the original units (e.g. proportion points). |
+| `median_diff` | Same, using medians -- less sensitive to one outlier section. |
+| `cohens_d` | Standardized mean difference (pooled-SD units); comparable across differently-scaled measurements. |
+| `hedges_g` | `cohens_d` with a small-sample bias correction -- prefer this over `cohens_d` with only 2 sections per condition. |
+| `cliffs_delta` | Non-parametric, rank-based (akin to a standardized Mann-Whitney effect) -- robust to outliers and non-normal spread, no distributional assumptions. |
+| `cohens_h` | Designed specifically for comparing two proportions -- often the more principled choice for `prop_pos`/`prop` columns (bounded 0-1) rather than a raw mean difference. |
 
 ---
 
@@ -685,6 +783,52 @@ ggplot(comp, aes(x = best_niche, y = spatial_domain, fill = pct)) +
 ggsave("niche_composition_heatmap.pdf", width = 8, height = 6)
 ```
 
+### 10.1 An Alternative: Spatial Domain Segmentation via `RunBanksyWrapper()`
+
+`BuildMultipleNicheAssays()` above finds niches from neighborhood *composition* (what
+cell-type labels surround each spot). `RunBanksyWrapper()` takes a different approach:
+it wraps `SeuratWrappers::RunBanksy()`/`Banksy::computeBanksy()` to build a joint
+expression + spatial-neighbor feature space directly from gene expression, then lets
+you cluster on that instead. `lambda` controls the trade-off: low values (~0.2) favor
+ordinary cell-typing, high values (~0.8) favor spatial domain segmentation — since
+that's the goal here, use a high `lambda`.
+
+This runs on `integrated` from Section 5 (the merged, SCTransform-normalized, harmony-
+integrated object across all 4 sections) rather than the per-section `niche_list`.
+Because BANKSY needs spatial coordinates and `integrated` has 4 sections' worth of
+spots that would otherwise spatially overlap (each section's pixel coordinates start
+near the origin independently), pass `group = "orig.ident"` so coordinates are
+staggered per section before computing spatial neighbors -- skipping this would let
+BANKSY treat spots from *different* sections as if they were physically adjacent.
+
+```r
+integrated <- RunBanksyWrapper(
+  integrated,
+  lambda   = 0.8,          # high lambda -- spatial domain segmentation, not cell-typing
+  k_geom   = 15,
+  group    = "orig.ident",  # keep the 4 sections' coordinates from overlapping
+  assay_name = "BANKSY"
+)
+
+# RunBanksyWrapper() already ran PCA on the BANKSY assay (reduction "pca_banksy")
+integrated <- FindNeighbors(integrated, reduction = "pca_banksy", dims = 1:30)
+integrated <- FindClusters(integrated, resolution = 0.5, cluster.name = "banksy_domain")
+
+# Compare to the marker-based spatial_domain labels from Section 6
+SpatialDimPlot(integrated, group.by = "banksy_domain") + ggtitle("BANKSY domains")
+table(integrated$banksy_domain, integrated$spatial_domain)
+```
+
+> **Caveat inherited from `RunBanksy()`:** don't call `ScaleData()` on the `BANKSY`
+> assay afterward -- it already holds the lambda-weighted BANKSY matrix in
+> `scale.data`, and re-scaling would undo the effect of `lambda`.
+
+Neither method is strictly better: `BuildMultipleNicheAssays()`'s niches are defined
+by which cell types surround a spot (interpretable directly in terms of the
+annotations from Section 6), while BANKSY domains are defined by a blend of a spot's
+own expression and its neighbors' expression (can pick up transcriptional gradients
+composition-based niches miss, at the cost of being less directly interpretable).
+
 ---
 
 ## 11. Neighborhood Enrichment — `NeighborhoodEnrichment()`
@@ -729,6 +873,10 @@ differently between these two brain regions," not as a stand-in for a drug/disea
 comparison.
 
 ```r
+DefaultAssay(integrated) <- 'RNA'
+integrated <- JoinLayers(integrated)
+integrated <- NormalizeData(integrated)
+
 co <- NicheCoExpress(
   seurat_obj    = integrated,
   genes         = c("Vegfa", "Kdr"),   # or a 2-column data.frame of specific pairs
@@ -749,29 +897,43 @@ plotNicheCoExpress(co, type = "scores")    # per-sample score plots for top/sele
 `NicheCoExpress()`'s Wilcoxon/t-test in `co$stats` answers "is there a difference."
 `NicheCoExpressEstimationPlot()` answers "how big, with what uncertainty" for a
 specific (niche, gene-pair) combination, using `dabestr` to show a bootstrap 95%
-confidence interval on the effect size alongside the raw per-sample values.
+confidence interval on the effect size alongside the raw per-sample values -- see
+9.1 for how to read that plot (raw per-sample swarm + effect size/CI panels) and
+what each `effect` option means.
 
 By default it reuses `attr(co$stats, "conditions")` for `idx`, so the reference/test
 order matches `co$stats$delta` automatically — you don't need to re-specify which
-region is which:
+region is which.
+
+`niches` must match the actual values in `co$per_sample$niche`, not the bare cluster
+number. `NeighborhoodEnrichment()` in Section 11 was called with its default
+`niche_prefix = "niche_"`, so the 6 clusters requested there (`n_niches = 6`) are
+labeled `"niche_1"` through `"niche_6"`, not `"1"` through `"6"` — check
+`unique(co$per_sample$niche)` if you're not sure what's actually present:
 
 ```r
+unique(co$per_sample$niche)
+
 # One niche x pair combination
-NicheCoExpressEstimationPlot(co, niches = "1", pairs = "Vegfa_Kdr")
+NicheCoExpressEstimationPlot(co, niches = "niche_1", pairs = "Vegfa_Kdr")
 
 # Every niche x pair combination present, as a named list of plots
 plots <- NicheCoExpressEstimationPlot(co)
-plots[["1 | Vegfa_Kdr"]]
+plots[["niche_1 | Vegfa_Kdr"]]
 
 # A different effect size -- e.g. Cliff's delta instead of the mean-difference default
-NicheCoExpressEstimationPlot(co, niches = "1", pairs = "Vegfa_Kdr", effect = "cliffs_delta")
+NicheCoExpressEstimationPlot(co, niches = "niche_1", pairs = "Vegfa_Kdr", effect = "cliffs_delta")
 ```
 
 ---
 
 ## 13. Single-cell Spatial (Xenium / CosMx) — `detect_fov_edges()` / `detect_tissue_holes()`
 
-For imaging-based single-cell spatial data, the Visium hex-grid `EdgeDetectionVisium()` isn't the right tool. Two dedicated functions cover FOV edges and tissue tears:
+`detect_fov_edges()` and `detect_tissue_holes()` aren't specific to imaging-based
+data — Section 4 above already used both on Visium. They're especially handy for
+Xenium/CosMx, though, since those platforms have no hex-grid structure at all (cells
+sit at arbitrary micron coordinates), so a Visium-specific tool like
+`EdgeDetectionVisium()` isn't an option there in the first place.
 
 ```r
 # Cells near the FOV outer boundary (bbox method is fast and stable)
@@ -782,19 +944,19 @@ xenium <- detect_fov_edges(xenium,
                            label_col    = "edge_layer")
 
 # Cells bordering internal gaps / tears
-xenium <- detect_tissue_holes2(xenium,
-                               min_hole_size = 4,
-                               n_iterations  = 2,
-                               label_col     = "hole_layer")
+xenium <- detect_tissue_holes(xenium,
+                              min_hole_size = 4,
+                              n_iterations  = 2,
+                              label_col     = "hole_layer")
 ```
 
 **Marker-gene exclusion** — biologically meaningful gaps (e.g. liver central veins expressing `Glul`, vessels expressing `Pecam1`) can be preserved:
 
 ```r
-xenium <- detect_tissue_holes2(xenium,
-                               exclude_gene       = "Glul",
-                               sensitivity        = 0.75,
-                               exclude_gene_layer = "data")
+xenium <- detect_tissue_holes(xenium,
+                              exclude_gene       = "Glul",
+                              sensitivity        = 0.75,
+                              exclude_gene_layer = "data")
 ```
 
 Combine both filters:
@@ -846,9 +1008,11 @@ mbp_oligo <- subset_opt(
 
 ## 15. Tips Specific to Spatial Data
 
-**Run `EdgeDetectionVisium()` before `MergeSeurat()`.** Edge spots are almost always
-the lowest-quality cells in the dataset. Including them biases normalization and
-distorts the integration.
+**Run `detect_fov_edges()`/`detect_tissue_holes()` before `MergeSeurat()`.** Edge and
+hole-bordering spots are almost always the lowest-quality cells in the dataset.
+Including them biases normalization and distorts the integration. (`EdgeDetectionVisium()`
+is also available for this purpose — see the comparison note in Section 4 for when
+to prefer one over the other.)
 
 **`spatial = "Visium"` in `MergeSeurat()`.** Without this flag, the function won't
 handle the `Spatial` assay correctly and image slots may be dropped or misaligned
@@ -904,7 +1068,7 @@ Key packages used in this vignette:
 | `harmony` | Batch correction across sections (via `IntegrateLayers`) |
 | `ClusterR` | Mini-batch k-means for niche clustering |
 | `spacexr` | RCTD Visium deconvolution |
-| `RANN` | Nearest-neighbor searches (`EdgeDetectionVisium`, `detect_fov_edges`, `NeighborhoodEnrichment`) |
+| `RANN` | Nearest-neighbor searches (`detect_fov_edges`, `detect_tissue_holes`, `NeighborhoodEnrichment`) |
 | `ks` | 2D KDE for `PlotFeatureDensity` |
 | `UCell` | Module scoring for `AnnotateClusters` |
 | `dplyr` / `ggplot2` / `patchwork` | Data wrangling and plotting |

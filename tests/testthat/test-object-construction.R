@@ -7,14 +7,19 @@
 # writes RDS files and both print() QC plots to whatever graphics device is
 # active.
 #
-# CreateATACObjects(Filter), CreateVisiumObjects, LoadXenium2, MakeParseObj,
-# and CreateAndIntegrateRNA are not covered: none has custom input
-# validation to unit-test (Signac/Seurat's own readers do the validating,
-# and grepping each file found zero stop() calls), and real coverage would
-# require synthesizing full Space Ranger / Xenium / ATAC fragment-file
-# directory trees, which is a much larger undertaking than the flat 10X RNA
-# layout used here and wasn't judged worth the risk of a wrong fixture
-# without real example data to check against.
+# CreateVisiumObjects, LoadXenium2, MakeParseObj, and CreateAndIntegrateRNA are
+# not covered: none has custom input validation to unit-test (Signac/Seurat's
+# own readers do the validating, and grepping each file found zero stop()
+# calls), and real coverage would require synthesizing full Space Ranger /
+# Xenium directory trees, which is a much larger undertaking than the flat
+# 10X RNA layout used here and wasn't judged worth the risk of a wrong
+# fixture without real example data to check against.
+#
+# CreateATACObjects(Filter) do now have argument validation worth testing
+# (genome/object_names/add_treatment consistency, all checked before any
+# file is read) -- see test-atac-objects.R. The read+build pipeline itself
+# still isn't covered here, for the same ATAC-fragment-file-tree reason as
+# above.
 
 .make_10x_dir <- function(seed = 1, n_genes = 300, n_cells = 50) {
   set.seed(seed)

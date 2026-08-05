@@ -11,8 +11,17 @@
 #' to re-run it.
 #'
 #' @param data_dirs Path to the directories with ATAC data
-#' @param add_treatment Whether to add a treatment column to metadata
 #' @param treatment Treatment metadata value (vector)
+#' @param genome One of \code{"mm10"} (default) or \code{"hg38"}. Selects the gene
+#'   annotation (\code{EnsDb.Mmusculus.v79} / \code{EnsDb.Hsapiens.v86}) and genome
+#'   sequence (\code{BSgenome.Mmusculus.UCSC.mm10} / \code{BSgenome.Hsapiens.UCSC.hg38})
+#'   used for scaffold-chromosome filtering and the \code{ChromatinAssay} annotation.
+#'   Both are optional (Suggests) packages -- only the one matching your chosen
+#'   \code{genome} needs to be installed, and you'll get an actionable error naming
+#'   it if it's missing.
+#' @param object_names Optional character vector of names for the returned list,
+#'   the same length as \code{data_dirs}. \code{NULL} (default) uses
+#'   \code{basename(data_dirs)}.
 #' @param interactive Whether to run the filtering step in interactive mode
 #' @param peak_region_fragments_min Min peak region fragments value for
 #' filtering
@@ -30,16 +39,44 @@
 #' @export
 CreateATACObjectsFilter <-
   function(data_dirs,  treatment = NULL, filter = TRUE, interactive = FALSE,
+           genome = c("mm10", "hg38"), object_names = NULL,
            peak_region_fragments_min = 3000, peak_region_fragments_max = 100000,
            pct_reads_in_peaks_min = 40, blacklist_ratio_max = 0.025,
            nucleosome_signal_max = 4, TSS.enrichment_min = 2,
            peak_region_max = 3000, peakwidths_max = 10000,
            peakwidths_min = 20, passed_filters_value = 500) {
 
+    genome <- match.arg(genome)
+
     if (filter == FALSE & interactive == TRUE) {
       stop("Error: Set filter=TRUE to use interactiver, otherwise set
   interactive=FALSE to skip filtering")
     }
+    if (!is.null(object_names) && length(object_names) != length(data_dirs)) {
+      stop('`object_names` must be the same length as `data_dirs` (', length(data_dirs),
+          '), got ', length(object_names), '.')
+    }
+
+    # ---- Resolve genome-specific annotation/sequence packages -----------------
+    # Both mouse and human packages are optional (Suggests): only the one
+    # matching the requested `genome` needs to actually be installed.
+    genome_pkgs <- switch(
+      genome,
+      mm10 = list(ensdb = 'EnsDb.Mmusculus.v79', bsgenome = 'BSgenome.Mmusculus.UCSC.mm10'),
+      hg38 = list(ensdb = 'EnsDb.Hsapiens.v86',   bsgenome = 'BSgenome.Hsapiens.UCSC.hg38')
+    )
+    if (!requireNamespace(genome_pkgs$ensdb, quietly = TRUE)) {
+      stop("'", genome_pkgs$ensdb, "' is required for genome = '", genome, "'. ",
+          "Install with: BiocManager::install('", genome_pkgs$ensdb, "')")
+    }
+    if (!requireNamespace(genome_pkgs$bsgenome, quietly = TRUE)) {
+      stop("'", genome_pkgs$bsgenome, "' is required for genome = '", genome, "'. ",
+          "Install with: BiocManager::install('", genome_pkgs$bsgenome, "')")
+    }
+    # Both packages export an object of the same name as the package itself
+    # (the standard Bioconductor EnsDb/BSgenome annotation-package convention).
+    ensdb_obj    <- getExportedValue(genome_pkgs$ensdb, genome_pkgs$ensdb)
+    bsgenome_obj <- getExportedValue(genome_pkgs$bsgenome, genome_pkgs$bsgenome)
 
     message(sprintf('--- Reading peak sets (%d directories) ---', length(data_dirs)))
     # Use lapply to read the peak sets for each sample
@@ -54,9 +91,9 @@ CreateATACObjectsFilter <-
     message('--- Building combined peak set ---')
     # Create combined peak set
     suppressWarnings(for (i in 2:length(peak_data_list)) {
-      combined.peaks <- purrr::reduce(c(peak_data_list[[1]], peak_data_list[[i]]))
+      combined.peaks <- GenomicRanges::reduce(c(peak_data_list[[1]], peak_data_list[[i]]))
     })
-    peakwidths <- IRangeswidth(combined.peaks)
+    peakwidths <- width(combined.peaks)
     combined.peaks <- combined.peaks[peakwidths < peakwidths_max &
                                        peakwidths > peakwidths_min]
     message(sprintf('  Peaks within width range [%d, %d]: %d',
@@ -64,18 +101,18 @@ CreateATACObjectsFilter <-
 
     message('--- Removing peaks on scaffolds (keeping main chromosomes) ---')
     #remove scaffolds not in genome
-    main.chroms <- GenomeInfoDb::standardChromosomes(BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10)
+    main.chroms <- GenomeInfoDb::standardChromosomes(bsgenome_obj)
     keep.peaks <- as.logical(seqnames(granges(combined.peaks)) %in% main.chroms)
     combined.peaks <- combined.peaks[keep.peaks, ]
     message(sprintf('  Peaks after scaffold removal: %d', length(combined.peaks)))
 
-    message('--- Loading gene annotations from EnsDb ---')
+    message(sprintf('--- Loading gene annotations from %s ---', genome_pkgs$ensdb))
     # extract gene annotations from EnsDb
-    annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+    annotations <- Signac::GetGRangesFromEnsDb(ensdb = ensdb_obj)
 
     # change to UCSC style since the data was mapped to hg19
     seqlevels(annotations) <- paste0('chr', seqlevels(annotations))
-    genome(annotations) <- "mm10"
+    genome(annotations) <- genome
 
     message('--- Building Seurat ATAC objects per sample ---')
     # Create Seurat objects
@@ -119,7 +156,7 @@ CreateATACObjectsFilter <-
       return(seurat.obj)
     })
 
-    names(seurat_objects) <- basename(data_dirs)
+    names(seurat_objects) <- if (!is.null(object_names)) object_names else basename(data_dirs)
 
     message('--- Generating unfiltered ATAC QC plots ---')
     obj <- merge(seurat_objects[[1]], seurat_objects[-1])

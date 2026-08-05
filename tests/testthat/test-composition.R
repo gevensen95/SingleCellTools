@@ -90,11 +90,14 @@ test_that("CompositionAnalysis attaches a condition column when condition_col is
   expect_true("condition" %in% colnames(res$counts))
 })
 
-test_that("CompositionAnalysis runs a chisq test when requested", {
+test_that("CompositionAnalysis runs a chisq test when requested (with a pseudoreplication warning)", {
   .skip_if_missing("Seurat", "SeuratObject")
   obj <- .make_small_seurat(seed = 1, n_cells = 150, n_samples = 6)
-  res <- CompositionAnalysis(obj, group_col = "seurat_clusters", sample_col = "sample",
-                             condition_col = "condition", test = "chisq")
+  expect_warning(
+    res <- CompositionAnalysis(obj, group_col = "seurat_clusters", sample_col = "sample",
+                               condition_col = "condition", test = "chisq"),
+    "CompositionalTest"
+  )
   expect_s3_class(res$test, "htest")
 })
 
@@ -214,9 +217,18 @@ test_that(".dabest_from_long skips (with a warning) a group present in only one 
 
 test_that(".dabest_from_long errors when every requested group is missing a condition", {
   .skip_if_missing("dabestr")
-  df <- data.frame(sample = paste0("S", 1:3), group = "g1",
-                   prop = stats::runif(3), condition = "A",
-                   stringsAsFactors = FALSE)
+  # g1 has only condition "A", g2 has only condition "B" -- so both idx
+  # levels exist SOMEWHERE in the data (passing the top-level "does idx
+  # exist at all" check), but no individual group has both conditions
+  # represented, so every group gets skipped and the final "no group had
+  # both levels" stop() is what should actually fire.
+  df <- data.frame(
+    sample    = paste0("S", 1:6),
+    group     = c(rep("g1", 3), rep("g2", 3)),
+    prop      = stats::runif(6),
+    condition = c(rep("A", 3), rep("B", 3)),
+    stringsAsFactors = FALSE
+  )
   expect_warning(
     expect_error(
       .dabest_from_long(df, "group", "prop", "condition", idx = c("A", "B")),

@@ -8,6 +8,8 @@ CreateATACObjects(
   data_dirs,
   add_treatment = FALSE,
   treatment = NULL,
+  genome = c("mm10", "hg38"),
+  object_names = NULL,
   peakwidths_max = 10000,
   peakwidths_min = 20,
   passed_filters_value = 500
@@ -19,6 +21,18 @@ CreateATACObjects(
 \item{add_treatment}{Whether to add a treatment column to metadata}
 
 \item{treatment}{Treatment metadata value (vector)}
+
+\item{genome}{One of \code{"mm10"} (default) or \code{"hg38"}. Selects the gene
+annotation (\code{EnsDb.Mmusculus.v79} / \code{EnsDb.Hsapiens.v86}) and genome
+sequence (\code{BSgenome.Mmusculus.UCSC.mm10} / \code{BSgenome.Hsapiens.UCSC.hg38})
+used for scaffold-chromosome filtering and the \code{ChromatinAssay} annotation.
+Both are optional (Suggests) packages -- only the one matching your chosen
+\code{genome} needs to be installed, and you'll get an actionable error naming
+it if it's missing.}
+
+\item{object_names}{Optional character vector of names for the returned list,
+the same length as \code{data_dirs}. \code{NULL} (default) uses
+\code{basename(data_dirs)}.}
 
 \item{peakwidths_max}{Max peak width for finding combined peaks}
 

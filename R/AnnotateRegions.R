@@ -25,9 +25,6 @@ AnnotateRegions <- function(obj,
                             region_col       = "region",
                             unassigned_label = "unassigned") {
 
-  if (!requireNamespace("sf", quietly = TRUE)) {
-    stop("Package 'sf' is required. Install with: install.packages('sf')")
-  }
   if (!inherits(obj, "Seurat")) stop("`obj` must be a Seurat object.")
   if (!is.list(polygons) || is.null(names(polygons))) {
     stop("`polygons` must be a NAMED list of polygon data frames.")
@@ -36,6 +33,9 @@ AnnotateRegions <- function(obj,
     if (!all(c("x", "y") %in% names(polygons[[nm]]))) {
       stop("Polygon '", nm, "' must have columns 'x' and 'y'.")
     }
+  }
+  if (!requireNamespace("sf", quietly = TRUE)) {
+    stop("Package 'sf' is required. Install with: install.packages('sf')")
   }
 
   message(sprintf("--- Building %d polygon(s) ---", length(polygons)))

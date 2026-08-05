@@ -22,6 +22,8 @@
    - 3.8 [Reference-based Annotation — `AnnotateWithReference()`](#38-reference-based-annotation--annotatewithreference)
    - 3.9 [Batch Marker Discovery — `FindMarkersList()`](#39-batch-marker-discovery--findmarkerslist)
    - 3.10 [Gene Positivity — `AddGenePositivity()` / `PlotGenePositivity()`](#310-gene-positivity--addgenepositivity--plotgenepositivity)
+   - 3.11 [Gene-Positivity Rates Between Conditions — `GenePositivityAnalysis()` / `GenePositivityEstimationPlot()`](#311-gene-positivity-rates-between-conditions--genepositivityanalysis--genepositivityestimationplot)
+   - 3.12 [Data-Driven State Calling — `call_mixture_states()` / `call_stress_states()`](#312-data-driven-state-calling--call_mixture_states--call_stress_states)
 4. [One-Shot Pipeline — `CreateAndIntegrateRNA()`](#4-one-shot-pipeline--createandintegrаterna)
 5. [QC Reporting and Filtering](#5-qc-reporting-and-filtering)
    - 5.1 [`GenerateQCReport()`](#51-generateqcreport)
@@ -721,6 +723,165 @@ PlotGenePositivity(integrated, c("CD3D", "CD4"), style = "combo")
 PlotGenePositivity(seurat_list, c("Sftpc", "Ager"))
 ```
 
+### 3.11 Gene-Positivity Rates Between Conditions — `GenePositivityAnalysis()` / `GenePositivityEstimationPlot()`
+
+`AddGenePositivity()`/`PlotGenePositivity()` (3.10) flag and visualize positive cells.
+`GenePositivityAnalysis()` is the `CompositionAnalysis()` (7.3) counterpart for those
+positivity columns: per-gene, per-sample positivity rates — optionally stratified by
+a `group_col` like `cell_type` — plus an optional chi-square or Fisher's exact test
+across `condition_col`. It reads the `<gene>_pos` columns `AddGenePositivity()`
+already wrote, so run that first.
+
+Same caveat as `CompositionAnalysis(test = ...)`: the test pools cells across all
+samples per condition, so it's not a valid replicate-level test (it emits a
+`warning()` saying so) — there's no propeller-style sample-level test for gene
+positivity in this package, so lean on `GenePositivityEstimationPlot()` below for a
+result that respects the sample structure, or run your own test on
+`gpa$proportions$prop_pos`.
+
+```r
+gpa <- GenePositivityAnalysis(
+  integrated,
+  genes         = c("Sftpc", "Ager"),
+  sample_col    = "orig.ident",
+  condition_col = "treatment",
+  group_col     = "cell_type",
+  test          = "chisq"
+)
+gpa$proportions       # long tibble: sample, gene, group, n_pos, n_total, prop_pos, condition
+gpa$test[["Sftpc | AT2"]]   # chi-square result for that gene x cell-type combination (pooled-cell caveat above)
+```
+
+Its `proportions` output is what `GenePositivityEstimationPlot()` expects, the same
+`dabestr`-based estimation-plot pattern used again by `CompositionEstimationPlot()`
+(7.4) and `NicheCoExpressEstimationPlot()` (12.7): `GenePositivityAnalysis(test = ...)`
+answers "is there a difference," this answers "by how much, with what uncertainty,"
+using per-sample positivity rates.
+
+```r
+# One gene x cell-type combination
+GenePositivityEstimationPlot(gpa, genes = "Sftpc", group_levels = "AT2",
+                             idx = c("Vehicle", "DrugA"))
+
+# Every combination present, as a named list of plots
+plots <- GenePositivityEstimationPlot(gpa, idx = c("Vehicle", "DrugA"))
+plots[["Sftpc | AT2"]]
+
+# Cohen's h -- the effect size designed specifically for comparing two proportions
+GenePositivityEstimationPlot(gpa, idx = c("Vehicle", "DrugA"), effect = "cohens_h")
+```
+
+#### How to read a `dabestr` estimation plot
+
+This is the first estimation plot in this vignette, so it's worth spelling out what's
+actually on it -- the same layout applies to every `*EstimationPlot()` function in this
+package ([`dabestr`](https://acclab.github.io/dabestr/) implements "estimation
+statistics": Ho et al. 2019, *Moving beyond P values: data analysis with estimation
+graphics*, Nature Methods).
+
+Each plot has two stacked panels sharing an x-axis (the two `idx` conditions):
+
+- **Top panel — raw data.** Every individual value feeding the comparison is plotted
+  as a swarm along its condition's column. For these estimation-plot functions that's
+  one point per *sample* (not per cell/spot) -- e.g. one point per `orig.ident` here,
+  since the whole point of these functions is to show the per-sample values that a
+  bare p-value collapses into a single number.
+- **Bottom panel — effect size.** The chosen `effect` (`mean_diff` by default) between
+  test and reference, drawn as a single point with a vertical bar for its 95%
+  bootstrap confidence interval (5000 resamples, by default). A dashed horizontal line
+  marks the reference condition's value, so you can read the effect-size point/CI
+  directly against it.
+
+Because the CI comes from resampling the actual samples rather than a parametric
+formula, it doesn't assume normality -- appropriate here since `n` is the number of
+biological replicates (often single digits), not the (much larger, and non-independent)
+number of cells. There's no p-value threshold to eyeball; instead look at whether the
+CI includes zero (no effect) and how wide it is -- a wide CI with few samples is telling
+you the estimate is uncertain, which a bare significant/non-significant p-value would
+hide.
+
+`effect` options, all available on every `*EstimationPlot()` function in this package:
+
+| `effect` | What it measures |
+|---|---|
+| `mean_diff` (default) | Test mean − reference mean, in the original units (e.g. proportion points). |
+| `median_diff` | Same, using medians -- less sensitive to one outlier sample. |
+| `cohens_d` | Standardized mean difference (pooled-SD units); comparable across differently-scaled measurements. |
+| `hedges_g` | `cohens_d` with a small-sample bias correction -- prefer this over `cohens_d` with few replicates per condition. |
+| `cliffs_delta` | Non-parametric, rank-based (akin to a standardized Mann-Whitney effect) -- robust to outliers and non-normal spread, no distributional assumptions. |
+| `cohens_h` | Designed specifically for comparing two proportions -- often the more principled choice for `prop_pos`/`prop` columns (bounded 0-1) rather than a raw mean difference. |
+
+### 3.12 Data-Driven State Calling — `call_mixture_states()` / `call_stress_states()`
+
+Often you want to bin cells into low/medium/high (or similar) on some composite score
+— a module score, a QC metric, anything continuous — but hand-picking quantile
+cutoffs is arbitrary and gives no sense of how confident any one cell's bin
+assignment actually is. `call_mixture_states()` fits a Gaussian mixture model (via
+`mclust`) on one or more numeric metadata columns: BIC picks the number of states for
+you, and every cell gets a ranked state label plus a posterior-probability
+confidence/severity score instead of a hard threshold.
+
+```r
+# A composite ER-stress/UPR module score, as an example of a continuous score
+# worth binning into discrete states
+integrated <- AddModuleScore(
+  integrated,
+  features = list(c("Hspa5", "Ddit3", "Atf4")),
+  name     = "StressScore"
+)
+integrated$stress_composite <- integrated$StressScore1
+
+states <- call_mixture_states(
+  integrated,
+  score_col   = "stress_composite",
+  group_col   = "cell_type",
+  group_value = "AT2",     # fit the mixture within AT2 cells only
+  label       = "stress"
+)
+head(states)
+attr(states, "G")     # number of states BIC selected
+attr(states, "bic")
+```
+
+`states$stress_state` is a ranked factor (state 1 = lowest on the score axis, state G
+= highest); `stress_confidence` is how confident the model is in that cell's
+particular assignment; `stress_prob_high` is the posterior probability of *not* being
+in the lowest state — a continuous severity score, useful for ROC/AUC-style
+evaluation rather than just the hard state label. Attach the calls back onto the
+object like any other metadata:
+
+```r
+integrated$stress_state <- states$stress_state[match(colnames(integrated), states$id)]
+VlnPlot(integrated, features = "stress_composite", group.by = "stress_state")
+```
+
+Fit across every cell regardless of type by omitting `group_col`/`group_value`, or
+jointly across several scores at once by passing more than one `score_col` (fits a
+multivariate mixture instead of a 1D one):
+
+```r
+# No stratification -- fit on every cell regardless of cell_type
+call_mixture_states(integrated, score_col = "stress_composite")
+
+# Multivariate: joint mixture across several module scores at once
+call_mixture_states(integrated, score_col = c("stress_composite", "SenescenceScore1"),
+                    label = "combined_state")
+```
+
+`call_stress_states()` is a thin convenience wrapper around `call_mixture_states()`
+that reproduces a fixed legacy naming convention: `group_col = "annotation_first_pass"`
+isn't just a default here, it's the literal column name the function looks for (not
+configurable), and `score_col` defaults to `"stress_composite"`. It only applies
+as-is if your object happens to use that exact column name for cell-type labels;
+otherwise call `call_mixture_states()` directly as shown above, or create an
+`annotation_first_pass` column first:
+
+```r
+integrated$annotation_first_pass <- integrated$cell_type   # match call_stress_states()'s fixed column name
+res <- call_stress_states(integrated, cell_type = "AT2")
+res$calls           # data.frame: cell, stress_state, stress_prob, prob_stressed
+```
+
 ---
 
 ## 4. One-Shot Pipeline — `CreateAndIntegrateRNA()`
@@ -940,6 +1101,13 @@ is also the input `CompositionEstimationPlot()` (7.4) expects — that's the mai
 reason to reach for this one instead of `CellComposition()` when you plan to build
 an estimation plot next.
 
+`test = "chisq"`/`"fisher"` pools cells across all samples in each condition, so it
+treats every *cell* as a replicate rather than every *sample* — with few samples and
+many cells each (the usual case), it can report significance the sample-level data
+doesn't actually support. The call below emits a `warning()` to that effect; use
+`CompositionalTest()` (7.2) instead when you need a p-value that respects the number
+of biological replicates.
+
 ```r
 comp <- CompositionAnalysis(
   integrated,
@@ -950,7 +1118,7 @@ comp <- CompositionAnalysis(
 )
 comp$counts         # long tibble: sample, group, n_cells
 comp$proportions     # long tibble: sample, group, n_cells, prop, condition
-comp$test            # chi-square result, if test != "none"
+comp$test            # chi-square result, if test != "none" (pooled-cell caveat above)
 ```
 
 ### 7.4 Estimation Plot — `CompositionEstimationPlot()`
@@ -960,7 +1128,9 @@ distributions differ." `CompositionEstimationPlot()` instead asks "by how much,
 with what uncertainty" for one cell type at a time, using
 [`dabestr`](https://acclab.github.io/dabestr/) to show a bootstrap 95% confidence
 interval on the effect size next to the raw per-sample values — the two are
-complementary, not redundant.
+complementary, not redundant. See 3.11 for how to read one of these plots (raw
+per-sample swarm on top, effect size + bootstrap CI on the bottom) and what each
+`effect` option means.
 
 ```r
 # One cell type
@@ -1284,7 +1454,9 @@ plotNicheCoExpress(co, type = "scores")    # per-sample score plots for top/sele
 `NicheCoExpress()`'s Wilcoxon/t-test in `co$stats` answers "is there a difference."
 `NicheCoExpressEstimationPlot()` answers "by how much, with what uncertainty" for a
 specific (niche, gene-pair) combination, using the same `dabestr` estimation-plot
-approach as `CompositionEstimationPlot()` (7.4). It defaults `idx` to
+approach as `CompositionEstimationPlot()` (7.4) and `GenePositivityEstimationPlot()`
+(3.11) -- see 3.11 for how to read the plot itself (raw per-sample swarm + effect
+size/CI panels) and what each `effect` option means. It defaults `idx` to
 `attr(co$stats, "conditions")`, so the reference/test order always matches
 `co$stats$delta`'s sign convention without you having to re-specify it.
 
@@ -1325,11 +1497,25 @@ SpatialDimPlot(visium, group.by = "rctd_dominant")
 
 ## 13. scATAC-seq — `CreateATACObjects()`
 
+`CreateATACObjects()` takes a `genome = c("mm10", "hg38")` argument (`"mm10"` default)
+that selects the matching `EnsDb`/`BSgenome` annotation pair -- both optional
+(Suggests) packages, so only the one matching whichever `genome` you request needs to
+be installed. Object names default to `basename(data_dirs)`; override with
+`object_names`:
+
 ```r
 atac_list <- CreateATACObjects(
+  data_dirs     = c("data/atac/sample1", "data/atac/sample2"),
+  add_treatment = TRUE,
+  treatment     = c("Vehicle", "DrugA"),
+  genome        = "mm10"   # or "hg38" for human data
+)
+names(atac_list)   # "sample1", "sample2" -- from basename(data_dirs)
+
+# Custom names instead of basename(data_dirs)
+atac_list <- CreateATACObjects(
   data_dirs    = c("data/atac/sample1", "data/atac/sample2"),
-  object_names = c("ATAC1", "ATAC2"),
-  genome       = "mm10"          # or "hg38"
+  object_names = c("Vehicle_rep1", "DrugA_rep1")
 )
 ```
 
@@ -1337,10 +1523,15 @@ For interactive cutoff selection on ATAC QC metrics (fragment count, TSS enrichm
 
 ```r
 atac_list <- CreateATACObjectsFilter(
-  data_dirs = c("data/atac/sample1", "data/atac/sample2"),
-  genome    = "mm10"
+  data_dirs   = c("data/atac/sample1", "data/atac/sample2"),
+  interactive = TRUE,
+  genome      = "mm10"
 )
 ```
+
+This is a two-function stub — for a complete scATAC-seq workflow (QC, LSI, cross-sample
+integration, gene activity scoring, motif enrichment, differential accessibility), see the
+dedicated [`SingleCellTools_vignette_atac.md`](SingleCellTools_vignette_atac.md) vignette.
 
 ---
 

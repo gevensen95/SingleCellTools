@@ -22,11 +22,13 @@ Seurat datasets — no raw CellRanger output required.
    - 9.2 [Cluster-level Marker Scoring — `AnnotateClusters()`](#92-cluster-level-marker-scoring--annotateclusters)
    - 9.3 [Reference-based — `AnnotateWithReference()`](#93-reference-based--annotatewithreference)
 10. [Flag Gene-Positive Cells — `AddGenePositivity()` / `PlotGenePositivity()`](#10-flag-gene-positive-cells--addgenepositivity--plotgenepositivity)
+    - 10.1 [`GenePositivityAnalysis()` and `GenePositivityEstimationPlot()`](#101-genepositivityanalysis-and-genepositivityestimationplot)
 11. [Cell-Cycle Scoring — `assign_cell_cycle_phase()`](#11-cell-cycle-scoring--assign_cell_cycle_phase)
 12. [Cell-Type Composition — `CellComposition()` / `CompositionalTest()`](#12-cell-type-composition--cellcomposition--compositionaltest)
     - 12.1 [`CompositionAnalysis()` and `CompositionEstimationPlot()`](#121-compositionanalysis-and-compositionestimationplot)
 13. [Differential Expression — `PseudobulkDE()` / `PlotVolcano()`](#13-differential-expression--pseudobulkde--plotvolcano)
 14. [Cell-Cell Communication — `RunLIANA()`](#14-cell-cell-communication--runliana)
+    - 14.1 [`RunCellChat()`](#141-runcellchat)
 15. [Save with Provenance — `SaveWithProvenance()`](#15-save-with-provenance--savewithprovenance)
 16. [Session Info](#16-session-info)
 
@@ -586,6 +588,89 @@ PlotGenePositivity(integrated,
 PlotGenePositivity(integrated, c("CD3D", "MS4A1"), style = "combo")
 ```
 
+### 10.1 `GenePositivityAnalysis()` and `GenePositivityEstimationPlot()`
+
+The positivity summary above is a per-cell-type snapshot; it doesn't say whether a
+gene's positivity rate actually shifted between CTRL and STIM. `GenePositivityAnalysis()`
+computes per-sample positivity rates — stratified by `cell_type` here — plus an
+optional chi-square/Fisher test across `stim`, the same `sample_id`/`stim` design
+`CompositionAnalysis()` (12.1) uses -- and the same caveat: the test pools cells
+across donors within each condition, so it's not a valid replicate-level test (it
+emits a `warning()` saying so). There's no propeller-style sample-level test for
+gene positivity here, so `GenePositivityEstimationPlot()` below is the result to
+trust for an effect that actually reflects the donor-level replicates:
+
+```r
+gpa <- GenePositivityAnalysis(
+  integrated,
+  genes         = c("CD14", "GNLY"),
+  sample_col    = "sample_id",
+  condition_col = "stim",
+  group_col     = "cell_type",
+  test          = "chisq"
+)
+gpa$proportions               # sample, gene, group, n_pos, n_total, prop_pos, condition
+gpa$test[["CD14 | CD14 Mono"]]   # chi-square result for that gene x cell-type combination (pooled-cell caveat above)
+```
+
+As with `CompositionAnalysis()`/`CompositionEstimationPlot()`, the test above answers
+"is there a difference"; `GenePositivityEstimationPlot()` answers "by how much, with
+what uncertainty" using per-sample positivity rates and a bootstrap 95% CI:
+
+```r
+# CD14 positivity in CD14+ monocytes, CTRL vs STIM
+GenePositivityEstimationPlot(gpa, genes = "CD14", group_levels = "CD14 Mono",
+                             idx = c("CTRL", "STIM"))
+
+# Every gene x cell-type combination present, as a named list of plots
+plots <- GenePositivityEstimationPlot(gpa, idx = c("CTRL", "STIM"))
+plots[["CD14 | CD14 Mono"]]
+
+# Cohen's h -- the effect size designed specifically for comparing two proportions
+GenePositivityEstimationPlot(gpa, genes = "CD14", group_levels = "CD14 Mono",
+                             idx = c("CTRL", "STIM"), effect = "cohens_h")
+```
+
+#### How to read a `dabestr` estimation plot
+
+This is the first estimation plot in this vignette, so it's worth spelling out what's
+actually on it -- the same layout applies to `CompositionEstimationPlot()` (12.1) later
+on too ([`dabestr`](https://acclab.github.io/dabestr/) implements "estimation
+statistics": Ho et al. 2019, *Moving beyond P values: data analysis with estimation
+graphics*, Nature Methods).
+
+Each plot has two stacked panels sharing an x-axis (the two `idx` conditions, here
+`CTRL`/`STIM`):
+
+- **Top panel — raw data.** Every individual value feeding the comparison is plotted
+  as a swarm along its condition's column. That's one point per *donor/sample*
+  (`sample_id`), not per cell -- the whole point of these functions is to show the
+  per-sample values a bare p-value collapses into a single number.
+- **Bottom panel — effect size.** The chosen `effect` (`mean_diff` by default) between
+  STIM and CTRL, drawn as a single point with a vertical bar for its 95% bootstrap
+  confidence interval (5000 resamples, by default). A dashed horizontal line marks the
+  reference condition's (CTRL's) value, so the effect-size point/CI can be read
+  directly against it.
+
+Because the CI comes from resampling the actual donors rather than a parametric
+formula, it doesn't assume normality -- appropriate here since `n` is the number of
+donors (often single digits), not the (much larger, and non-independent) number of
+cells. There's no p-value threshold to eyeball; instead look at whether the CI
+includes zero (no effect) and how wide it is -- a wide CI with few donors is telling
+you the estimate is uncertain, which a bare significant/non-significant p-value would
+hide.
+
+`effect` options, all available on every `*EstimationPlot()` function in this package:
+
+| `effect` | What it measures |
+|---|---|
+| `mean_diff` (default) | Test mean − reference mean, in the original units (e.g. proportion points). |
+| `median_diff` | Same, using medians -- less sensitive to one outlier donor. |
+| `cohens_d` | Standardized mean difference (pooled-SD units); comparable across differently-scaled measurements. |
+| `hedges_g` | `cohens_d` with a small-sample bias correction -- prefer this over `cohens_d` with few donors per condition. |
+| `cliffs_delta` | Non-parametric, rank-based (akin to a standardized Mann-Whitney effect) -- robust to outliers and non-normal spread, no distributional assumptions. |
+| `cohens_h` | Designed specifically for comparing two proportions -- often the more principled choice for `prop_pos`/`prop` columns (bounded 0-1) rather than a raw mean difference. |
+
 ---
 
 ## 11. Cell-Cycle Scoring — `assign_cell_cycle_phase()`
@@ -669,9 +754,16 @@ The IFN-β stimulated condition typically shows a shift in monocyte proportions 
 STIM" with a p-value per cell type. `CompositionAnalysis()` computes the same
 long-format counts/proportions but is the function whose output
 `CompositionEstimationPlot()` consumes to instead show *how big* that shift is,
-with a bootstrap 95% confidence interval, rather than just a p-value. Since
+with a bootstrap 95% confidence interval, rather than just a p-value -- see 10.1
+for how to read that plot (raw per-donor swarm + effect size/CI panels) and what
+each `effect` option means. Since
 `ifnb` has real CTRL/STIM replicates (multiple donors per condition via
-`sample_id`), this is a genuine estimation-plot demo, not a syntax stub:
+`sample_id`), this is a genuine estimation-plot demo, not a syntax stub. Note that
+`comp2$test` below pools cells across donors rather than testing on the per-donor
+proportions `CompositionalTest()` above uses, so it emits a `warning()` and is a
+much rougher check than the propeller/wilcox result already computed above —
+included here only because `test = "chisq"` is a `CompositionAnalysis()` option,
+not as the test to actually report:
 
 ```r
 comp2 <- CompositionAnalysis(
@@ -681,7 +773,7 @@ comp2 <- CompositionAnalysis(
   condition_col = "stim",
   test          = "chisq"
 )
-comp2$test   # chi-square result across all cell types at once
+comp2$test   # chi-square result across all cell types at once (pooled-cell caveat above)
 
 # Monocytes are the cell type most affected by IFN-β stimulation --
 # CompositionEstimationPlot() shows the effect size directly instead of a p-value
@@ -771,7 +863,56 @@ top_stim <- head(lr_stim$ligand.complex_receptor.complex, 100)
 setdiff(top_stim, top_ctrl)   # candidate stim-specific interactions
 ```
 
-For a differential ligand-receptor pipeline that formally tests condition effects, LIANA's own `liana_deconstruct` or CellChat's differential analysis are the recommended paths — `RunLIANA()` is a starting point.
+For a differential ligand-receptor pipeline that formally tests condition effects, LIANA's own `liana_deconstruct` or CellChat's differential analysis (14.1 below) are the recommended paths — `RunLIANA()` is a starting point.
+
+### 14.1 `RunCellChat()`
+
+`RunCellChat()` wraps the full `CellChat` pipeline (`createCellChat` through `aggregateNet`) into one call, for one Seurat subset at a time — the same CTRL/STIM-split pattern as `RunLIANA()` above, but giving you `CellChat`'s own signaling-pathway-level output and comparison plots instead of a flat interaction table. `ifnb` is human, so pass `species = "human"`; `group_col` points at the same `cell_type` labels used throughout this vignette (`RunCellChat()`'s default `group_col` is `"signaling_group"`, so it must be overridden here).
+
+```r
+cc_ctrl <- RunCellChat(
+  subset(integrated, stim == "CTRL"),
+  label     = "CTRL",
+  group_col = "cell_type",
+  species   = "human"
+)
+
+cc_stim <- RunCellChat(
+  subset(integrated, stim == "STIM"),
+  label     = "STIM",
+  group_col = "cell_type",
+  species   = "human"
+)
+```
+
+`cc_ctrl`/`cc_stim` are ordinary `CellChat` objects, so any `CellChat` visualization works directly on them. Merging the two lets `CellChat`'s own comparison functions show what actually shifted between conditions:
+
+```r
+merged <- CellChat::mergeCellChat(list(CTRL = cc_ctrl, STIM = cc_stim),
+                                  add.names = c("CTRL", "STIM"))
+
+# Total interactions/strength, CTRL vs STIM
+CellChat::compareInteractions(merged, show.legend = FALSE, group = c(1, 2))
+
+# Which signaling pathways gained/lost strength in STIM
+CellChat::rankNet(merged, mode = "comparison", stacked = TRUE, do.stat = TRUE)
+
+# Bubble plot of specific source -> target interactions, both conditions side by side
+CellChat::netVisual_bubble(merged, sources.use = "CD14 Mono", targets.use = "CD4 T",
+                           comparison = c(1, 2))
+```
+
+`nboot` (bootstrap iterations for `computeCommunProb()`'s significance test, default 25) and `min_cells` (minimum group size to keep an interaction, default 10) are the two knobs most worth raising for a real analysis — the low defaults keep a first pass fast, not to be used as final results:
+
+```r
+cc_stim_full <- RunCellChat(
+  subset(integrated, stim == "STIM"),
+  label     = "STIM",
+  group_col = "cell_type",
+  species   = "human",
+  nboot     = 100
+)
+```
 
 ---
 

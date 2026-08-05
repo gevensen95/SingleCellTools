@@ -25,7 +25,9 @@ conditions for testing.}
 
 \item{test}{One of \code{"none"} (default), \code{"chisq"}, or
 \code{"fisher"}. Tests whether group proportions differ across
-\code{condition_col}.}
+\code{condition_col}. See Details for an important caveat about what
+this test's p-value does and doesn't account for -- emits a
+\code{warning()} to that effect whenever it's requested.}
 }
 \value{
 A list with elements:
@@ -40,4 +42,19 @@ Returns counts and proportions of cells in each \code{group_col} (typically
 cluster or cell type) per \code{sample_col}, optionally with a chi-square
 or Fisher's exact test comparing distributions across a
 \code{condition_col} grouping of the samples.
+}
+\details{
+The optional \code{test} is computed on cells pooled across all samples
+within each condition (a single \code{group_col} x \code{condition_col}
+contingency table). That treats every \emph{cell} as an independent
+replicate rather than every \emph{sample} -- with few samples and many
+cells per sample (the usual case in scRNA-seq), this inflates the
+effective sample size the test sees and can report significance that
+isn't actually supported at the sample level (the "pseudoreplication"
+problem well documented for single-cell composition testing). Treat it as
+a rough, descriptive check of the pooled data, not a substitute for a
+proper sample-level test. \code{\link{CompositionalTest}} (propeller /
+betareg / Wilcoxon, all operating on per-sample proportions) is the
+function to reach for when you need a test whose p-value actually
+reflects the number of biological replicates.
 }

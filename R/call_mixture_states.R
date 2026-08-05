@@ -63,6 +63,7 @@
 #' }
 #'
 #' @importFrom stats complete.cases
+#' @importFrom mclust mclustBIC
 #' @export
 call_mixture_states <- function(data,
                                 score_col,
@@ -125,6 +126,13 @@ call_mixture_states <- function(data,
   } else {
     as.matrix(score_vals[idx, , drop = FALSE])
   }
+  # mclust::Mclust() builds a call to mclustBIC() and evaluates it in ITS
+  # caller's frame (i.e. this function's environment) rather than mclust's
+  # own namespace -- so `mclustBIC` must be resolvable from here, which is
+  # exactly what the @importFrom mclust mclustBIC above guarantees. Without
+  # it (and without mclust attached via library()), this errors with
+  # "could not find function \"mclustBIC\"" even though `mclust::Mclust`
+  # itself resolves fine.
   fit <- mclust::Mclust(x, G = G, modelNames = modelNames, ...)
 
   if (verbose) {
