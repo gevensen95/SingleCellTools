@@ -8,6 +8,8 @@ CreateRNAObjectsFilter(
   data_dirs,
   cells = 3,
   features = 200,
+  rb_pattern = "^(Rp[sl]|RP[SL])",
+  hb_pattern = "^(Hb[^p]|HB[^P])",
   treatment = NULL,
   use_quantile = TRUE,
   quantile_value_min = 0.15,
@@ -25,6 +27,20 @@ barcodes.tsv or .h5 files.}
 \item{cells}{Features must be expressed in at least this many cells}
 
 \item{features}{Cells must have at least this many features}
+
+\item{rb_pattern}{Pattern for calculating percent ribosomal-protein reads
+(\code{percent.rb}), computed alongside \code{percent.mt} for reference
+(informational only -- not used by this function's own filtering
+logic, which only ever thresholds on \code{percent.mt}). Default
+\code{"^(Rp[sl]|RP[SL])"} matches both mouse and human gene symbol
+conventions.}
+
+\item{hb_pattern}{Pattern for calculating percent hemoglobin reads
+(\code{percent.hb}), computed alongside \code{percent.mt} for reference
+(informational only, like \code{rb_pattern} above). Default
+\code{"^(Hb[^p]|HB[^P])"} excludes the unrelated \code{"Hbp1"}/
+\code{"HBP1"} gene, a well-known false positive for naive
+\code{"^Hb"} patterns.}
 
 \item{treatment}{Treatment metadata column (e.g., Age, chemical, etc.)}
 

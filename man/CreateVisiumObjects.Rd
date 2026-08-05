@@ -8,7 +8,10 @@ CreateVisiumObjects(
   data_dirs,
   treatment = NULL,
   object_names = NULL,
-  file_type = "h5"
+  file_type = "h5",
+  mt_pattern = "^mt-",
+  rb_pattern = "^(Rp[sl]|RP[SL])",
+  hb_pattern = "^(Hb[^p]|HB[^P])"
 )
 }
 \arguments{
@@ -19,6 +22,20 @@ CreateVisiumObjects(
 \item{object_names}{Names of each object}
 
 \item{file_type}{File type (e.g., h5 or directory)}
+
+\item{mt_pattern}{Pattern for calculating percent mtDNA (\code{percent.mt}).
+Default \code{"^mt-"} (mouse gene symbol convention, e.g.
+\code{"mt-Nd1"}); pass \code{"^MT-"} for human tissue.}
+
+\item{rb_pattern}{Pattern for calculating percent ribosomal-protein reads
+(\code{percent.rb}). Default \code{"^(Rp[sl]|RP[SL])"} matches both
+mouse and human gene symbol conventions.}
+
+\item{hb_pattern}{Pattern for calculating percent hemoglobin reads
+(\code{percent.hb}) -- relevant for tissue with residual blood
+contamination. Default \code{"^(Hb[^p]|HB[^P])"} excludes the unrelated
+\code{"Hbp1"}/\code{"HBP1"} gene, a well-known false positive for naive
+\code{"^Hb"} patterns.}
 }
 \value{
 A list of Seurat Spatial objects

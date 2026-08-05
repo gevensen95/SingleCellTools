@@ -7,11 +7,25 @@
 #' @param treatment Treatment variable for each sample
 #' @param object_names Names of each object
 #' @param file_type File type (e.g., h5 or directory)
+#' @param mt_pattern Pattern for calculating percent mtDNA (\code{percent.mt}).
+#'   Default \code{"^mt-"} (mouse gene symbol convention, e.g.
+#'   \code{"mt-Nd1"}); pass \code{"^MT-"} for human tissue.
+#' @param rb_pattern Pattern for calculating percent ribosomal-protein reads
+#'   (\code{percent.rb}). Default \code{"^(Rp[sl]|RP[SL])"} matches both
+#'   mouse and human gene symbol conventions.
+#' @param hb_pattern Pattern for calculating percent hemoglobin reads
+#'   (\code{percent.hb}) -- relevant for tissue with residual blood
+#'   contamination. Default \code{"^(Hb[^p]|HB[^P])"} excludes the unrelated
+#'   \code{"Hbp1"}/\code{"HBP1"} gene, a well-known false positive for naive
+#'   \code{"^Hb"} patterns.
 #' @return A list of Seurat Spatial objects
 #' @export
 
 CreateVisiumObjects <- function(data_dirs, treatment = NULL,
-                                object_names = NULL, file_type = 'h5') {
+                                object_names = NULL, file_type = 'h5',
+                                mt_pattern = '^mt-',
+                                rb_pattern = '^(Rp[sl]|RP[SL])',
+                                hb_pattern = '^(Hb[^p]|HB[^P])') {
   message(sprintf('--- Reading Visium data and creating Seurat objects (%d directories, file_type = %s) ---',
                   length(data_dirs), file_type))
   seurat_objects <- lapply(data_dirs, function(dir) {
@@ -31,6 +45,9 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
     seurat_object[['RNA']] <- as(object = seurat_object[["Spatial"]],
                                  Class = "Assay5")
     DefaultAssay(seurat_object) <- 'RNA'
+    seurat_object[["percent.mt"]] <- Seurat::PercentageFeatureSet(seurat_object, pattern = mt_pattern)
+    seurat_object[["percent.rb"]] <- Seurat::PercentageFeatureSet(seurat_object, pattern = rb_pattern)
+    seurat_object[["percent.hb"]] <- Seurat::PercentageFeatureSet(seurat_object, pattern = hb_pattern)
     return(seurat_object)
   })
 
@@ -54,7 +71,9 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
   count.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nCount_Spatial)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
-  print(gene.plot + count.plot)
+  mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
+    ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
+  print(gene.plot + count.plot + mt.plot)
 
   message('--- Running edge detection and attaching tissue images ---')
   seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {

@@ -14,6 +14,18 @@
 #'  barcodes.tsv or .h5 files.
 #' @param cells Features must be expressed in at least this many cells
 #' @param features Cells must have at least this many features
+#' @param rb_pattern Pattern for calculating percent ribosomal-protein reads
+#'   (\code{percent.rb}), computed alongside \code{percent.mt} for reference
+#'   (informational only -- not used by this function's own filtering
+#'   logic, which only ever thresholds on \code{percent.mt}). Default
+#'   \code{"^(Rp[sl]|RP[SL])"} matches both mouse and human gene symbol
+#'   conventions.
+#' @param hb_pattern Pattern for calculating percent hemoglobin reads
+#'   (\code{percent.hb}), computed alongside \code{percent.mt} for reference
+#'   (informational only, like \code{rb_pattern} above). Default
+#'   \code{"^(Hb[^p]|HB[^P])"} excludes the unrelated \code{"Hbp1"}/
+#'   \code{"HBP1"} gene, a well-known false positive for naive
+#'   \code{"^Hb"} patterns.
 #' @param treatment Treatment metadata column (e.g., Age, chemical, etc.)
 #' @param use_quantile Use quantile filtering method for nFeature_RNA and
 #' percent.mt
@@ -47,7 +59,10 @@
 #' @param markers Find all markers
 #' @export
 CreateAndIntegrateRNA <-
-  function(data_dirs, cells = 3, features = 200, treatment = NULL,
+  function(data_dirs, cells = 3, features = 200,
+           rb_pattern = '^(Rp[sl]|RP[SL])',
+           hb_pattern = '^(Hb[^p]|HB[^P])',
+           treatment = NULL,
            use_quantile = TRUE, quantile_value_min = 0.15,
            feature_min = NA, feature_max = NA,
            percent_mt_max = NA, interactive = FALSE,
@@ -135,10 +150,17 @@ CreateAndIntegrateRNA <-
       names(seurat_objects) <- basename(data_dirs)
     } else {names(seurat_objects) <- object_names}
 
-    message('--- Calculating percent mitochondrial reads ---')
-    # Add percent mitochondrial DNA to each Seurat object
+    message('--- Calculating percent mitochondrial / ribosomal / hemoglobin reads ---')
+    # Add percent mitochondrial DNA to each Seurat object. percent.rb/percent.hb
+    # are informational only here -- this function's own filtering logic below
+    # (interactive and non-interactive blocks) only ever thresholds on
+    # percent.mt, matching its existing behavior; they're computed so
+    # GenerateQCReport()/QCComparePlots()/CellSuiteSummary() (which already
+    # treat percent.rb/percent.hb as standard metrics) can report on them.
     seurat_objects <- lapply(seurat_objects, function(obj) {
       obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, pattern = "^mt-")
+      obj[["percent.rb"]] <- Seurat::PercentageFeatureSet(obj, pattern = rb_pattern)
+      obj[["percent.hb"]] <- Seurat::PercentageFeatureSet(obj, pattern = hb_pattern)
       return(obj)
     })
 

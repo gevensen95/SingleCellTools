@@ -9,6 +9,8 @@ CreateRNAObjects(
   cells = 3,
   features = 200,
   mt_pattern = "^mt-",
+  rb_pattern = "^(Rp[sl]|RP[SL])",
+  hb_pattern = "^(Hb[^p]|HB[^P])",
   treatment = NULL,
   object_names = NULL,
   run_doublet_finder = TRUE,
@@ -27,7 +29,20 @@ barcodes.tsv or .h5 files.}
 
 \item{features}{Cells must have at least this many features}
 
-\item{mt_pattern}{Pattern for calculating percent mtDNA}
+\item{mt_pattern}{Pattern for calculating percent mtDNA. Default
+\code{"^mt-"} (mouse gene symbol convention, e.g. \code{"mt-Nd1"}); pass
+\code{"^MT-"} for human data.}
+
+\item{rb_pattern}{Pattern for calculating percent ribosomal-protein reads
+(\code{percent.rb}). Default \code{"^(Rp[sl]|RP[SL])"} matches both
+mouse (\code{"Rps"}/\code{"Rpl"}) and human (\code{"RPS"}/\code{"RPL"})
+gene symbol conventions.}
+
+\item{hb_pattern}{Pattern for calculating percent hemoglobin reads
+(\code{percent.hb}). Default \code{"^(Hb[^p]|HB[^P])"} matches mouse
+(\code{"Hba"}/\code{"Hbb"}) and human (\code{"HBA"}/\code{"HBB"})
+hemoglobin genes while excluding the unrelated \code{"Hbp1"}/\code{"HBP1"}
+gene, a well-known false positive for naive \code{"^Hb"} patterns.}
 
 \item{treatment}{Treatment metadata column (e.g., Age, chemical, etc.)}
 

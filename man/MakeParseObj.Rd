@@ -13,6 +13,10 @@ MakeParseObj(
   mincellfeat = 50,
   mt_pattern = NULL,
   mt_col = "percent.mt",
+  rb_pattern = NULL,
+  rb_col = "percent.rb",
+  hb_pattern = NULL,
+  hb_col = "percent.hb",
   run_doublet_finder = TRUE,
   doublet_normalization = c("LogNormalize", "SCT"),
   doublet_vars_to_regress = NULL,
@@ -58,6 +62,29 @@ pattern such as \code{"^MT-"} (human), \code{"^mt-"} (mouse), or
 mitochondrial percentage when \code{mt_pattern} is supplied. Default
 \code{"percent.mt"}.}
 
+\item{rb_pattern}{Optional regex passed to
+\code{\link[Seurat]{PercentageFeatureSet}} to identify ribosomal-protein
+genes. \code{NULL} (default) skips the calculation entirely, matching
+\code{mt_pattern}'s behavior. Pass a pattern such as
+\code{"^(Rp[sl]|RP[SL])"} to add a \code{percent.rb} column (matches
+both mouse and human gene symbol conventions).}
+
+\item{rb_col}{Name of the metadata column in which to store the
+ribosomal-protein percentage when \code{rb_pattern} is supplied.
+Default \code{"percent.rb"}.}
+
+\item{hb_pattern}{Optional regex passed to
+\code{\link[Seurat]{PercentageFeatureSet}} to identify hemoglobin
+genes. \code{NULL} (default) skips the calculation entirely, matching
+\code{mt_pattern}'s behavior. Pass a pattern such as
+\code{"^(Hb[^p]|HB[^P])"} to add a \code{percent.hb} column -- that
+pattern excludes the unrelated \code{"Hbp1"}/\code{"HBP1"} gene, a
+well-known false positive for naive \code{"^Hb"} patterns.}
+
+\item{hb_col}{Name of the metadata column in which to store the
+hemoglobin percentage when \code{hb_pattern} is supplied. Default
+\code{"percent.hb"}.}
+
 \item{run_doublet_finder}{Logical; if TRUE (default), run \code{calldoublet}
 on every object and add a \code{doublet_finder} metadata column.}
 
@@ -66,9 +93,10 @@ on every object and add a \code{doublet_finder} metadata column.}
 
 \item{doublet_vars_to_regress}{Passed to \code{calldoublet} as
 \code{vars.to.regress}. Default \code{NULL}; set to \code{mt_col} (e.g.
-\code{"percent.mt"}) if you supplied \code{mt_pattern} and want to
-regress mitochondrial content out during the doublet workflow's
-normalization step.}
+\code{"percent.mt"}), \code{rb_col}, and/or \code{hb_col} if you
+supplied the corresponding \code{*_pattern} argument(s) and want to
+regress that content out during the doublet workflow's normalization
+step.}
 
 \item{doublet_cluster_resolution}{Passed to \code{calldoublet} as
 \code{cluster_resolution}. Default \code{0.1}.}
@@ -132,6 +160,14 @@ obj_list <- MakeParseObj(
   sample_paths,
   mt_pattern              = "^[Mm][Tt]-",
   doublet_vars_to_regress = "percent.mt"
+)
+
+# Also compute ribosomal/hemoglobin percentages
+obj_list <- MakeParseObj(
+  sample_paths,
+  mt_pattern = "^[Mm][Tt]-",
+  rb_pattern = "^(Rp[sl]|RP[SL])",
+  hb_pattern = "^(Hb[^p]|HB[^P])"
 )
 }
 

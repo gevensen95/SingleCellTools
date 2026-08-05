@@ -34,15 +34,35 @@
 #' @param mt_col Name of the metadata column in which to store the
 #'   mitochondrial percentage when \code{mt_pattern} is supplied. Default
 #'   \code{"percent.mt"}.
+#' @param rb_pattern Optional regex passed to
+#'   \code{\link[Seurat]{PercentageFeatureSet}} to identify ribosomal-protein
+#'   genes. \code{NULL} (default) skips the calculation entirely, matching
+#'   \code{mt_pattern}'s behavior. Pass a pattern such as
+#'   \code{"^(Rp[sl]|RP[SL])"} to add a \code{percent.rb} column (matches
+#'   both mouse and human gene symbol conventions).
+#' @param rb_col Name of the metadata column in which to store the
+#'   ribosomal-protein percentage when \code{rb_pattern} is supplied.
+#'   Default \code{"percent.rb"}.
+#' @param hb_pattern Optional regex passed to
+#'   \code{\link[Seurat]{PercentageFeatureSet}} to identify hemoglobin
+#'   genes. \code{NULL} (default) skips the calculation entirely, matching
+#'   \code{mt_pattern}'s behavior. Pass a pattern such as
+#'   \code{"^(Hb[^p]|HB[^P])"} to add a \code{percent.hb} column -- that
+#'   pattern excludes the unrelated \code{"Hbp1"}/\code{"HBP1"} gene, a
+#'   well-known false positive for naive \code{"^Hb"} patterns.
+#' @param hb_col Name of the metadata column in which to store the
+#'   hemoglobin percentage when \code{hb_pattern} is supplied. Default
+#'   \code{"percent.hb"}.
 #' @param run_doublet_finder Logical; if TRUE (default), run \code{calldoublet}
 #'   on every object and add a \code{doublet_finder} metadata column.
 #' @param doublet_normalization Passed to \code{calldoublet}: one of
 #'   \code{"LogNormalize"} (default) or \code{"SCT"}.
 #' @param doublet_vars_to_regress Passed to \code{calldoublet} as
 #'   \code{vars.to.regress}. Default \code{NULL}; set to \code{mt_col} (e.g.
-#'   \code{"percent.mt"}) if you supplied \code{mt_pattern} and want to
-#'   regress mitochondrial content out during the doublet workflow's
-#'   normalization step.
+#'   \code{"percent.mt"}), \code{rb_col}, and/or \code{hb_col} if you
+#'   supplied the corresponding \code{*_pattern} argument(s) and want to
+#'   regress that content out during the doublet workflow's normalization
+#'   step.
 #' @param doublet_cluster_resolution Passed to \code{calldoublet} as
 #'   \code{cluster_resolution}. Default \code{0.1}.
 #' @param filter_doublets Logical; if TRUE, subset each object to
@@ -98,6 +118,14 @@
 #'   mt_pattern              = "^[Mm][Tt]-",
 #'   doublet_vars_to_regress = "percent.mt"
 #' )
+#'
+#' # Also compute ribosomal/hemoglobin percentages
+#' obj_list <- MakeParseObj(
+#'   sample_paths,
+#'   mt_pattern = "^[Mm][Tt]-",
+#'   rb_pattern = "^(Rp[sl]|RP[SL])",
+#'   hb_pattern = "^(Hb[^p]|HB[^P])"
+#' )
 #' }
 #'
 #' @export
@@ -109,6 +137,10 @@ MakeParseObj <- function(paths,
                          mincellfeat                = 50,
                          mt_pattern                 = NULL,
                          mt_col                     = "percent.mt",
+                         rb_pattern                 = NULL,
+                         rb_col                     = "percent.rb",
+                         hb_pattern                 = NULL,
+                         hb_col                     = "percent.hb",
                          run_doublet_finder         = TRUE,
                          doublet_normalization      = c("LogNormalize", "SCT"),
                          doublet_vars_to_regress    = NULL,
@@ -148,16 +180,23 @@ MakeParseObj <- function(paths,
     }
   }
 
-  # If the user asked to regress out percent.mt during doublet calling but
-  # never asked for percent.mt to be computed, fail fast.
-  if (isTRUE(run_doublet_finder) &&
-      !is.null(doublet_vars_to_regress) &&
-      mt_col %in% doublet_vars_to_regress &&
-      is.null(mt_pattern)) {
-    stop("`doublet_vars_to_regress` requests '", mt_col, "' but `mt_pattern` ",
-         "is NULL, so percent.mt won't exist. Set `mt_pattern` or remove ",
-         "'", mt_col, "' from `doublet_vars_to_regress`.")
+  # If the user asked to regress out percent.mt/percent.rb/percent.hb during
+  # doublet calling but never asked for the corresponding column to be
+  # computed, fail fast rather than have calldoublet() error later on a
+  # missing column.
+  .check_regress_col <- function(col, pattern, pattern_arg) {
+    if (isTRUE(run_doublet_finder) &&
+        !is.null(doublet_vars_to_regress) &&
+        col %in% doublet_vars_to_regress &&
+        is.null(pattern)) {
+      stop("`doublet_vars_to_regress` requests '", col, "' but `", pattern_arg,
+           "` is NULL, so ", col, " won't exist. Set `", pattern_arg,
+           "` or remove '", col, "' from `doublet_vars_to_regress`.")
+    }
   }
+  .check_regress_col(mt_col, mt_pattern, "mt_pattern")
+  .check_regress_col(rb_col, rb_pattern, "rb_pattern")
+  .check_regress_col(hb_col, hb_pattern, "hb_pattern")
 
   # ---- Helper: build a single Seurat object from one path ------------------
   .make_one <- function(path, treatment) {
@@ -203,18 +242,25 @@ MakeParseObj <- function(paths,
     # (e.g. multi-layer merges, IntegrateLayers) operates on the v5 API.
     obj[["RNA"]] <- methods::as(obj[["RNA"]], Class = "Assay5")
 
-    # Compute mitochondrial percentage. Done after object creation so the
-    # pattern is matched against the post-filter feature set and the result
-    # is automatically aligned to the surviving cells.
-    if (!is.null(mt_pattern)) {
-      n_mt <- sum(grepl(mt_pattern, rownames(obj)))
-      if (n_mt > 0) {
-        obj[[mt_col]] <- Seurat::PercentageFeatureSet(obj, pattern = mt_pattern)
+    # Compute mitochondrial/ribosomal/hemoglobin percentages. Done after
+    # object creation so each pattern is matched against the post-filter
+    # feature set and the result is automatically aligned to the surviving
+    # cells. Each is independently opt-in (NULL pattern = skip) and warns
+    # rather than silently adding an all-zero column when nothing matches.
+    .add_pct <- function(obj, pattern, col, label) {
+      if (is.null(pattern)) return(obj)
+      n_match <- sum(grepl(pattern, rownames(obj)))
+      if (n_match > 0) {
+        obj[[col]] <- Seurat::PercentageFeatureSet(obj, pattern = pattern)
       } else {
-        warning("No mitochondrial features matched pattern '", mt_pattern,
-                "' in '", path, "'; ", mt_col, " not added.")
+        warning("No ", label, " features matched pattern '", pattern,
+                "' in '", path, "'; ", col, " not added.")
       }
+      obj
     }
+    obj <- .add_pct(obj, mt_pattern, mt_col, "mitochondrial")
+    obj <- .add_pct(obj, rb_pattern, rb_col, "ribosomal-protein")
+    obj <- .add_pct(obj, hb_pattern, hb_col, "hemoglobin")
 
     obj
   }
