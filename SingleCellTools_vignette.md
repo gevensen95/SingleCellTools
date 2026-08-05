@@ -34,6 +34,8 @@
 7. [Composition Analysis](#7-composition-analysis)
    - 7.1 [`CellComposition()`](#71-cellcomposition)
    - 7.2 [`CompositionalTest()`](#72-compositionaltest)
+   - 7.3 [`CompositionAnalysis()`](#73-compositionanalysis)
+   - 7.4 [Estimation Plot — `CompositionEstimationPlot()`](#74-estimation-plot--compositionestimationplot)
 8. [Cell-Cell Communication — `RunLIANA()`](#8-cell-cell-communication--runliana)
 9. [Trajectory Analysis — `PseudotimeWrapper()`](#9-trajectory-analysis--pseudotimewrapper)
 10. [Integration Quality — `BatchEffectQC()`](#10-integration-quality--batcheffectqc)
@@ -45,7 +47,8 @@
     - 12.4 [FOV Edge / Tissue Hole Detection](#124-fov-edge--tissue-hole-detection)
     - 12.5 [Neighborhood Enrichment — `NeighborhoodEnrichment()`](#125-neighborhood-enrichment--neighborhoodenrichment)
     - 12.6 [Niche Co-expression — `NicheCoExpress()`](#126-niche-co-expression--nicheco express)
-    - 12.7 [Visium Deconvolution — `RunRCTD()`](#127-visium-deconvolution--runrctd)
+    - 12.7 [Estimation Plot — `NicheCoExpressEstimationPlot()`](#127-estimation-plot--nichecoexpressestimationplot)
+    - 12.8 [Visium Deconvolution — `RunRCTD()`](#128-visium-deconvolution--runrctd)
 13. [scATAC-seq — `CreateATACObjects()`](#13-scatac-seq--createatacobjects)
 14. [scanpy Interoperability — `ToAnnData()` / `FromAnnData()`](#14-scanpy-interoperability--toanndata--fromanndata)
 15. [Reproducibility](#15-reproducibility)
@@ -928,6 +931,50 @@ comp_test <- CompositionalTest(
 subset(comp_test, padj < 0.05)
 ```
 
+### 7.3 `CompositionAnalysis()`
+
+A simpler, complementary alternative to `CellComposition()`/`CompositionalTest()`:
+long-format counts/proportions per `group_col` x `sample_col`, plus an optional
+chi-square or Fisher's exact test across `condition_col`. Its `proportions` output
+is also the input `CompositionEstimationPlot()` (7.4) expects — that's the main
+reason to reach for this one instead of `CellComposition()` when you plan to build
+an estimation plot next.
+
+```r
+comp <- CompositionAnalysis(
+  integrated,
+  group_col     = "cell_type",
+  sample_col    = "orig.ident",
+  condition_col = "treatment",
+  test          = "chisq"
+)
+comp$counts         # long tibble: sample, group, n_cells
+comp$proportions     # long tibble: sample, group, n_cells, prop, condition
+comp$test            # chi-square result, if test != "none"
+```
+
+### 7.4 Estimation Plot — `CompositionEstimationPlot()`
+
+`CompositionalTest()`/`CompositionAnalysis(test = ...)` answer "do these
+distributions differ." `CompositionEstimationPlot()` instead asks "by how much,
+with what uncertainty" for one cell type at a time, using
+[`dabestr`](https://acclab.github.io/dabestr/) to show a bootstrap 95% confidence
+interval on the effect size next to the raw per-sample values — the two are
+complementary, not redundant.
+
+```r
+# One cell type
+CompositionEstimationPlot(comp, group_levels = "T cell",
+                          idx = c("Vehicle", "DrugA"))
+
+# Every cell type present, as a named list of plots
+plots <- CompositionEstimationPlot(comp, idx = c("Vehicle", "DrugA"))
+plots[["T cell"]]
+
+# Cohen's h -- the effect size designed specifically for comparing two proportions
+CompositionEstimationPlot(comp, idx = c("Vehicle", "DrugA"), effect = "cohens_h")
+```
+
 Each row has `cluster`, per-level `mean_prop_<level>`, `effect`, `stat`, `pvalue`, `padj`, `method`.
 
 ---
@@ -1232,7 +1279,25 @@ plotNicheCoExpress(co, type = "heatmap")   # niche x pair heatmap of delta, sign
 plotNicheCoExpress(co, type = "scores")    # per-sample score plots for top/selected pairs
 ```
 
-### 12.7 Visium Deconvolution — `RunRCTD()`
+### 12.7 Estimation Plot — `NicheCoExpressEstimationPlot()`
+
+`NicheCoExpress()`'s Wilcoxon/t-test in `co$stats` answers "is there a difference."
+`NicheCoExpressEstimationPlot()` answers "by how much, with what uncertainty" for a
+specific (niche, gene-pair) combination, using the same `dabestr` estimation-plot
+approach as `CompositionEstimationPlot()` (7.4). It defaults `idx` to
+`attr(co$stats, "conditions")`, so the reference/test order always matches
+`co$stats$delta`'s sign convention without you having to re-specify it.
+
+```r
+# One niche x pair combination
+NicheCoExpressEstimationPlot(co, niches = "N1", pairs = "Vegfa_Kdr")
+
+# Every niche x pair combination present, as a named list of plots
+plots <- NicheCoExpressEstimationPlot(co)
+plots[["N1 | Vegfa_Kdr"]]
+```
+
+### 12.8 Visium Deconvolution — `RunRCTD()`
 
 For Visium, per-spot cell-type calls are fundamentally the wrong output — each spot is 1-10 cells of mixed types. RCTD deconvolves each spot as a mixture using a reference single-cell dataset.
 

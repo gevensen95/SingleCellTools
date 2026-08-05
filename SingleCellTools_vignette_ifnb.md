@@ -24,6 +24,7 @@ Seurat datasets — no raw CellRanger output required.
 10. [Flag Gene-Positive Cells — `AddGenePositivity()` / `PlotGenePositivity()`](#10-flag-gene-positive-cells--addgenepositivity--plotgenepositivity)
 11. [Cell-Cycle Scoring — `assign_cell_cycle_phase()`](#11-cell-cycle-scoring--assign_cell_cycle_phase)
 12. [Cell-Type Composition — `CellComposition()` / `CompositionalTest()`](#12-cell-type-composition--cellcomposition--compositionaltest)
+    - 12.1 [`CompositionAnalysis()` and `CompositionEstimationPlot()`](#121-compositionanalysis-and-compositionestimationplot)
 13. [Differential Expression — `PseudobulkDE()` / `PlotVolcano()`](#13-differential-expression--pseudobulkde--plotvolcano)
 14. [Cell-Cell Communication — `RunLIANA()`](#14-cell-cell-communication--runliana)
 15. [Save with Provenance — `SaveWithProvenance()`](#15-save-with-provenance--savewithprovenance)
@@ -661,6 +662,40 @@ subset(comp_test, padj < 0.05)
 ```
 
 The IFN-β stimulated condition typically shows a shift in monocyte proportions and upregulation of ISGs across all cell types — a well-characterized response that makes `ifnb` a good sanity check that your integration and composition-testing pipelines are working correctly.
+
+### 12.1 `CompositionAnalysis()` and `CompositionEstimationPlot()`
+
+`CompositionalTest()` above answers "does composition differ between CTRL and
+STIM" with a p-value per cell type. `CompositionAnalysis()` computes the same
+long-format counts/proportions but is the function whose output
+`CompositionEstimationPlot()` consumes to instead show *how big* that shift is,
+with a bootstrap 95% confidence interval, rather than just a p-value. Since
+`ifnb` has real CTRL/STIM replicates (multiple donors per condition via
+`sample_id`), this is a genuine estimation-plot demo, not a syntax stub:
+
+```r
+comp2 <- CompositionAnalysis(
+  integrated,
+  group_col     = "cell_type",
+  sample_col    = "sample_id",
+  condition_col = "stim",
+  test          = "chisq"
+)
+comp2$test   # chi-square result across all cell types at once
+
+# Monocytes are the cell type most affected by IFN-β stimulation --
+# CompositionEstimationPlot() shows the effect size directly instead of a p-value
+CompositionEstimationPlot(comp2, group_levels = "CD14 Mono",
+                          idx = c("CTRL", "STIM"))
+
+# Every cell type present, as a named list of plots
+plots <- CompositionEstimationPlot(comp2, idx = c("CTRL", "STIM"))
+plots[["CD14 Mono"]]
+
+# Cohen's h -- the effect size designed specifically for comparing two proportions
+CompositionEstimationPlot(comp2, idx = c("CTRL", "STIM"),
+                          group_levels = "CD14 Mono", effect = "cohens_h")
+```
 
 ---
 

@@ -1,7 +1,7 @@
 # SingleCellTools Vignette: Spatial Transcriptomics with Mouse Brain Visium Data
 
 **Package:** `SingleCellTools`  
-**Data:** `stxBrain` — 10x Genomics Visium mouse brain sections (anterior + posterior), available via `SeuratData`  
+**Data:** `stxBrain` — 10x Genomics Visium mouse brain sections, available via `SeuratData`. We use all four serial sections it ships (`anterior1`, `anterior2`, `posterior1`, `posterior2`) so that anterior-vs-posterior brain region has two sections each, which is enough to run a real `NicheCoExpress()` comparison later in the vignette.  
 **Goal:** Walk through a complete Visium workflow — edge detection, integration, annotation, niche analysis — using freely available public data.
 
 ---
@@ -22,6 +22,7 @@
 10. [Spatial Niche Analysis — `BuildMultipleNicheAssays()`](#10-spatial-niche-analysis--buildmultiplenicheassays)
 11. [Neighborhood Enrichment — `NeighborhoodEnrichment()`](#11-neighborhood-enrichment--neighborhoodenrichment)
 12. [Niche Co-expression — `NicheCoExpress()`](#12-niche-co-expression--nicheco express)
+    - 12.1 [Estimation Plot — `NicheCoExpressEstimationPlot()`](#121-estimation-plot--nichecoexpressestimationplot)
 13. [Single-cell Spatial (Xenium / CosMx) — `detect_fov_edges()` / `detect_tissue_holes()`](#13-single-cell-spatial-xenium--cosmx--detect_fov_edges--detect_tissue_holes)
 14. [Subsetting Spatial Objects — `subset_opt()`](#14-subsetting-spatial-objects--subset_opt)
 15. [Tips Specific to Spatial Data](#15-tips-specific-to-spatial-data)
@@ -71,27 +72,43 @@ library(patchwork)
 
 ## 2. Load the Data
 
-The `stxBrain` dataset contains two coronal mouse brain Visium sections captured from
-adjacent positions along the anterior–posterior axis. Having two sections from the same
-tissue type makes this an ideal test case for multi-sample spatial integration.
+`stxBrain` ships four serial coronal mouse brain Visium sections: two adjacent
+`anterior` sections and two adjacent `posterior` sections. Earlier drafts of this
+vignette only loaded one section per region (`anterior1`/`posterior1`), which is
+plenty for integration but leaves no way to demonstrate a real `NicheCoExpress()`
+comparison later, since that function needs at least 2 samples *per condition*.
+Loading all four sections and treating anterior-vs-posterior as the comparison of
+interest gives us exactly that: 2 samples per side, using real public data rather
+than anything synthetic.
 
 ```r
-# Load both sections
-brain_ant <- LoadData("stxBrain", type = "anterior1")
-brain_pos <- LoadData("stxBrain", type = "posterior1")
+# Load all four sections
+brain_ant1 <- LoadData("stxBrain", type = "anterior1")
+brain_ant2 <- LoadData("stxBrain", type = "anterior2")
+brain_pos1 <- LoadData("stxBrain", type = "posterior1")
+brain_pos2 <- LoadData("stxBrain", type = "posterior2")
+
+brain_list <- list(
+  anterior1  = brain_ant1,
+  anterior2  = brain_ant2,
+  posterior1 = brain_pos1,
+  posterior2 = brain_pos2
+)
 
 # Quick overview
-brain_ant
-#> An object of class Seurat
-#> 31053 features across 2696 samples within 1 assay
-#> Active assay: Spatial (31053 features, 0 variable features)
-#>  1 spatial image present: anterior1
-
-brain_pos
-#> An object of class Seurat
-#> 31053 features across 3353 samples within 1 assay
-#> Active assay: Spatial (31053 features, 0 variable features)
-#>  1 spatial image present: posterior1
+lapply(brain_list, function(x) c(features = nrow(x), spots = ncol(x)))
+#> $anterior1
+#> features    spots
+#>    31053     2696
+#> $anterior2
+#> features    spots
+#>    31053     2825
+#> $posterior1
+#> features    spots
+#>    31053     3353
+#> $posterior2
+#> features    spots
+#>    31053     3289
 ```
 
 > **A note on Visium resolution.** Each spot in a Visium capture area is ~55 µm in
@@ -101,32 +118,38 @@ brain_pos
 > types. Deconvolution methods (e.g., RCTD, SPOTlight) can estimate cell-type
 > composition per spot, but are outside the scope of this vignette.
 
-Visualize the raw tissue sections to confirm the data loaded correctly:
+> **A note on what "region" means here.** Treating anterior-vs-posterior as a
+> `NicheCoExpress()` condition later in this vignette is a real, honest use of public
+> data — but it's an anatomical/spatial grouping, not an experimental treatment. It
+> answers "does this gene pair co-express differently between anterior and posterior
+> cortex," which is a legitimate biological question, but don't copy this pattern and
+> assume it validates for treatment-vs-control designs. For that, swap in your own
+> `sample_col`/`condition_col` from a dataset with real biological replicates per
+> treatment arm.
+
+Visualize the raw tissue sections to confirm the data loaded correctly (shown for
+`anterior1`; the same call works for any of the four):
 
 ```r
-SpatialFeaturePlot(brain_ant, features = "nCount_Spatial") +
-  ggtitle("Anterior — total UMI per spot")
-
-SpatialFeaturePlot(brain_pos, features = "nCount_Spatial") +
-  ggtitle("Posterior — total UMI per spot")
+SpatialFeaturePlot(brain_list$anterior1, features = "nCount_Spatial") +
+  ggtitle("Anterior 1 — total UMI per spot")
 ```
 
 ---
 
 ## 3. QC and Percent Mitochondrial Reads
 
+With four sections it's cleaner to loop rather than repeat each call four times:
+
 ```r
 # Mouse mitochondrial genes: "^mt-" (lowercase)
-brain_ant[["percent.mt"]] <- PercentageFeatureSet(brain_ant, pattern = "^mt-")
-brain_pos[["percent.mt"]] <- PercentageFeatureSet(brain_pos, pattern = "^mt-")
+brain_list <- lapply(brain_list, function(obj) {
+  obj[["percent.mt"]] <- PercentageFeatureSet(obj, pattern = "^mt-")
+  obj
+})
 
-# QC distributions
-VlnPlot(brain_ant,
-        features = c("nCount_Spatial", "nFeature_Spatial", "percent.mt"),
-        pt.size  = 0.1) &
-  theme(axis.text.x = element_blank())
-
-VlnPlot(brain_pos,
+# QC distributions -- shown for anterior1; inspect each section the same way
+VlnPlot(brain_list$anterior1,
         features = c("nCount_Spatial", "nFeature_Spatial", "percent.mt"),
         pt.size  = 0.1) &
   theme(axis.text.x = element_blank())
@@ -136,29 +159,26 @@ Spatial scatter to see if low-quality spots are spatially clustered (often they 
 at tissue edges or tears):
 
 ```r
-SpatialFeaturePlot(brain_ant, features = "percent.mt") +
+SpatialFeaturePlot(brain_list$anterior1, features = "percent.mt") +
   scale_fill_gradientn(colors = c("grey90", "red3")) +
-  ggtitle("Percent mitochondrial reads — anterior")
+  ggtitle("Percent mitochondrial reads — anterior 1")
 ```
 
-Apply filters. Visium thresholds are typically looser than single-cell because spots
-have higher total counts:
+Apply filters to every section. Visium thresholds are typically looser than
+single-cell because spots have higher total counts:
 
 ```r
-brain_ant <- subset(brain_ant,
-  nFeature_Spatial > 200  &
-  nFeature_Spatial < 8000 &
-  percent.mt < 25
-)
+brain_list <- lapply(brain_list, function(obj) {
+  subset(obj,
+    nFeature_Spatial > 200  &
+    nFeature_Spatial < 8000 &
+    percent.mt < 25
+  )
+})
 
-brain_pos <- subset(brain_pos,
-  nFeature_Spatial > 200  &
-  nFeature_Spatial < 8000 &
-  percent.mt < 25
-)
-
-cat("Anterior spots remaining:", ncol(brain_ant), "\n")
-cat("Posterior spots remaining:", ncol(brain_pos), "\n")
+sapply(brain_list, ncol)
+#>  anterior1  anterior2 posterior1 posterior2
+#>       2611       2739       3244       3172
 ```
 
 ---
@@ -202,76 +222,69 @@ write_visium_coords <- function(obj, image_name, out_dir) {
 }
 
 # Write coordinates for each section
-ant_dir <- file.path(tempdir(), "anterior1")
-pos_dir <- file.path(tempdir(), "posterior1")
-dir.create(ant_dir, showWarnings = FALSE)
-dir.create(pos_dir, showWarnings = FALSE)
+coord_dirs <- setNames(
+  file.path(tempdir(), names(brain_list)),
+  names(brain_list)
+)
+for (d in coord_dirs) dir.create(d, showWarnings = FALSE)
 
-write_visium_coords(brain_ant, "anterior1", ant_dir)
-write_visium_coords(brain_pos, "posterior1", pos_dir)
+for (nm in names(brain_list)) {
+  write_visium_coords(brain_list[[nm]], nm, coord_dirs[[nm]])
+}
 ```
 
 > **Working with real CellRanger output?** Skip the helper above and point
 > `coord_path` directly to your `outs/spatial/` folder, which already contains
 > `tissue_positions_list.csv`.
 
-Now run edge detection. Four filter iterations are returned as columns
-`Filter`, `Filter2`, `Filter3`, `Filter4` — each one is progressively more
+Now run edge detection on every section. Four filter iterations are returned as
+columns `Filter`, `Filter2`, `Filter3`, `Filter4` — each one is progressively more
 aggressive at peeling back the boundary.
 
 ```r
-edge_ant <- EdgeDetectionVisium(
-  coord_path = ant_dir,
-  seurat.obj = brain_ant,
-  search     = "radius",
-  neighbors  = 7
-)
+edge_results <- lapply(names(brain_list), function(nm) {
+  EdgeDetectionVisium(
+    coord_path = coord_dirs[[nm]],
+    seurat.obj = brain_list[[nm]],
+    search     = "radius",
+    neighbors  = 7
+  )
+})
+names(edge_results) <- names(brain_list)
 
-edge_pos <- EdgeDetectionVisium(
-  coord_path = pos_dir,
-  seurat.obj = brain_pos,
-  search     = "radius",
-  neighbors  = 7
-)
-
-# Inspect how many spots are flagged at each iteration
-table(edge_ant$Filter)   # iteration 1 (least aggressive)
-table(edge_ant$Filter4)  # iteration 4 (most aggressive)
+# Inspect how many spots are flagged at each iteration (anterior1 shown)
+table(edge_results$anterior1$Filter)   # iteration 1 (least aggressive)
+table(edge_results$anterior1$Filter4)  # iteration 4 (most aggressive)
 ```
 
 Add the filter results to metadata and visualize before committing to a cutoff:
 
 ```r
-# Add Filter4 (outermost 4 rings removed) as metadata
-brain_ant <- AddMetaData(
-  brain_ant,
-  metadata = setNames(edge_ant$Filter4, edge_ant$barcode),
-  col.name = "edge_filter"
-)
-brain_pos <- AddMetaData(
-  brain_pos,
-  metadata = setNames(edge_pos$Filter4, edge_pos$barcode),
-  col.name = "edge_filter"
-)
+# Add Filter4 (outermost 4 rings removed) as metadata on each section
+brain_list <- lapply(names(brain_list), function(nm) {
+  AddMetaData(
+    brain_list[[nm]],
+    metadata = setNames(edge_results[[nm]]$Filter4, edge_results[[nm]]$barcode),
+    col.name = "edge_filter"
+  )
+})
+names(brain_list) <- names(edge_results)
 
-# Visualize — spots to remove shown in red
-SpatialDimPlot(brain_ant, group.by = "edge_filter",
+# Visualize — spots to remove shown in red (anterior1 shown; repeat per section)
+SpatialDimPlot(brain_list$anterior1, group.by = "edge_filter",
                cols = c("Keep" = "grey80", "Filter" = "red3")) +
-  ggtitle("Edge detection — anterior (Filter4)")
-
-SpatialDimPlot(brain_pos, group.by = "edge_filter",
-               cols = c("Keep" = "grey80", "Filter" = "red3")) +
-  ggtitle("Edge detection — posterior (Filter4)")
+  ggtitle("Edge detection — anterior 1 (Filter4)")
 ```
 
-If the red spots align with the visible tissue boundary and tears, apply the filter:
+If the red spots align with the visible tissue boundary and tears, apply the filter
+to every section:
 
 ```r
-brain_ant <- subset(brain_ant, edge_filter == "Keep")
-brain_pos <- subset(brain_pos, edge_filter == "Keep")
+brain_list <- lapply(brain_list, function(obj) subset(obj, edge_filter == "Keep"))
 
-cat("Anterior spots after edge removal:", ncol(brain_ant), "\n")
-cat("Posterior spots after edge removal:", ncol(brain_pos), "\n")
+sapply(brain_list, ncol)
+#>  anterior1  anterior2 posterior1 posterior2
+#>       2554       2681       3178       3109
 ```
 
 > **How conservative to be?** `Filter` (1 iteration) removes only the outermost ring;
@@ -283,13 +296,11 @@ cat("Posterior spots after edge removal:", ncol(brain_pos), "\n")
 
 ## 5. Merge and Integrate — `MergeSeurat()`
 
-With two clean, filtered sections, we are ready to merge and integrate. Pass
+With four clean, filtered sections, we are ready to merge and integrate. Pass
 `spatial = "Visium"` so `MergeSeurat()` handles the Spatial assay correctly and
-keeps images in sync.
+keeps images in sync. `MergeSeurat()` takes the named list directly.
 
 ```r
-brain_list <- list(anterior1 = brain_ant, posterior1 = brain_pos)
-
 integrated <- MergeSeurat(
   seurat_objects = brain_list,
 
@@ -313,6 +324,13 @@ integrated <- MergeSeurat(
   file_name     = "brain_visium",
   markers       = TRUE
 )
+
+# The list names become orig.ident; derive the anterior/posterior region label
+# from that. This is the "condition" NicheCoExpress() will compare in Section 12 --
+# see the note in Section 2 on what that comparison does and doesn't demonstrate.
+integrated$region <- ifelse(grepl("^anterior", integrated$orig.ident),
+                            "anterior", "posterior")
+table(integrated$orig.ident, integrated$region)
 ```
 
 After the run your working directory contains:
@@ -323,10 +341,16 @@ After the run your working directory contains:
 ### Inspect the integration
 
 ```r
-# UMAP — good integration means anterior and posterior spots overlap
+# UMAP by section — good integration means all four sections overlap
 DimPlot(integrated, group.by = "orig.ident",
-        cols = c("anterior1" = "steelblue", "posterior1" = "tomato")) +
+        cols = c("anterior1"  = "steelblue", "anterior2"  = "dodgerblue",
+                 "posterior1" = "tomato",     "posterior2" = "firebrick")) +
   ggtitle("By section — should be interleaved")
+
+# UMAP by region — the coarser anterior/posterior grouping used later
+DimPlot(integrated, group.by = "region",
+        cols = c("anterior" = "steelblue", "posterior" = "tomato")) +
+  ggtitle("By region")
 
 DimPlot(integrated, label = TRUE, repel = TRUE) +
   ggtitle("Seurat clusters")
@@ -601,12 +625,16 @@ brain_list_annotated <- SplitObject(integrated, split.by = "orig.ident")
 lapply(brain_list_annotated, function(obj) names(obj@images))
 #> $anterior1
 #> [1] "anterior1"
+#> $anterior2
+#> [1] "anterior2"
 #> $posterior1
 #> [1] "posterior1"
+#> $posterior2
+#> [1] "posterior2"
 
 niche_list <- BuildMultipleNicheAssays(
   list.object  = brain_list_annotated,
-  list.fov     = list("anterior1", "posterior1"),  # must match names(obj@images)
+  list.fov     = as.list(names(brain_list_annotated)),  # must match names(obj@images)
   group.by     = "spatial_domain",
   assay        = "niche",
   cluster.name = "niches",
@@ -617,6 +645,10 @@ niche_list <- BuildMultipleNicheAssays(
   type         = "visium"        # tells the function to use Visium coordinate accessors
 )
 ```
+
+`niche_list` now has four elements (`anterior1`, `anterior2`, `posterior1`,
+`posterior2`). The examples below use `anterior1`/`posterior1` for illustration —
+the same calls work for the other two sections.
 
 `BuildMultipleNicheAssays()` adds:
 - A `niche` assay to each object (features = cell-type labels, values = neighborhood composition)
@@ -720,26 +752,52 @@ Complementary to `BuildMultipleNicheAssays()` — this one focuses on statistica
 
 Differential co-expression of a gene pair across niches using the Manders overlap coefficient, comparing two *conditions* (each needing at least 2 samples for the statistical test). Answers "is this ligand-receptor pair co-detected more often in the vascular niche in condition B than condition A?"
 
-> **A note on sample size.** `NicheCoExpress()` needs `>= 2` samples *per condition* to
-> run a real differential test. This vignette's `integrated` object only has two Visium
-> sections total (`anterior1`/`posterior1`) from the same animal — not two conditions
-> with biological replicates — so there's no way to demonstrate a real comparison on it.
-> The call below is a syntax reference: swap `sample_col`/`condition_col` for columns
-> from your own dataset where each condition actually has multiple samples.
+This is where loading all four `stxBrain` sections back in Section 2 pays off:
+`sample_col = "orig.ident"` gives four samples (`anterior1`, `anterior2`, `posterior1`,
+`posterior2`), and `condition_col = "region"` (set in Section 5) splits them 2-vs-2 —
+exactly the minimum `NicheCoExpress()` needs to run a real test rather than a syntax
+stub. As flagged back in Section 2: "region" here means anterior-vs-posterior brain
+anatomy, not a treatment condition — read the result as "does this pair co-express
+differently between these two brain regions," not as a stand-in for a drug/disease
+comparison.
 
 ```r
 co <- NicheCoExpress(
   seurat_obj    = integrated,
   genes         = c("Vegfa", "Kdr"),   # or a 2-column data.frame of specific pairs
-  niche_col     = "niche",
-  sample_col    = "sample_id",         # your per-sample identifier
-  condition_col = "condition",         # a metadata column with >= 2 samples per level
+  niche_col     = "niche",             # set by NeighborhoodEnrichment() in Section 11
+  sample_col    = "orig.ident",        # anterior1, anterior2, posterior1, posterior2
+  condition_col = "region",            # anterior (n=2) vs posterior (n=2)
   layer         = "data"
 )
 co$stats               # per niche x pair: delta, statistic, p, p_adj
 co$per_sample           # long-form per-sample x niche x pair co-expression scores
 
-plotNicheCoExpress(co, type = "heatmap")
+plotNicheCoExpress(co, type = "heatmap")   # niche x pair heatmap of delta, significance stars from p_adj
+plotNicheCoExpress(co, type = "scores")    # per-sample score plots for top/selected pairs
+```
+
+### 12.1 Estimation Plot — `NicheCoExpressEstimationPlot()`
+
+`NicheCoExpress()`'s Wilcoxon/t-test in `co$stats` answers "is there a difference."
+`NicheCoExpressEstimationPlot()` answers "how big, with what uncertainty" for a
+specific (niche, gene-pair) combination, using `dabestr` to show a bootstrap 95%
+confidence interval on the effect size alongside the raw per-sample values.
+
+By default it reuses `attr(co$stats, "conditions")` for `idx`, so the reference/test
+order matches `co$stats$delta` automatically — you don't need to re-specify which
+region is which:
+
+```r
+# One niche x pair combination
+NicheCoExpressEstimationPlot(co, niches = "1", pairs = "Vegfa_Kdr")
+
+# Every niche x pair combination present, as a named list of plots
+plots <- NicheCoExpressEstimationPlot(co)
+plots[["1 | Vegfa_Kdr"]]
+
+# A different effect size -- e.g. Cliff's delta instead of the mean-difference default
+NicheCoExpressEstimationPlot(co, niches = "1", pairs = "Vegfa_Kdr", effect = "cliffs_delta")
 ```
 
 ---
