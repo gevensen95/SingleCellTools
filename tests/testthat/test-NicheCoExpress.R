@@ -423,3 +423,84 @@ test_that("plotNicheCoExpress errors when the niche filter leaves nothing to plo
     "No rows"
   )
 })
+
+
+# ============================================================================
+# NicheCoExpressEstimationPlot() -- dabestr-backed effect-size plots
+# ============================================================================
+
+test_that("NicheCoExpressEstimationPlot returns a single plot for one niche x pair", {
+  .skip_if_no_seurat()
+  .skip_if_missing("dabestr")
+  obj <- .make_coexpr_object(seed = 1)
+  res <- suppressWarnings(suppressMessages(
+    NicheCoExpress(obj, genes = c("G1", "G2"),
+                   conditions = c("healthy", "tumor"), min_cells = 5, verbose = FALSE,
+                   bg_mode = "local")
+  ))
+  p <- NicheCoExpressEstimationPlot(res, niches = "N1", pairs = "G1_G2")
+  expect_false(is.null(p))
+  expect_false(identical(names(p), "N1 | G1_G2"))
+})
+
+test_that("NicheCoExpressEstimationPlot returns a named list for multiple niche x pair combinations", {
+  .skip_if_no_seurat()
+  .skip_if_missing("dabestr")
+  obj <- .make_coexpr_object(seed = 1)
+  res <- suppressWarnings(suppressMessages(
+    NicheCoExpress(obj, genes = c("G1", "G2"),
+                   conditions = c("healthy", "tumor"), min_cells = 5, verbose = FALSE,
+                   bg_mode = "local")
+  ))
+  plots <- NicheCoExpressEstimationPlot(res)
+  expect_true(is.list(plots))
+  expect_setequal(names(plots), c("N1 | G1_G2", "N2 | G1_G2"))
+})
+
+test_that("NicheCoExpressEstimationPlot defaults idx to attr(res$stats, 'conditions'), not alphabetical", {
+  .skip_if_no_seurat()
+  .skip_if_missing("dabestr")
+  obj <- .make_coexpr_object(seed = 1)
+  # Conditions requested in reverse-alphabetical order on purpose: if the
+  # idx default silently fell back to alphabetical sorting instead of
+  # reusing NicheCoExpress()'s own resolved order, this would be the case
+  # that catches it (see R/NicheCoExpressEstimationPlot.R Details).
+  res <- suppressWarnings(suppressMessages(
+    NicheCoExpress(obj, genes = c("G1", "G2"),
+                   conditions = c("tumor", "healthy"), min_cells = 5, verbose = FALSE,
+                   bg_mode = "local")
+  ))
+  expect_equal(attr(res$stats, "conditions"), c("tumor", "healthy"))
+
+  msgs <- testthat::capture_messages(
+    p <- NicheCoExpressEstimationPlot(res, niches = "N1", pairs = "G1_G2")
+  )
+  expect_false(any(grepl("not supplied", msgs)))
+  expect_false(is.null(p))
+})
+
+test_that("NicheCoExpressEstimationPlot errors when niches/pairs filter leaves nothing", {
+  .skip_if_no_seurat()
+  .skip_if_missing("dabestr")
+  obj <- .make_coexpr_object(seed = 1)
+  res <- suppressWarnings(suppressMessages(
+    NicheCoExpress(obj, genes = c("G1", "G2"),
+                   conditions = c("healthy", "tumor"), min_cells = 5, verbose = FALSE,
+                   bg_mode = "local")
+  ))
+  expect_error(
+    NicheCoExpressEstimationPlot(res, niches = "NotARealNiche"),
+    "No per-sample scores"
+  )
+})
+
+test_that("NicheCoExpressEstimationPlot errors on a malformed res", {
+  expect_error(
+    NicheCoExpressEstimationPlot(list(per_sample = data.frame())),
+    "NicheCoExpress"
+  )
+  expect_error(
+    NicheCoExpressEstimationPlot(data.frame(x = 1)),
+    "NicheCoExpress"
+  )
+})

@@ -116,6 +116,154 @@ test_that("CompositionAnalysis errors on missing columns", {
 
 
 # ============================================================================
+# .dabest_from_long() -- internal helper shared with a future
+# NicheCoExpress-facing estimation-plot wrapper. Tested directly here
+# (not just indirectly through CompositionEstimationPlot()) since it owns
+# all the idx/group_levels validation and the dabestr NSE bridging.
+# ============================================================================
+
+test_that(".dabest_from_long errors on a missing column", {
+  .skip_if_missing("dabestr")
+  df <- data.frame(sample = c("S1", "S2"), group = c("g1", "g1"),
+                   prop = c(0.1, 0.2), condition = c("A", "B"),
+                   stringsAsFactors = FALSE)
+  expect_error(.dabest_from_long(df, group_col = "group", y_col = "prop",
+                                 condition_col = "nope"),
+              "nope")
+})
+
+test_that(".dabest_from_long errors when idx doesn't have exactly 2 elements", {
+  .skip_if_missing("dabestr")
+  df <- data.frame(sample = paste0("S", 1:4), group = "g1",
+                   prop = stats::runif(4), condition = c("A", "A", "B", "B"),
+                   stringsAsFactors = FALSE)
+  expect_error(.dabest_from_long(df, "group", "prop", "condition", idx = "A"),
+              "exactly 2")
+})
+
+test_that(".dabest_from_long errors when idx values aren't present in condition_col", {
+  .skip_if_missing("dabestr")
+  df <- data.frame(sample = paste0("S", 1:4), group = "g1",
+                   prop = stats::runif(4), condition = c("A", "A", "B", "B"),
+                   stringsAsFactors = FALSE)
+  expect_error(.dabest_from_long(df, "group", "prop", "condition", idx = c("A", "Z")),
+              "Z")
+})
+
+test_that(".dabest_from_long errors when group_levels aren't present in group_col", {
+  .skip_if_missing("dabestr")
+  df <- data.frame(sample = paste0("S", 1:4), group = "g1",
+                   prop = stats::runif(4), condition = c("A", "A", "B", "B"),
+                   stringsAsFactors = FALSE)
+  expect_error(.dabest_from_long(df, "group", "prop", "condition",
+                                 idx = c("A", "B"), group_levels = "nope"),
+              "nope")
+})
+
+test_that(".dabest_from_long errors without idx when condition_col has more than 2 levels", {
+  .skip_if_missing("dabestr")
+  df <- data.frame(sample = paste0("S", 1:6), group = "g1",
+                   prop = stats::runif(6), condition = rep(c("A", "B", "C"), 2),
+                   stringsAsFactors = FALSE)
+  expect_error(.dabest_from_long(df, "group", "prop", "condition"), "idx")
+})
+
+test_that(".dabest_from_long messages and auto-picks alphabetical idx when not supplied", {
+  .skip_if_missing("dabestr")
+  df <- data.frame(sample = paste0("S", 1:6), group = "g1",
+                   prop = stats::runif(6), condition = rep(c("B", "A"), 3),
+                   stringsAsFactors = FALSE)
+  expect_message(
+    out <- .dabest_from_long(df, "group", "prop", "condition"),
+    "A.*reference.*B.*test"
+  )
+  expect_true("g1" %in% names(out))
+})
+
+test_that(".dabest_from_long returns dabestr effect-size objects, named by group", {
+  .skip_if_missing("dabestr")
+  set.seed(1)
+  df <- data.frame(
+    sample    = rep(paste0("S", 1:6), 2),
+    group     = rep(c("g1", "g2"), each = 6),
+    prop      = stats::runif(12),
+    condition = rep(rep(c("A", "B"), each = 3), 2),
+    stringsAsFactors = FALSE
+  )
+  out <- .dabest_from_long(df, "group", "prop", "condition", idx = c("A", "B"))
+  expect_setequal(names(out), c("g1", "g2"))
+})
+
+
+# ============================================================================
+# CompositionEstimationPlot()
+# ============================================================================
+
+test_that("CompositionEstimationPlot returns a single plot for one group_levels entry", {
+  .skip_if_missing("Seurat", "SeuratObject", "dabestr")
+  obj <- .make_small_seurat(seed = 1, n_cells = 150, n_samples = 6, n_clusters = 3)
+  res <- CompositionAnalysis(obj, group_col = "seurat_clusters", sample_col = "sample",
+                             condition_col = "condition")
+  one_level <- levels(obj$seurat_clusters)[1]
+  p <- CompositionEstimationPlot(res, group_levels = one_level, idx = c("A", "B"))
+  expect_false(is.null(p))
+  # single group_levels entry -> the plot itself, not a list keyed by group
+  expect_false(identical(names(p), one_level))
+})
+
+test_that("CompositionEstimationPlot returns a named list for multiple group levels", {
+  .skip_if_missing("Seurat", "SeuratObject", "dabestr")
+  obj <- .make_small_seurat(seed = 1, n_cells = 150, n_samples = 6, n_clusters = 3)
+  res <- CompositionAnalysis(obj, group_col = "seurat_clusters", sample_col = "sample",
+                             condition_col = "condition")
+  plots <- CompositionEstimationPlot(res, idx = c("A", "B"))
+  expect_true(is.list(plots))
+  expect_setequal(names(plots), as.character(levels(obj$seurat_clusters)))
+})
+
+test_that("CompositionEstimationPlot errors when comp has no condition column", {
+  .skip_if_missing("Seurat", "SeuratObject", "dabestr")
+  obj <- .make_small_seurat(seed = 1, n_cells = 60)
+  res <- CompositionAnalysis(obj, group_col = "seurat_clusters", sample_col = "sample")
+  expect_error(CompositionEstimationPlot(res), "condition_col")
+})
+
+test_that("CompositionEstimationPlot errors when idx is required but not supplied", {
+  .skip_if_missing("dabestr")
+  fake_comp <- list(proportions = data.frame(
+    sample    = rep(c("S1", "S2", "S3"), each = 2),
+    group     = rep(c("g1", "g2"), 3),
+    prop      = runif(6),
+    condition = rep(c("A", "B", "C"), each = 2),
+    stringsAsFactors = FALSE
+  ))
+  expect_error(CompositionEstimationPlot(fake_comp), "idx")
+})
+
+test_that("CompositionEstimationPlot errors when comp isn't a CompositionAnalysis()-shaped list", {
+  expect_error(CompositionEstimationPlot(list(counts = data.frame())), "CompositionAnalysis")
+  expect_error(CompositionEstimationPlot(data.frame(x = 1)), "CompositionAnalysis")
+})
+
+test_that("CompositionEstimationPlot rejects an unknown effect value", {
+  # match.arg() fails before `comp`/dabestr are ever touched, so this needs
+  # no Seurat/dabestr fixtures at all.
+  expect_error(CompositionEstimationPlot(list(proportions = data.frame()), effect = "nope"))
+})
+
+test_that("CompositionEstimationPlot passes through a custom effect argument", {
+  .skip_if_missing("Seurat", "SeuratObject", "dabestr")
+  obj <- .make_small_seurat(seed = 1, n_cells = 150, n_samples = 6, n_clusters = 3)
+  res <- CompositionAnalysis(obj, group_col = "seurat_clusters", sample_col = "sample",
+                             condition_col = "condition")
+  one_level <- levels(obj$seurat_clusters)[1]
+  p <- CompositionEstimationPlot(res, group_levels = one_level, idx = c("A", "B"),
+                                 effect = "cohens_h")
+  expect_false(is.null(p))
+})
+
+
+# ============================================================================
 # CompositionBarplot()
 # ============================================================================
 

@@ -1,6 +1,6 @@
 Package: SingleCellTools
 Title: Wrapper and analysis functions for single cell data
-Version: 2.6
+Version: 2.7
 Authors@R:
     person("K. Garrett", "Evensen", , "kgsevensen@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-6720-2526"))
@@ -87,6 +87,7 @@ Suggests:
     spacexr,
     Banksy,
     SeuratWrappers,
+    dabestr,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Config/roxygen2/version: 8.0.0
