@@ -189,53 +189,20 @@ Spots at the capture-area boundary, tissue edge, and tissue tears have systemati
 lower UMI counts and higher noise. `EdgeDetectionVisium()` runs four iterative rounds
 of nearest-neighbor filtering to flag these spots.
 
-The function expects a path to a directory containing the Visium `tissue_positions_list.csv`
-file. When loading data via `SeuratData`, we reconstruct this file from the coordinates
-already stored in the Seurat object's image slot.
+Pass `seurat.obj` directly rather than pointing `coord_path` at a spaceranger
+`spatial/` folder — `EdgeDetectionVisium()` pulls coordinates itself via
+`Seurat::GetTissueCoordinates()`, which dispatches correctly regardless of whether
+your installed Seurat/SeuratData version stores each image as the older `VisiumV1`
+class or the newer `VisiumV2` class. (An earlier draft of this vignette reached
+into `obj@images[[image_name]]@coordinates` directly to build a fake
+`tissue_positions_list.csv` — that slot doesn't exist on `VisiumV2` objects, which
+is what current `SeuratData` installs return, so that approach breaks. Letting
+`EdgeDetectionVisium()` call `GetTissueCoordinates()` itself avoids depending on
+that internal layout at all.)
 
-```r
-# Helper: extract Visium spot coordinates from a Seurat object
-# and write them in the format EdgeDetectionVisium() expects.
-write_visium_coords <- function(obj, image_name, out_dir) {
-  # The @coordinates data frame has columns: tissue, row, col, imagerow, imagecol
-  coords_raw <- obj@images[[image_name]]@coordinates
-
-  edge_input <- data.frame(
-    barcode            = rownames(coords_raw),
-    in_tissue          = coords_raw$tissue,
-    array_row          = coords_raw$row,
-    array_col          = coords_raw$col,
-    pxl_row_in_fullres = coords_raw$imagerow,
-    pxl_col_in_fullres = coords_raw$imagecol
-  )
-
-  # Write WITHOUT a header row — EdgeDetectionVisium reads with header = FALSE
-  write.table(
-    edge_input,
-    file      = file.path(out_dir, "tissue_positions_list.csv"),
-    sep       = ",",
-    row.names = FALSE,
-    col.names = FALSE,
-    quote     = FALSE
-  )
-  invisible(out_dir)
-}
-
-# Write coordinates for each section
-coord_dirs <- setNames(
-  file.path(tempdir(), names(brain_list)),
-  names(brain_list)
-)
-for (d in coord_dirs) dir.create(d, showWarnings = FALSE)
-
-for (nm in names(brain_list)) {
-  write_visium_coords(brain_list[[nm]], nm, coord_dirs[[nm]])
-}
-```
-
-> **Working with real CellRanger output?** Skip the helper above and point
-> `coord_path` directly to your `outs/spatial/` folder, which already contains
-> `tissue_positions_list.csv`.
+> **Working with real CellRanger output?** You can still point `coord_path` at
+> your `outs/spatial/` folder (which already contains `tissue_positions_list.csv`)
+> instead of passing `seurat.obj` — see `coord_path` in `?EdgeDetectionVisium`.
 
 Now run edge detection on every section. Four filter iterations are returned as
 columns `Filter`, `Filter2`, `Filter3`, `Filter4` — each one is progressively more
@@ -244,8 +211,8 @@ aggressive at peeling back the boundary.
 ```r
 edge_results <- lapply(names(brain_list), function(nm) {
   EdgeDetectionVisium(
-    coord_path = coord_dirs[[nm]],
     seurat.obj = brain_list[[nm]],
+    image      = nm,
     search     = "radius",
     neighbors  = 7
   )
