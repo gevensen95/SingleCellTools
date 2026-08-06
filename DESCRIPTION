@@ -94,6 +94,9 @@ Suggests:
     BSgenome.Mmusculus.UCSC.mm10,
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
+    arrow,
+    data.table,
+    R.utils,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Config/roxygen2/version: 8.0.0

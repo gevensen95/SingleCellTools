@@ -20,7 +20,10 @@ LoadXenium2(
 \item{outs}{Molecular outputs to read
 \itemize{
 \item "matrix": counts matrix
-\item "microns": molecule coordinates
+\item "microns": molecule coordinates -- reads transcripts.parquet via the
+\code{arrow} package (Suggests, not a hard dependency); errors with a
+clear message up front if \code{arrow} isn't installed and this is
+requested
 }}
 
 \item{type}{Cell spatial coordinate matrices to read

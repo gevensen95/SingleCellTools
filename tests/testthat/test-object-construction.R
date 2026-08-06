@@ -186,12 +186,13 @@ test_that("CreateRNAObjectsFilter requires explicit thresholds when use_quantile
 # rb_pattern / hb_pattern defaults -- pure regex correctness, independent of
 # any Seurat object construction. These are the same default pattern strings
 # used by CreateRNAObjects(), CreateAndIntegrateRNA(), CreateVisiumObjects(),
-# and CreateRNAObjectsFilter() (and the suggested/example values for
-# MakeParseObj()'s opt-in rb_pattern/hb_pattern, which default to NULL);
-# kept here as plain grepl() checks (not literal `::: `-style access to a
-# shared constant, since none exists -- each function declares the same
-# default independently) so a future edit to any one of them that drifts
-# from the others, or accidentally lets "Hbp1"/"HBP1" back in, is caught
+# CreateRNAObjectsFilter(), and MakeParseObj() (whose mt_pattern/rb_pattern/
+# hb_pattern default to these same mouse-friendly patterns rather than NULL,
+# though NULL remains a valid opt-out for any of the three there); kept here
+# as plain grepl() checks (not literal `::: `-style access to a shared
+# constant, since none exists -- each function declares the same default
+# independently) so a future edit to any one of them that drifts from the
+# others, or accidentally lets "Hbp1"/"HBP1" back in, is caught
 # without needing full 10X directory fixtures.
 # ============================================================================
 
@@ -275,6 +276,22 @@ test_that("MakeParseObj fails fast when doublet_vars_to_regress requests an unco
                 doublet_vars_to_regress = "percent.hb"),
     "hb_pattern"
   )
+})
+
+test_that("MakeParseObj's default doublet_vars_to_regress auto-resolves without erroring", {
+  d <- tempfile("parse_"); dir.create(d)
+  on.exit(unlink(d, recursive = TRUE))
+
+  # doublet_vars_to_regress is left unspecified in both calls below, so it
+  # should resolve internally (via the mt_pattern-driven default) rather
+  # than tripping the mismatch check exercised above. Both should get past
+  # argument validation cleanly and fail only on the (irrelevant here)
+  # missing DGE_filtered directory -- proving the auto-resolved value never
+  # collides with `mt_pattern`, whether mt_pattern is left at its default
+  # ("percent.mt" ends up requested) or explicitly turned off (falls back
+  # to NULL, nothing requested).
+  expect_error(MakeParseObj(d), "DGE_filtered")
+  expect_error(MakeParseObj(d, mt_pattern = NULL), "DGE_filtered")
 })
 
 

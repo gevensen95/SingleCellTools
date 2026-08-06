@@ -7,7 +7,10 @@
 #' @param sample_name Name of Sample
 #' @param outs Molecular outputs to read
 #'  - "matrix": counts matrix
-#'  - "microns": molecule coordinates
+#'  - "microns": molecule coordinates -- reads transcripts.parquet via the
+#'    \code{arrow} package (Suggests, not a hard dependency); errors with a
+#'    clear message up front if \code{arrow} isn't installed and this is
+#'    requested
 #' @param type Cell spatial coordinate matrices to read
 #'  - "centroids": cell centroids
 #'  - "segmentations": cell segmentations
@@ -28,6 +31,15 @@ LoadXenium2 <- function(data_dir, sample_name,
   outs <- c(outs, type)
   has_dt <- requireNamespace("data.table", quietly = TRUE) &&
     requireNamespace("R.utils", quietly = TRUE)
+
+  # `arrow` is Suggests, not a hard dependency -- only actually needed when
+  # "microns" (transcripts.parquet) was requested. Fail fast with a clear
+  # message rather than letting arrow::read_parquet() below throw R's raw
+  # "there is no package called 'arrow'" partway through the read.
+  if ("microns" %in% outs && !requireNamespace("arrow", quietly = TRUE)) {
+    stop("Package 'arrow' is required to read transcripts.parquet ",
+         "(outs = 'microns'). install.packages('arrow')")
+  }
 
   message(sprintf('--- Loading Xenium sample "%s" from %s ---', sample_name, data_dir))
   message(sprintf('  Outputs requested: %s', paste(outs, collapse = ', ')))
