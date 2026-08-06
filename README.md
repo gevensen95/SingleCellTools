@@ -57,6 +57,7 @@ Key things it does:
 - **[ifnb tutorial](SingleCellTools_vignette_ifnb.md)** — end-to-end walkthrough using the built-in `ifnb` PBMC dataset from `SeuratData`; no raw data download required.
 - **[Spatial tutorial](SingleCellTools_vignette_spatial.md)** — Visium workflow (edge detection, integration, annotation, niche analysis) using the public `stxBrain` mouse brain dataset from `SeuratData`.
 - **[scATAC-seq tutorial](SingleCellTools_vignette_atac.md)** — object creation, QC, LSI, cross-sample integration, gene activity scoring, motif enrichment, and differential accessibility. Supports mouse (`mm10`, default) or human (`hg38`) via `CreateATACObjects()`/`CreateATACObjectsFilter()`'s `genome` argument.
+- **[Working with BPCells](SingleCellTools_vignette_bpcells.md)** — moving large single-cell/spatial datasets to on-disk matrices via `BPCells`: `ConvertToBPCells()`, the `on_disk` argument on `CreateRNAObjects()`/`CreateVisiumObjects()`/`LoadXenium2()`, and what still needs to stay in memory either way.
 
 ---
 
@@ -132,12 +133,17 @@ MarkerPlot(merged, markers)
 
 | Function | What it does |
 |---|---|
-| `CreateRNAObjects()` | Read 10x outputs (matrix folder or `.h5`) into a list of Seurat objects, compute `percent.mt`, optionally tag treatments and call doublets. |
+| `CreateRNAObjects()` | Read 10x outputs (matrix folder or `.h5`) into a list of Seurat objects, compute `percent.mt`, optionally tag treatments and call doublets. `on_disk = TRUE` moves the returned counts layer(s) to an on-disk `BPCells` matrix as a final step (see `ConvertToBPCells()`). |
 | `CreateRNAObjectsFilter()` | Same as above but with **interactive** QC cutoff selection. |
 | `CreateAndIntegrateRNA()` | One-shot pipeline: read &rarr; QC &rarr; merge &rarr; integrate &rarr; cluster &rarr; UMAP. |
 | `MakeParseObj()` | Build Seurat objects from Parse Biosciences pipeline output (`DGE_filtered/`). |
-| `CreateVisiumObjects()` | Load multiple Visium samples into a list. |
-| `LoadXenium2()` | Streamlined Xenium loader. |
+| `CreateVisiumObjects()` | Load multiple Visium samples into a list. `image_backend = "deferred"` attaches the small lowres image to every sample instead of the ~100MB hires PNG, for multi-sample lists. Also handles Visium HD samples (auto-detected via a `binned_outputs/` subdirectory; `hd_bin_size` picks 002um/008um/016um, default 008um) -- requires `binned_outputs.tar.gz`/`spatial.tar.gz` already extracted. `on_disk = TRUE` moves the counts layer to an on-disk `BPCells` matrix as a final step -- the highest-value spot for it, given how large a 002um HD sample's counts matrix is. |
+| `GetHiresVisiumImage()` | Decode the full-resolution image for a sample built with `image_backend = "deferred"`, on demand. |
+| `SpatialObjectInfo()` | Audit image/FOV class, resolution, cell count, and memory footprint across a Visium *or* Xenium/CosMx/MERFISH sample or list -- see where spatial memory is going, whichever platform built the object. |
+| `DropSpatialImage()` | Retroactively free image/molecule memory on already-built spatial object(s): `mode = "remove"` drops `@images` entirely (any platform), `mode = "downgrade"` swaps pixel-backed (Visium) images to lowres (like `image_backend = "deferred"` after the fact) -- coordinate-only (FOV) images have no lowres equivalent and are left in place with a message. |
+| `ConvertToBPCells()` | Move a Seurat object's (or list's) assay layer to an on-disk `BPCells` matrix, in place of the in-memory one -- works retroactively on any Seurat object regardless of how it was built, using `BPCells`' `Assay5`-compatible on-disk matrix backend so native Seurat functions keep working unmodified. `BPCells` is Suggests-only (`remotes::install_github("bnprks/BPCells/r")`). |
+| `LoadXenium2()` | Streamlined Xenium loader. `microns_lazy = TRUE` reads `transcripts.parquet` via `arrow`'s query engine instead of loading the full table, for whole-slide runs. `on_disk = TRUE` moves the counts layer to an on-disk `BPCells` matrix as a final step. |
+| `QueryXeniumMolecules()` | Windowed / gene-subset transcript query against an object loaded with `LoadXenium2(..., microns_lazy = TRUE)`, without re-reading `transcripts.parquet`. |
 | `CreateATACObjects()` / `CreateATACObjectsFilter()` | scATAC-seq object construction (latter with interactive cutoff selection). |
 
 </details>
@@ -272,7 +278,7 @@ flowchart LR
 | **Tidyverse** | `dplyr`, `tibble`, `tidyr`, `magrittr`, `readr`, `stringr`, `purrr`, `rlang`, `ggplot2` |
 | **Numerical / spatial** | `Matrix`, `RANN`, `ClusterR`, `irlba`, `RSpectra` |
 | **Plotting** | `RColorBrewer` |
-| **Optional (Suggests)** | `sf` (`get_cells_in_polygon`, `AnnotateRegions`); `SingleR` + `SummarizedExperiment` (`AnnotateClusters(method = "singler")`); `DESeq2` (`PseudobulkDE`); `zellkonverter` (`FromAnnData` / `ToAnnData`); `rmarkdown` + `knitr` (`GenerateQCReport`); `EnsDb.Mmusculus.v79` + `BSgenome.Mmusculus.UCSC.mm10` or `EnsDb.Hsapiens.v86` + `BSgenome.Hsapiens.UCSC.hg38` (`CreateATACObjects()` / `CreateATACObjectsFilter()`, whichever `genome` you request) |
+| **Optional (Suggests)** | `sf` (`get_cells_in_polygon`, `AnnotateRegions`); `SingleR` + `SummarizedExperiment` (`AnnotateClusters(method = "singler")`); `DESeq2` (`PseudobulkDE`); `zellkonverter` (`FromAnnData` / `ToAnnData`); `rmarkdown` + `knitr` (`GenerateQCReport`); `EnsDb.Mmusculus.v79` + `BSgenome.Mmusculus.UCSC.mm10` or `EnsDb.Hsapiens.v86` + `BSgenome.Hsapiens.UCSC.hg38` (`CreateATACObjects()` / `CreateATACObjectsFilter()`, whichever `genome` you request); `BPCells` (GitHub: `bnprks/BPCells/r`) for `ConvertToBPCells()` and `on_disk = TRUE` on `CreateRNAObjects()`/`CreateVisiumObjects()`/`LoadXenium2()` |
 
 A full list with version pins lives in [`DESCRIPTION`](DESCRIPTION).
 

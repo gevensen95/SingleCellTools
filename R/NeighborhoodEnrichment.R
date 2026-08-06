@@ -94,7 +94,7 @@ NeighborhoodEnrichment <- function(obj,
                                    niche_col     = "niche") {
 
   niche_method <- match.arg(niche_method)
-  if (!inherits(obj, "Seurat")) stop("`obj` must be a Seurat object.")
+  .assert_seurat(obj)
   if (is.null(fovs)) fovs <- names(obj@images)
   if (!length(fovs)) stop("No FOVs in obj@images.")
   missing_fovs <- setdiff(fovs, names(obj@images))
@@ -112,15 +112,8 @@ NeighborhoodEnrichment <- function(obj,
   per_fov <- vector("list", length(fovs))
   names(per_fov) <- fovs
   for (fov in fovs) {
-    coords <- Seurat::GetTissueCoordinates(obj[[fov]], which = "centroids")
-    if ("cell" %in% colnames(coords)) {
-      rownames(coords) <- coords$cell
-      coords_mat <- as.matrix(coords[, c("x", "y")])
-    } else {
-      coords_mat <- as.matrix(coords[, c("x", "y")])
-    }
-    cells_in_fov <- intersect(rownames(coords_mat), rownames(obj@meta.data))
-    coords_mat <- coords_mat[cells_in_fov, , drop = FALSE]
+    coords_mat <- .get_fov_coords(obj, fov, cells = rownames(obj@meta.data))
+    cells_in_fov <- rownames(coords_mat)
     labels <- as.character(obj@meta.data[cells_in_fov, group.by, drop = TRUE])
     keep <- !is.na(labels)
     per_fov[[fov]] <- list(

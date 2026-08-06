@@ -141,6 +141,18 @@ head(atac_list$sample1@meta.data[, c("passed_filters", "peak_region_fragments",
                                      "nucleosome_signal", "blacklist_ratio")])
 ```
 
+> **On `ConvertToBPCells()`/`on_disk` and ATAC data.** Unlike
+> `CreateRNAObjects()`/`CreateVisiumObjects()`/`LoadXenium2()`,
+> `CreateATACObjects()`/`CreateATACObjectsFilter()` don't have an `on_disk`
+> argument, and calling `ConvertToBPCells()` on the `"ATAC"` assay here errors
+> deliberately rather than attempting it. The `"ATAC"` assay is a Signac
+> `ChromatinAssay`, not a standard Seurat assay -- it carries
+> fragments/ranges/annotation slots that `ConvertToBPCells()`'s generic
+> `Assay5` coercion has no way to preserve, so this is a real, checked
+> limitation rather than an oversight. See
+> [`SingleCellTools_vignette_bpcells.md`](SingleCellTools_vignette_bpcells.md)
+> for what is and isn't covered.
+
 ---
 
 ## 3. QC and Filtering

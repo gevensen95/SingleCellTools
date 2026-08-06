@@ -135,8 +135,13 @@ subset_opt <- function(
                      features = features,
                      ...)
       })
-    # replace subsetted FOVs
-    for (i in fovs %>% seq) { obj_subset[[Images(object)[i]]] <- fovs[[i]] }
+    # replace subsetted FOVs -- build the updated @images list and assign it
+    # once instead of `obj_subset[[name]] <- fovs[[i]]` per FOV (each call
+    # goes through Seurat's double-bracket assign validity machinery and a
+    # fresh object copy; CosMx/Xenium panels can have 100+ FOVs).
+    new_images <- obj_subset@images
+    for (i in fovs %>% seq) { new_images[[Images(object)[i]]] <- fovs[[i]] }
+    obj_subset@images <- new_images
 
   } else {
     message('--- Subsetting FOVs (cells found in only some FOVs) ---')
@@ -157,8 +162,12 @@ subset_opt <- function(
     # remove FOVs with no matching cells
     message("  Removing FOVs where cells are NOT found: ",
             paste0(Images(object)[which(!cells_check == TRUE)], collapse = ', '))
-    # replace subsetted FOVs
-    for (i in fovs %>% seq) { obj_subset[[Images(object)[i]]] <- fovs[[i]] }
+    # replace subsetted FOVs -- same single-assignment batching as above.
+    # A NULL entry in fovs[[i]] removes that FOV from the list, same as it
+    # would removing it from @images one double-bracket assignment at a time.
+    new_images <- obj_subset@images
+    for (i in fovs %>% seq) { new_images[[Images(object)[i]]] <- fovs[[i]] }
+    obj_subset@images <- new_images
 
     # subset final object
     message('--- Subsetting final object ---')

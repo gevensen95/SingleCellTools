@@ -8,6 +8,8 @@ CreateAndIntegrateRNA(
   data_dirs,
   cells = 3,
   features = 200,
+  rb_pattern = "^(Rp[sl]|RP[SL])",
+  hb_pattern = "^(Hb[^p]|HB[^P])",
   treatment = NULL,
   use_quantile = TRUE,
   quantile_value_min = 0.15,
@@ -33,7 +35,8 @@ CreateAndIntegrateRNA(
   new_reduction = "harmony",
   k_anchor = NULL,
   k_weight = NULL,
-  markers = TRUE
+  markers = TRUE,
+  workers = 1
 )
 }
 \arguments{
@@ -43,6 +46,20 @@ barcodes.tsv or .h5 files.}
 \item{cells}{Features must be expressed in at least this many cells}
 
 \item{features}{Cells must have at least this many features}
+
+\item{rb_pattern}{Pattern for calculating percent ribosomal-protein reads
+(\code{percent.rb}), computed alongside \code{percent.mt} for reference
+(informational only -- not used by this function's own filtering
+logic, which only ever thresholds on \code{percent.mt}). Default
+\code{"^(Rp[sl]|RP[SL])"} matches both mouse and human gene symbol
+conventions.}
+
+\item{hb_pattern}{Pattern for calculating percent hemoglobin reads
+(\code{percent.hb}), computed alongside \code{percent.mt} for reference
+(informational only, like \code{rb_pattern} above). Default
+\code{"^(Hb[^p]|HB[^P])"} excludes the unrelated \code{"Hbp1"}/
+\code{"HBP1"} gene, a well-known false positive for naive
+\code{"^Hb"} patterns.}
 
 \item{treatment}{Treatment metadata column (e.g., Age, chemical, etc.)}
 
@@ -99,6 +116,14 @@ for FindNeighbors and UMAP}
 \item{k_weight}{Number of neighbors to consider when weighting anchors}
 
 \item{markers}{Find all markers}
+
+\item{workers}{Number of parallel workers to use (via \code{future.apply})
+for reading/creating each sample's Seurat object -- fully independent
+across samples. Default \code{1} runs sequentially exactly as before;
+\code{workers > 1} spins up that many background R sessions via
+\code{future::plan(multisession)}, restored on exit. Note each worker
+holds its own copy of that sample's data, so peak memory scales with
+\code{workers}.}
 }
 \value{
 An integrated Seurat object

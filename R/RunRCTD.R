@@ -177,18 +177,28 @@ RunRCTD <- function(obj,
 
   # ---- Optional metadata columns -----------------------------------------
   if (isTRUE(write_metadata)) {
-    # One column per cell type
     ct_names <- colnames(weights)
     ct_safe  <- make.names(ct_names)
-    for (i in seq_along(ct_names)) {
-      col <- paste0("rctd_", ct_safe[i])
-      obj@meta.data[[col]] <- NA_real_
-      obj@meta.data[rownames(weights), col] <- weights[, i]
-    }
-    # Dominant type
+
+    # Build every new column (per-cell-type weights + dominant type) as one
+    # data frame, row-matched to the full meta.data cell set, then write it
+    # into meta.data with a single assignment -- instead of one
+    # `obj@meta.data[[col]] <- ...` per cell type, each of which copies the
+    # whole meta.data data frame (RCTD reference panels can have dozens of
+    # cell types).
+    all_cells <- rownames(obj@meta.data)
+    match_idx <- match(all_cells, rownames(weights))
+
+    weight_block           <- weights[match_idx, , drop = FALSE]
+    rownames(weight_block) <- all_cells
+    colnames(weight_block) <- paste0("rctd_", ct_safe)
+    weight_df              <- as.data.frame(weight_block)
+
     dom <- ct_names[apply(weights, 1, which.max)]
-    obj@meta.data$rctd_dominant <- NA_character_
-    obj@meta.data[rownames(weights), "rctd_dominant"] <- dom
+    weight_df$rctd_dominant <- dom[match_idx]
+
+    obj@meta.data[, colnames(weight_df)] <- weight_df
+
     message(sprintf("  Wrote %d per-cell-type columns + rctd_dominant.",
                     length(ct_names)))
   }

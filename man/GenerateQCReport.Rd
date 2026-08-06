@@ -8,7 +8,8 @@ GenerateQCReport(
   obj,
   output_file = "qc_report.html",
   title = "Single-cell QC report",
-  metadata_cols = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+  metadata_cols = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rb",
+    "percent.hb"),
   sample_col = "orig.ident",
   doublet_col = "doublet_finder",
   top_n_genes = 20,
@@ -16,7 +17,8 @@ GenerateQCReport(
   assay = NULL,
   log_skewed = TRUE,
   log_threshold = 10,
-  spatial_max_cols = 3
+  spatial_max_cols = 3,
+  complexity_score = TRUE
 )
 }
 \arguments{
@@ -28,7 +30,12 @@ GenerateQCReport(
 \item{title}{Title for the report.}
 
 \item{metadata_cols}{Character vector of metadata columns to plot as
-violin distributions and use for the cutoff table.}
+violin distributions and use for the cutoff table. Default includes
+\code{percent.rb}/\code{percent.hb} (ribosomal / hemoglobin percentage)
+alongside \code{percent.mt} -- silently skipped, like any other
+requested column, on samples/objects that don't have them (e.g. older
+objects built before \code{CreateRNAObjects()} started computing these,
+or non-RNA assays).}
 
 \item{sample_col}{Metadata column used as the sample identifier when
 \code{obj} is a single Seurat object. Default \code{"orig.ident"}.
@@ -57,6 +64,17 @@ Default 10 (i.e., the metric's max is more than 10x its median).}
 \item{spatial_max_cols}{Maximum number of spatial-QC panels per row.
 Default 3 — caps facet density to keep panels wide enough that the
 FOV/sample names aren't truncated.}
+
+\item{complexity_score}{Logical; if TRUE (default), derive a
+\code{log10GenesPerUMI} "complexity" (a.k.a. novelty) score per cell --
+\code{log10(nFeature) / log10(nCount)}, using whichever nFeature*/
+nCount* columns were already resolved for the QC scatter plots. Cells
+with disproportionately few genes detected for their UMI count (low
+complexity) are a classic signature of ambient-RNA-heavy empty
+droplets or dying cells. This needs no extra metadata columns, so it's
+computed purely from data already present. It's added as an extra
+metric in the existing violin/density/cutoffs sections (not a separate
+report section) -- set to FALSE to skip it.}
 }
 \value{
 Invisibly, the absolute path of the rendered report.
@@ -91,7 +109,11 @@ Sections included:
 \code{percent.mt} vs \code{nFeature_RNA}.
 \item Top \code{top_n_genes} expressed genes per sample.
 \item Suggested filtering cutoffs (median ± \code{mad_multiplier} * MAD)
-and the cells that would survive each cutoff.
+and the cells that would survive each cutoff. When
+\code{complexity_score = TRUE} (default), a derived
+\code{log10GenesPerUMI} "complexity" metric (see below) rides along
+in this table, and in the violin/density sections above, alongside
+every real \code{metadata_cols} metric.
 \item Cell-cycle phase breakdown (if a \code{Phase} column exists).
 \item Doublet calls (if \code{doublet_col} exists).
 \item Edge-spot summary (if an \code{is_edge} column exists).

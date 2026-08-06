@@ -137,6 +137,111 @@ test_that("AnnotateClusters validates its inputs", {
   )
 })
 
+test_that("AnnotateClusters rejects a markers element that isn't a character vector", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_annotation_obj(seed = 1)
+  expect_error(
+    AnnotateClusters(obj, markers = list(TypeA = 1:3, TypeB = "MarkerB1"),
+                     cluster_col = "seurat_clusters"),
+    "TypeA"
+  )
+})
+
+test_that("AnnotateClusters visium_mode disables filter_nonspecific by default and warns", {
+  .skip_if_missing("Seurat", "SeuratObject", "UCell")
+  obj <- .make_annotation_obj(seed = 1)
+  markers <- list(TypeA = c("MarkerA1", "MarkerA2"), TypeB = c("MarkerB1", "MarkerB2"))
+  expect_warning(
+    out <- suppressMessages(AnnotateClusters(
+      obj, markers = markers, cluster_col = "seurat_clusters", visium_mode = TRUE
+    )),
+    "visium_mode"
+  )
+  expect_true("predicted_cell_type" %in% colnames(out@meta.data))
+})
+
+test_that("AnnotateClusters visium_mode still warns for method = 'singler' even though it has no knob to change", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_annotation_obj(seed = 1)
+  # No SingleR/reference needed -- the visium_mode warning fires before
+  # method-specific work starts, so this errors on the *next* check
+  # (missing `reference`), not on the warning itself.
+  expect_warning(
+    tryCatch(
+      AnnotateClusters(obj, method = "singler", cluster_col = "seurat_clusters",
+                       visium_mode = TRUE),
+      error = function(e) NULL
+    ),
+    "visium_mode"
+  )
+})
+
+test_that("AnnotateClusters visium_mode respects an explicit filter_nonspecific", {
+  .skip_if_missing("Seurat", "SeuratObject", "UCell")
+  obj <- .make_annotation_obj(seed = 1)
+  markers <- list(TypeA = c("MarkerA1", "MarkerA2"), TypeB = c("MarkerB1", "MarkerB2"))
+  # filter_nonspecific = TRUE passed explicitly -- visium_mode's default
+  # (FALSE) must not override it.
+  expect_warning(
+    out <- suppressMessages(AnnotateClusters(
+      obj, markers = markers, cluster_col = "seurat_clusters",
+      visium_mode = TRUE, filter_nonspecific = TRUE
+    )),
+    "visium_mode"
+  )
+  expect_true("predicted_cell_type" %in% colnames(out@meta.data))
+})
+
+
+# ============================================================================
+# .assign_with_unassigned() -- internal per-row best-label picker shared by
+# marker mode and SingleR mode
+# ============================================================================
+
+test_that(".assign_with_unassigned picks the max-scoring label per row", {
+  score_mat <- matrix(c(0.8, 0.2, 0.1, 0.9), nrow = 2, byrow = TRUE,
+                      dimnames = list(c("c0", "c1"), c("TypeA", "TypeB")))
+  out <- SingleCellTools:::.assign_with_unassigned(
+    score_mat, c("TypeA", "TypeB"), min_score = NA, min_margin = NA,
+    unassigned_label = "Unknown"
+  )
+  expect_equal(unname(out["c0"]), "TypeA")
+  expect_equal(unname(out["c1"]), "TypeB")
+})
+
+test_that(".assign_with_unassigned treats a fully-NA row as Unknown regardless of thresholds", {
+  score_mat <- matrix(c(NA_real_, NA_real_, 0.1, 0.9), nrow = 2, byrow = TRUE,
+                      dimnames = list(c("c0", "c1"), c("TypeA", "TypeB")))
+  out <- SingleCellTools:::.assign_with_unassigned(
+    score_mat, c("TypeA", "TypeB"), min_score = NA, min_margin = NA,
+    unassigned_label = "Unknown"
+  )
+  expect_equal(unname(out["c0"]), "Unknown")
+  expect_equal(unname(out["c1"]), "TypeB")
+})
+
+test_that(".assign_with_unassigned ignores a partial NA rather than propagating it to the whole row", {
+  # TypeB's NA must not stop TypeA's real 0.8 score from winning c0.
+  score_mat <- matrix(c(0.8, NA_real_, 0.1, 0.9), nrow = 2, byrow = TRUE,
+                      dimnames = list(c("c0", "c1"), c("TypeA", "TypeB")))
+  out <- SingleCellTools:::.assign_with_unassigned(
+    score_mat, c("TypeA", "TypeB"), min_score = NA, min_margin = NA,
+    unassigned_label = "Unknown"
+  )
+  expect_equal(unname(out["c0"]), "TypeA")
+})
+
+test_that(".assign_with_unassigned still applies min_score/min_margin on non-NA rows", {
+  score_mat <- matrix(c(0.11, 0.10, 0.9, 0.1), nrow = 2, byrow = TRUE,
+                      dimnames = list(c("low_margin", "confident"), c("TypeA", "TypeB")))
+  out <- SingleCellTools:::.assign_with_unassigned(
+    score_mat, c("TypeA", "TypeB"), min_score = 0.05, min_margin = 0.05,
+    unassigned_label = "Unknown"
+  )
+  expect_equal(unname(out["low_margin"]), "Unknown")   # margin 0.01 < 0.05
+  expect_equal(unname(out["confident"]), "TypeA")
+})
+
 
 # ============================================================================
 # AnnotateWithReference() -- scmap backend end-to-end; celltypist/scanvi are

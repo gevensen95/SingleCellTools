@@ -8,7 +8,15 @@ CreateVisiumObjects(
   data_dirs,
   treatment = NULL,
   object_names = NULL,
-  file_type = "h5"
+  file_type = "h5",
+  mt_pattern = "^mt-",
+  rb_pattern = "^(Rp[sl]|RP[SL])",
+  hb_pattern = "^(Hb[^p]|HB[^P])",
+  image_backend = c("eager", "deferred"),
+  hd_bin_size = c("008um", "002um", "016um"),
+  workers = 1,
+  on_disk = FALSE,
+  bpcells_dir = NULL
 )
 }
 \arguments{
@@ -19,6 +27,71 @@ CreateVisiumObjects(
 \item{object_names}{Names of each object}
 
 \item{file_type}{File type (e.g., h5 or directory)}
+
+\item{mt_pattern}{Pattern for calculating percent mtDNA (\code{percent.mt}).
+Default \code{"^mt-"} (mouse gene symbol convention, e.g.
+\code{"mt-Nd1"}); pass \code{"^MT-"} for human tissue.}
+
+\item{rb_pattern}{Pattern for calculating percent ribosomal-protein reads
+(\code{percent.rb}). Default \code{"^(Rp[sl]|RP[SL])"} matches both
+mouse and human gene symbol conventions.}
+
+\item{hb_pattern}{Pattern for calculating percent hemoglobin reads
+(\code{percent.hb}) -- relevant for tissue with residual blood
+contamination. Default \code{"^(Hb[^p]|HB[^P])"} excludes the unrelated
+\code{"Hbp1"}/\code{"HBP1"} gene, a well-known false positive for naive
+\code{"^Hb"} patterns.}
+
+\item{image_backend}{One of \code{"eager"} (default) or \code{"deferred"}.
+\code{"eager"} attaches \code{tissue_hires_image.png} to every sample,
+exactly as before (a hires PNG decodes to roughly 100MB in memory --
+fine for one sample, but a list of N samples means N times that before
+you've done anything with them). \code{"deferred"} instead attaches the
+much smaller \code{tissue_lowres_image.png} (~1MB decoded) to every
+sample -- coordinates, scale factors, and everything
+\code{\link{EdgeDetectionVisium}}/\code{\link{GenerateQCReport}} use are
+identical either way, since those only read spot coordinates, never
+pixels -- and stashes the hires image's path at
+\code{obj@misc$hires_image_path} so \code{\link{GetHiresVisiumImage}}
+can decode it later for just the sample(s) you actually need full
+detail on. Every sample (regardless of \code{image_backend}) also
+gets \code{obj@misc$visium_image_dir} stashed, which
+\code{\link{DropSpatialImage}} and \code{\link{SpatialObjectInfo}} use.}
+
+\item{hd_bin_size}{For Visium HD samples only (auto-detected per sample
+by the presence of a \code{binned_outputs/} subdirectory -- regular
+Visium samples are unaffected). One of \code{"008um"} (default -- 10x's
+commonly recommended bin size, roughly cell-scale), \code{"002um"}
+(finest resolution, largest data), or \code{"016um"} (coarsest,
+smallest). Selects \code{binned_outputs/square_<hd_bin_size>/} as the
+effective sample directory for everything (matrix, image, tissue
+positions). \code{binned_outputs.tar.gz}/\code{spatial.tar.gz} etc.
+must already be extracted -- this function doesn't extract archives
+itself, matching how it already expects regular Visium output
+pre-extracted.}
+
+\item{workers}{Number of parallel workers to use (via \code{future.apply})
+for building each sample -- reading the matrix, computing QC metrics,
+running \code{\link{EdgeDetectionVisium}}, and attaching the tissue
+image, all fully independent across samples. Default \code{1} runs
+sequentially exactly as before (with per-sample progress messages);
+\code{workers > 1} spins up that many background R sessions via
+\code{future::plan(multisession)}, restored on exit. Note each worker
+holds its own copy of that sample's data, so peak memory scales with
+\code{workers}.}
+
+\item{on_disk}{Logical; if \code{TRUE}, move each returned object's RNA
+counts layer to an on-disk BPCells matrix via \code{\link{ConvertToBPCells}}
+as the very last step. Requires the \code{BPCells} package (Suggests,
+not a hard dependency -- checked up front so this fails fast rather
+than after building every object). This is the single highest-value
+spot for it in this package: a Visium HD sample at \code{hd_bin_size =
+"002um"} can be 500K+ bins, and the counts matrix is the dominant cost
+of holding a multi-sample HD list in memory. Default \code{FALSE}.}
+
+\item{bpcells_dir}{Directory to write the on-disk matrices to when
+\code{on_disk = TRUE}. Default \code{file.path(getwd(), "bpcells")}
+(one subdirectory per sample underneath it).}
 }
 \value{
 A list of Seurat Spatial objects

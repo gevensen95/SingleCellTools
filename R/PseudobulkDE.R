@@ -234,7 +234,11 @@ PseudobulkDE <- function(obj,
   if (inherits(agg_raw, c("Assay", "Assay5"))) {
     agg_raw <- SeuratObject::LayerData(agg_raw, layer = "counts")
   }
-  agg <- as.matrix(agg_raw)
+  # Guard rather than unconditional as.matrix(): AggregateExpression() output
+  # here is already small (samples/conditions x genes), so this isn't a real
+  # memory concern, but skip the coercion/copy when it's already a base
+  # matrix rather than always paying for one.
+  agg <- if (is.matrix(agg_raw)) agg_raw else as.matrix(agg_raw)
   storage.mode(agg) <- "integer"
 
   # Reconstruct (sample, condition) from column names. AggregateExpression

@@ -301,6 +301,21 @@ seurat_list <- lapply(seurat_list, function(obj) {
 | `treatment` | `NULL` | Vector, one value per sample |
 | `run_doublet_finder` | `TRUE` | Calls `calldoublet()` under the hood |
 | `filter_doublets` | `FALSE` | Set `TRUE` to auto-drop doublets |
+| `workers` | `1` | Parallelize reading/doublet-calling across samples via `future.apply` |
+| `on_disk` | `FALSE` | Move each returned object's counts layer to an on-disk `BPCells` matrix as a final step |
+
+For a GEO-scale run (dozens of samples, or samples with very large cell counts), set `on_disk = TRUE` to keep the returned list's memory footprint down once everything is built:
+
+```r
+seurat_list <- CreateRNAObjects(
+  data_dirs = samples,
+  treatment = c("Vehicle", "Vehicle", "DrugA", "DrugA"),
+  on_disk   = TRUE,
+  bpcells_dir = "bpcells_cache"   # default: "bpcells" under the working directory
+)
+```
+
+This requires the `BPCells` package (Suggests-only, not installed by default -- see [`SingleCellTools_vignette_bpcells.md`](SingleCellTools_vignette_bpcells.md) for what it is, what it changes about the pipeline, and when it's actually worth reaching for).
 
 ---
 
@@ -1266,6 +1281,16 @@ visium_list <- CreateVisiumObjects(
 )
 ```
 
+For Visium HD samples specifically (`hd_bin_size = "002um"` can mean 500K+ bins per section), pass `on_disk = TRUE` to move each object's counts layer to an on-disk `BPCells` matrix once the samples are built -- the single highest-value spot for this in the package. See [`SingleCellTools_vignette_bpcells.md`](SingleCellTools_vignette_bpcells.md).
+
+```r
+visium_hd_list <- CreateVisiumObjects(
+  data_dirs    = visium_hd_dirs,
+  hd_bin_size  = "002um",
+  on_disk      = TRUE
+)
+```
+
 #### Edge detection
 
 Spots at the capture-area boundary, tissue edge, and tissue tears systematically have abnormal UMI counts and should be removed before analysis. `EdgeDetectionVisium()` runs four iterations of nearest-neighbor filtering to identify these spots.
@@ -1340,6 +1365,18 @@ integrated_xenium <- MergeSeurat(
   use_SCT        = TRUE
 )
 ```
+
+A whole-slide Xenium run's counts matrix can be large enough on its own to be worth keeping on disk; pass `on_disk = TRUE` (same idea as `microns_lazy` above, but for the counts layer instead of the molecule table):
+
+```r
+xenium_obj <- LoadXenium2(
+  data_dir    = "data/xenium/sample1",
+  sample_name = "X1",
+  on_disk     = TRUE
+)
+```
+
+See [`SingleCellTools_vignette_bpcells.md`](SingleCellTools_vignette_bpcells.md) for what this actually changes under the hood.
 
 ---
 

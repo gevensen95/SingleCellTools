@@ -14,7 +14,9 @@
 #' Seurat v4/v5 and avoids depending on the spaceranger output directory
 #' being present. If \code{seurat.obj} is \code{NULL} or no coordinates can
 #' be extracted from it, it falls back to reading
-#' \code{tissue_positions(_list).csv} from \code{coord_path}.
+#' \code{tissue_positions(_list).csv} from \code{coord_path} -- or, for
+#' Visium HD, \code{tissue_positions.parquet} (detected by file extension;
+#' requires the \code{arrow} package, Suggests not a hard dependency).
 #'
 #' \strong{Radius cutoff.} The original implementation hard-coded
 #' \code{radius = 2}, which is correct for Visium \code{array_row} /
@@ -29,7 +31,8 @@
 #'   pulled with \code{GetTissueCoordinates} and barcode order is matched
 #'   to \code{colnames(seurat.obj)}.
 #' @param coord_path Optional path to a spaceranger \code{spatial/}
-#'   directory containing \code{tissue_positions(_list).csv}. Used only
+#'   directory containing \code{tissue_positions(_list).csv} (regular
+#'   Visium) or \code{tissue_positions.parquet} (Visium HD). Used only
 #'   when \code{seurat.obj} is \code{NULL} or coordinate extraction from
 #'   it fails.
 #' @param image Image / FOV name to pull coordinates from when
@@ -138,16 +141,33 @@ EdgeDetectionVisium <- function(seurat.obj    = NULL,
     if (length(hit) == 0L) {
       stop("No 'tissue_position*' file found in: ", coord_path)
     }
-    raw <- read.delim(file.path(coord_path, hit[1]),
-                      header = FALSE, sep = ",")
-    # Drop a header row if spaceranger v2 wrote one (first column "barcode")
-    if (identical(as.character(raw[1, 1]), "barcode")) {
-      colnames(raw) <- as.character(unlist(raw[1, ]))
-      raw <- raw[-1, , drop = FALSE]
-      for (j in 2:6) raw[[j]] <- as.numeric(raw[[j]])
+    hit_file <- hit[1]
+    if (grepl("\\.parquet$", hit_file, ignore.case = TRUE)) {
+      # Visium HD ships tissue_positions.parquet instead of a CSV -- already
+      # a proper structured table with real column names, so none of the
+      # header-row/positional-column guessing below is needed for it.
+      if (!requireNamespace("arrow", quietly = TRUE)) {
+        stop("Package 'arrow' is required to read '", hit_file, "'. ",
+             "install.packages('arrow')")
+      }
+      raw <- as.data.frame(arrow::read_parquet(file.path(coord_path, hit_file)))
     } else {
-      colnames(raw) <- c("barcode", "in_tissue", "array_row", "array_col",
-                         "pxl_row_in_fullres", "pxl_col_in_fullres")
+      # data.table::fread() instead of read.delim() -- tissue_positions.csv
+      # can be millions of rows for Visium HD 2um bins, where read.delim()'s
+      # line-by-line parsing is a real bottleneck. data.table = FALSE keeps
+      # the return type a plain data.frame so the indexing/colnames<- logic
+      # below is unchanged.
+      raw <- data.table::fread(file.path(coord_path, hit_file),
+                               header = FALSE, sep = ",", data.table = FALSE)
+      # Drop a header row if spaceranger v2 wrote one (first column "barcode")
+      if (identical(as.character(raw[1, 1]), "barcode")) {
+        colnames(raw) <- as.character(unlist(raw[1, ]))
+        raw <- raw[-1, , drop = FALSE]
+        for (j in 2:6) raw[[j]] <- as.numeric(raw[[j]])
+      } else {
+        colnames(raw) <- c("barcode", "in_tissue", "array_row", "array_col",
+                           "pxl_row_in_fullres", "pxl_col_in_fullres")
+      }
     }
     if (!is.null(seurat.obj)) {
       raw <- raw[match(colnames(seurat.obj), raw$barcode), , drop = FALSE]
@@ -193,26 +213,22 @@ EdgeDetectionVisium <- function(seurat.obj    = NULL,
   }
 
   # ---- 4. Four iterations -------------------------------------------------
-  coords$Filter <- "Keep"
-
-  message("--- Edge detection iteration 1 of 4 ---")
-  flagged1 <- .one_pass(coords)
-  coords[flagged1, "Filter"] <- "Filter"
-
-  message("--- Edge detection iteration 2 of 4 ---")
-  coords$Filter2 <- coords$Filter
-  flagged2 <- .one_pass(coords[coords$Filter2 == "Keep", , drop = FALSE])
-  coords[flagged2, "Filter2"] <- "Filter"
-
-  message("--- Edge detection iteration 3 of 4 ---")
-  coords$Filter3 <- coords$Filter2
-  flagged3 <- .one_pass(coords[coords$Filter3 == "Keep", , drop = FALSE])
-  coords[flagged3, "Filter3"] <- "Filter"
-
-  message("--- Edge detection iteration 4 of 4 ---")
-  coords$Filter4 <- coords$Filter3
-  flagged4 <- .one_pass(coords[coords$Filter4 == "Keep", , drop = FALSE])
-  coords[flagged4, "Filter4"] <- "Filter"
+  # Each iteration starts from the survivors of the previous one and adds a
+  # column (Filter, Filter2, Filter3, Filter4) recording which pass first
+  # flagged each spot (or carries "Keep" forward if it survived). Iteration
+  # 1's column is "Filter" (no suffix); the rest are "Filter<n>" -- same
+  # naming this had when each iteration was hand-unrolled below.
+  n_iter <- 4L
+  prev_col <- NULL
+  for (iter in seq_len(n_iter)) {
+    col <- if (iter == 1L) "Filter" else paste0("Filter", iter)
+    message(sprintf("--- Edge detection iteration %d of %d ---", iter, n_iter))
+    coords[[col]] <- if (is.null(prev_col)) "Keep" else coords[[prev_col]]
+    active  <- coords[coords[[col]] == "Keep", , drop = FALSE]
+    flagged <- .one_pass(active)
+    coords[flagged, col] <- "Filter"
+    prev_col <- col
+  }
 
   coords
 }

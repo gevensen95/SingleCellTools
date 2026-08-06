@@ -129,6 +129,15 @@ lapply(brain_list, function(x) c(features = nrow(x), spots = ncol(x)))
 > `sample_col`/`condition_col` from a dataset with real biological replicates per
 > treatment arm.
 
+> **A note on memory for real (non-`SeuratData`) Visium runs.** This vignette
+> loads `stxBrain` via `SeuratData::LoadData()`, which is small enough that
+> memory is a non-issue. When you're instead reading your own samples from raw
+> Space Ranger output with `CreateVisiumObjects()`, pass `on_disk = TRUE` to
+> move each object's counts layer to an on-disk `BPCells` matrix once the
+> samples are built -- worthwhile for many-sample runs, and close to
+> essential for Visium HD at `hd_bin_size = "002um"` (500K+ bins/section). See
+> [`SingleCellTools_vignette_bpcells.md`](SingleCellTools_vignette_bpcells.md).
+
 Visualize the raw tissue sections to confirm the data loaded correctly (shown for
 `anterior1`; the same call works for any of the four):
 
@@ -1044,6 +1053,14 @@ matrix.
 **`check_gene_ids_across_objects()` before merging sections from different runs.**
 Mouse gene symbols are consistent across standard 10x Genomics pipelines, but if you
 ever mix CellRanger versions or genome builds, identifiers can drift.
+
+**Memory management for large spatial runs.** `image_backend = "deferred"` on
+`CreateVisiumObjects()` and `DropSpatialImage()`/`SpatialObjectInfo()` handle
+image/molecule memory (see the tour of these in
+[`SingleCellTools_vignette_bpcells.md`](SingleCellTools_vignette_bpcells.md) as
+well); `on_disk = TRUE` on `CreateVisiumObjects()`/`LoadXenium2()` handles the
+counts matrix itself via `BPCells`, which is the piece these image-focused
+tools don't touch.
 
 ```r
 check_gene_ids_across_objects(brain_list)

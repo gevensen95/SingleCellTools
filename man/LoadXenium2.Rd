@@ -9,7 +9,10 @@ LoadXenium2(
   sample_name,
   outs = c("matrix", "microns"),
   type = c("centroids", "segmentations"),
-  mols.qv.threshold = 20
+  mols.qv.threshold = 20,
+  microns_lazy = FALSE,
+  on_disk = FALSE,
+  bpcells_dir = NULL
 )
 }
 \arguments{
@@ -20,10 +23,16 @@ LoadXenium2(
 \item{outs}{Molecular outputs to read
 \itemize{
 \item "matrix": counts matrix
-\item "microns": molecule coordinates
+\item "microns": molecule coordinates -- reads transcripts.parquet via the
+\code{arrow} package (Suggests, not a hard dependency); errors with a
+clear message up front if \code{arrow} isn't installed and this is
+requested
 }}
 
-\item{type}{Cell spatial coordinate matrices to read
+\item{type}{Cell spatial coordinate matrices to read -- the resulting FOV
+only gets the boundary type(s) actually requested here (requesting just
+one no longer errors, previously the FOV build unconditionally required
+both regardless of this argument).
 \itemize{
 \item "centroids": cell centroids
 \item "segmentations": cell segmentations
@@ -31,6 +40,30 @@ LoadXenium2(
 
 \item{mols.qv.threshold}{Remvoe transcript molecules wiht a QV less than
 specified threshold (20 is recommended)}
+
+\item{microns_lazy}{Logical; if \code{FALSE} (default), \code{"microns"}
+reads the entire \code{transcripts.parquet} into memory before
+filtering by \code{mols.qv.threshold} -- unchanged from before. If
+\code{TRUE}, the read goes through \code{arrow::open_dataset()} with
+the QV filter and column selection pushed down to Arrow's query
+engine instead of materializing the full table first, and the
+unfiltered dataset connection is additionally attached at
+\code{obj@misc$molecules_lazy} so \code{\link{QueryXeniumMolecules}}
+can later pull a gene- or region-restricted subset without re-reading
+the file. For a whole-slide Xenium run (10^8+ transcript rows) this is
+the difference between one big in-memory read and only ever touching
+the rows you actually need.}
+
+\item{on_disk}{Logical; if \code{TRUE}, move the returned object's Xenium
+counts layer to an on-disk BPCells matrix via
+\code{\link{ConvertToBPCells}} as the very last step. Requires the
+\code{BPCells} package (Suggests, not a hard dependency -- checked up
+front so this fails fast rather than after the full read). Default
+\code{FALSE}.}
+
+\item{bpcells_dir}{Directory to write the on-disk matrix to when
+\code{on_disk = TRUE}. Default \code{file.path(getwd(), "bpcells",
+sample_name)}.}
 }
 \value{
 A list of filtered Seurat objects

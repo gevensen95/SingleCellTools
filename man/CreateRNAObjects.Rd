@@ -9,6 +9,8 @@ CreateRNAObjects(
   cells = 3,
   features = 200,
   mt_pattern = "^mt-",
+  rb_pattern = "^(Rp[sl]|RP[SL])",
+  hb_pattern = "^(Hb[^p]|HB[^P])",
   treatment = NULL,
   object_names = NULL,
   run_doublet_finder = TRUE,
@@ -16,7 +18,9 @@ CreateRNAObjects(
   doublet_vars_to_regress = "percent.mt",
   doublet_cluster_resolution = 0.1,
   filter_doublets = FALSE,
-  workers = 1
+  workers = 1,
+  on_disk = FALSE,
+  bpcells_dir = NULL
 )
 }
 \arguments{
@@ -27,7 +31,20 @@ barcodes.tsv or .h5 files.}
 
 \item{features}{Cells must have at least this many features}
 
-\item{mt_pattern}{Pattern for calculating percent mtDNA}
+\item{mt_pattern}{Pattern for calculating percent mtDNA. Default
+\code{"^mt-"} (mouse gene symbol convention, e.g. \code{"mt-Nd1"}); pass
+\code{"^MT-"} for human data.}
+
+\item{rb_pattern}{Pattern for calculating percent ribosomal-protein reads
+(\code{percent.rb}). Default \code{"^(Rp[sl]|RP[SL])"} matches both
+mouse (\code{"Rps"}/\code{"Rpl"}) and human (\code{"RPS"}/\code{"RPL"})
+gene symbol conventions.}
+
+\item{hb_pattern}{Pattern for calculating percent hemoglobin reads
+(\code{percent.hb}). Default \code{"^(Hb[^p]|HB[^P])"} matches mouse
+(\code{"Hba"}/\code{"Hbb"}) and human (\code{"HBA"}/\code{"HBB"})
+hemoglobin genes while excluding the unrelated \code{"Hbp1"}/\code{"HBP1"}
+gene, a well-known false positive for naive \code{"^Hb"} patterns.}
 
 \item{treatment}{Treatment metadata column (e.g., Age, chemical, etc.)}
 
@@ -59,6 +76,22 @@ messages); \code{workers > 1} spins up that many background R
 sessions via \code{future::plan(multisession)}, restored on exit.
 Note each worker holds its own copy of that sample's data, so peak
 memory scales with \code{workers}.}
+
+\item{on_disk}{Logical; if \code{TRUE}, move each returned object's RNA
+counts layer to an on-disk BPCells matrix via \code{\link{ConvertToBPCells}}
+as the very last step, after doublet calling/QC. Requires the
+\code{BPCells} package (Suggests, not a hard dependency -- checked up
+front so this fails fast rather than after building every object).
+Note this doesn't reduce peak memory \emph{during} construction (each
+object is still built and doublet-called fully in memory first, since
+DoubletFinder isn't written to expect a BPCells-backed matrix) -- it
+reduces the memory footprint of the \emph{returned} list, which for a
+many-sample GEO-scale run is the piece you'd otherwise be stuck
+holding for the rest of the session. Default \code{FALSE}.}
+
+\item{bpcells_dir}{Directory to write the on-disk matrices to when
+\code{on_disk = TRUE}. Default \code{file.path(getwd(), "bpcells")}
+(one subdirectory per sample underneath it).}
 }
 \value{
 A list of Seurat objects

@@ -107,6 +107,25 @@ v5 object:
 ifnb[["RNA"]] <- JoinLayers(ifnb[["RNA"]])
 ```
 
+> **A note on memory for real datasets.** At ~14K cells, `ifnb` comfortably fits
+> in memory and none of this matters here. For a real dataset large enough that
+> it doesn't -- hundreds of thousands of cells, many samples, or both --
+> `ConvertToBPCells()` moves any existing Seurat object's counts layer to an
+> on-disk `BPCells` matrix, in place, so the rest of a normal Seurat pipeline
+> keeps working against it unmodified. It works retroactively on any object
+> regardless of how it was built (this `ifnb` object included, just to show the
+> call):
+>
+> ```r
+> # Illustrative only -- ifnb is small enough that this isn't actually needed.
+> ifnb_on_disk <- ConvertToBPCells(ifnb, path = "bpcells_ifnb")
+> ```
+>
+> `CreateRNAObjects()` also has this built in via `on_disk = TRUE`, for when
+> you're reading from raw CellRanger output rather than a pre-packaged
+> `SeuratData` object. See
+> [`SingleCellTools_vignette_bpcells.md`](SingleCellTools_vignette_bpcells.md).
+
 ---
 
 ## 3. Split into a Sample List

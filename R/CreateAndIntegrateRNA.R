@@ -14,6 +14,18 @@
 #'  barcodes.tsv or .h5 files.
 #' @param cells Features must be expressed in at least this many cells
 #' @param features Cells must have at least this many features
+#' @param rb_pattern Pattern for calculating percent ribosomal-protein reads
+#'   (\code{percent.rb}), computed alongside \code{percent.mt} for reference
+#'   (informational only -- not used by this function's own filtering
+#'   logic, which only ever thresholds on \code{percent.mt}). Default
+#'   \code{"^(Rp[sl]|RP[SL])"} matches both mouse and human gene symbol
+#'   conventions.
+#' @param hb_pattern Pattern for calculating percent hemoglobin reads
+#'   (\code{percent.hb}), computed alongside \code{percent.mt} for reference
+#'   (informational only, like \code{rb_pattern} above). Default
+#'   \code{"^(Hb[^p]|HB[^P])"} excludes the unrelated \code{"Hbp1"}/
+#'   \code{"HBP1"} gene, a well-known false positive for naive
+#'   \code{"^Hb"} patterns.
 #' @param treatment Treatment metadata column (e.g., Age, chemical, etc.)
 #' @param use_quantile Use quantile filtering method for nFeature_RNA and
 #' percent.mt
@@ -45,9 +57,19 @@
 #' @param k_weight Number of neighbors to consider when weighting anchors
 #' @return An integrated Seurat object
 #' @param markers Find all markers
+#' @param workers Number of parallel workers to use (via \code{future.apply})
+#'   for reading/creating each sample's Seurat object -- fully independent
+#'   across samples. Default \code{1} runs sequentially exactly as before;
+#'   \code{workers > 1} spins up that many background R sessions via
+#'   \code{future::plan(multisession)}, restored on exit. Note each worker
+#'   holds its own copy of that sample's data, so peak memory scales with
+#'   \code{workers}.
 #' @export
 CreateAndIntegrateRNA <-
-  function(data_dirs, cells = 3, features = 200, treatment = NULL,
+  function(data_dirs, cells = 3, features = 200,
+           rb_pattern = '^(Rp[sl]|RP[SL])',
+           hb_pattern = '^(Hb[^p]|HB[^P])',
+           treatment = NULL,
            use_quantile = TRUE, quantile_value_min = 0.15,
            feature_min = NA, feature_max = NA,
            percent_mt_max = NA, interactive = FALSE,
@@ -61,7 +83,7 @@ CreateAndIntegrateRNA <-
            integration_normalization = 'SCT', integration_assay = 'SCT',
            integration_reduction = 'pca', new_reduction = 'harmony',
            k_anchor = NULL, k_weight = NULL,
-           markers = TRUE) {
+           markers = TRUE, workers = 1) {
     # Ensure thresholds are specified if not using quantiles
     if (!use_quantile) {
       if (!is.numeric(feature_min)) stop("Error: Did not specify threshold for feature_min")
@@ -75,11 +97,23 @@ CreateAndIntegrateRNA <-
       if (is.numeric(percent_mt_max)) stop("Error: Set quantile=TRUE and specificed hard cut off for percent.mt. Pick only one.")
     }
 
-    message(sprintf('--- Reading data and creating Seurat objects (%d directories) ---',
-                    length(data_dirs)))
-    # Use lapply to read the data and create Seurat objects
+    if (workers > 1) {
+      if (!requireNamespace("future.apply", quietly = TRUE)) {
+        stop("Package 'future.apply' is required for workers > 1. ",
+            "install.packages('future.apply')")
+      }
+      old_plan <- future::plan(future::multisession, workers = workers)
+      on.exit(future::plan(old_plan), add = TRUE)
+    }
 
-    seurat_objects <- lapply(data_dirs, function(dir) {
+    message(sprintf('--- Reading data and creating Seurat objects (%d directories)%s ---',
+                    length(data_dirs),
+                    if (workers > 1) sprintf(', %d parallel workers', workers) else ''))
+    # Reading + CreateSeuratObject is fully independent per directory, so
+    # this runs in parallel when workers > 1; otherwise a plain sequential
+    # lapply, unchanged from before.
+
+    .read_one <- function(dir) {
       if (rlang::is_empty(
         list.files(dir, 'barcodes.tsv.gz|features.tsv.gz|matrix.mtx.gz')) == FALSE) {
         # Read 10X data
@@ -129,16 +163,29 @@ CreateAndIntegrateRNA <-
                            project = dirname(dir))
       }
 
-    })
+    }
+
+    seurat_objects <- if (workers > 1) {
+      future.apply::future_lapply(data_dirs, .read_one, future.seed = TRUE)
+    } else {
+      lapply(data_dirs, .read_one)
+    }
     # Name the list elements with the base names of the directories
     if (is.null(object_names) == TRUE) {
       names(seurat_objects) <- basename(data_dirs)
     } else {names(seurat_objects) <- object_names}
 
-    message('--- Calculating percent mitochondrial reads ---')
-    # Add percent mitochondrial DNA to each Seurat object
+    message('--- Calculating percent mitochondrial / ribosomal / hemoglobin reads ---')
+    # Add percent mitochondrial DNA to each Seurat object. percent.rb/percent.hb
+    # are informational only here -- this function's own filtering logic below
+    # (interactive and non-interactive blocks) only ever thresholds on
+    # percent.mt, matching its existing behavior; they're computed so
+    # GenerateQCReport()/QCComparePlots()/CellSuiteSummary() (which already
+    # treat percent.rb/percent.hb as standard metrics) can report on them.
     seurat_objects <- lapply(seurat_objects, function(obj) {
       obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, pattern = "^mt-")
+      obj[["percent.rb"]] <- Seurat::PercentageFeatureSet(obj, pattern = rb_pattern)
+      obj[["percent.hb"]] <- Seurat::PercentageFeatureSet(obj, pattern = hb_pattern)
       return(obj)
     })
 

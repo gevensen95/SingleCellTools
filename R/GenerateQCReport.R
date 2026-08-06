@@ -28,7 +28,11 @@
 #'     \code{percent.mt} vs \code{nFeature_RNA}.
 #'   \item Top \code{top_n_genes} expressed genes per sample.
 #'   \item Suggested filtering cutoffs (median ± \code{mad_multiplier} * MAD)
-#'     and the cells that would survive each cutoff.
+#'     and the cells that would survive each cutoff. When
+#'     \code{complexity_score = TRUE} (default), a derived
+#'     \code{log10GenesPerUMI} "complexity" metric (see below) rides along
+#'     in this table, and in the violin/density sections above, alongside
+#'     every real \code{metadata_cols} metric.
 #'   \item Cell-cycle phase breakdown (if a \code{Phase} column exists).
 #'   \item Doublet calls (if \code{doublet_col} exists).
 #'   \item Edge-spot summary (if an \code{is_edge} column exists).
@@ -42,7 +46,12 @@
 #'   (resolved against the current working directory) or absolute.
 #' @param title Title for the report.
 #' @param metadata_cols Character vector of metadata columns to plot as
-#'   violin distributions and use for the cutoff table.
+#'   violin distributions and use for the cutoff table. Default includes
+#'   \code{percent.rb}/\code{percent.hb} (ribosomal / hemoglobin percentage)
+#'   alongside \code{percent.mt} -- silently skipped, like any other
+#'   requested column, on samples/objects that don't have them (e.g. older
+#'   objects built before \code{CreateRNAObjects()} started computing these,
+#'   or non-RNA assays).
 #' @param doublet_col Metadata column holding doublet calls. \code{NULL}
 #'   skips the doublet section.
 #' @param top_n_genes Number of top-expressed genes per sample to display.
@@ -63,6 +72,16 @@
 #' @param spatial_max_cols Maximum number of spatial-QC panels per row.
 #'   Default 3 — caps facet density to keep panels wide enough that the
 #'   FOV/sample names aren't truncated.
+#' @param complexity_score Logical; if TRUE (default), derive a
+#'   \code{log10GenesPerUMI} "complexity" (a.k.a. novelty) score per cell --
+#'   \code{log10(nFeature) / log10(nCount)}, using whichever nFeature*/
+#'   nCount* columns were already resolved for the QC scatter plots. Cells
+#'   with disproportionately few genes detected for their UMI count (low
+#'   complexity) are a classic signature of ambient-RNA-heavy empty
+#'   droplets or dying cells. This needs no extra metadata columns, so it's
+#'   computed purely from data already present. It's added as an extra
+#'   metric in the existing violin/density/cutoffs sections (not a separate
+#'   report section) -- set to FALSE to skip it.
 #' @return Invisibly, the absolute path of the rendered report.
 #' @export
 GenerateQCReport <- function(obj,
@@ -70,7 +89,9 @@ GenerateQCReport <- function(obj,
                              title            = "Single-cell QC report",
                              metadata_cols    = c("nFeature_RNA",
                                                   "nCount_RNA",
-                                                  "percent.mt"),
+                                                  "percent.mt",
+                                                  "percent.rb",
+                                                  "percent.hb"),
                              sample_col       = "orig.ident",
                              doublet_col      = "doublet_finder",
                              top_n_genes      = 20,
@@ -78,7 +99,8 @@ GenerateQCReport <- function(obj,
                              assay            = NULL,
                              log_skewed       = TRUE,
                              log_threshold    = 10,
-                             spatial_max_cols = 3) {
+                             spatial_max_cols = 3,
+                             complexity_score = TRUE) {
 
   if (!requireNamespace("rmarkdown", quietly = TRUE)) {
     stop("Package 'rmarkdown' is required. install.packages('rmarkdown')")
@@ -292,6 +314,56 @@ GenerateQCReport <- function(obj,
     }))
   }))
 
+  # ---- Optional: complexity / novelty score (log10 genes per log10 UMI) ---
+  # A cheap, well-known low-complexity-droplet indicator (ambient-RNA-heavy
+  # empty droplets / dying cells show disproportionately few genes detected
+  # for their UMI count) computed purely from the nFeature/nCount columns
+  # already resolved in scatter_df above -- no new metadata columns needed
+  # upstream. Appended into long_qc / cutoffs_df as an extra "metric" so it
+  # rides along in the existing violin, density, and cutoffs sections with
+  # no template changes; not run through the log-skew transform above since
+  # a ratio in (0, 1] has no heavy tail to correct for.
+  if (isTRUE(complexity_score) && !is.null(scatter_df)) {
+    ok <- is.finite(scatter_df$nFeature) & is.finite(scatter_df$nCount) &
+      scatter_df$nFeature > 0 & scatter_df$nCount > 1
+    if (any(ok)) {
+      comp_vals   <- log10(scatter_df$nFeature[ok]) / log10(scatter_df$nCount[ok])
+      comp_sample <- scatter_df$sample[ok]
+
+      complexity_long <- data.frame(
+        sample = comp_sample,
+        metric = "log10GenesPerUMI",
+        value  = comp_vals,
+        stringsAsFactors = FALSE
+      )
+      long_qc <- if (is.null(long_qc)) complexity_long else rbind(long_qc, complexity_long)
+
+      split_vals <- split(comp_vals, comp_sample)
+      complexity_cutoffs <- do.call(rbind, lapply(names(split_vals), function(nm) {
+        v   <- split_vals[[nm]]
+        med <- stats::median(v, na.rm = TRUE)
+        m   <- stats::mad(v, na.rm = TRUE)
+        lo  <- max(0, med - mad_multiplier * m)
+        hi  <- med + mad_multiplier * m
+        n_total <- length(v)
+        n_pass  <- sum(v >= lo & v <= hi, na.rm = TRUE)
+        data.frame(
+          sample      = nm,
+          metric      = "log10GenesPerUMI",
+          median      = round(med, 2),
+          mad         = round(m,   2),
+          suggest_lo  = round(lo,  2),
+          suggest_hi  = round(hi,  2),
+          n_total     = n_total,
+          n_pass      = n_pass,
+          pct_pass    = round(100 * n_pass / max(1, n_total), 1),
+          stringsAsFactors = FALSE
+        )
+      }))
+      cutoffs_df <- if (is.null(cutoffs_df)) complexity_cutoffs else rbind(cutoffs_df, complexity_cutoffs)
+    }
+  }
+
   # ---- Cell cycle (if Phase column exists in any sample) -----------------
   cc_df <- do.call(rbind, lapply(samples, function(s) {
     if (!"Phase" %in% colnames(s$md)) return(NULL)
@@ -416,6 +488,22 @@ GenerateQCReport <- function(obj,
     top_genes_fig_h <- 4
   }
 
+  # QC distribution (violin) and density-overlay panels facet by metric
+  # (one panel per metadata_cols entry, plus the complexity score when
+  # present) with ncol = 1, so panel count grows with the number of
+  # metrics requested -- previously fig.height was fixed (5in / 4in)
+  # regardless of that count, so the default 5 metadata_cols plus the
+  # auto-added complexity score (6 panels stacked in one column) each got
+  # well under 1in of height. Scale height by facet count instead, same
+  # approach as top_genes_fig_h/spatial_fig_h above/below; floored at the
+  # original fixed values so a report with only a couple of metrics is
+  # unaffected.
+  n_qc_metrics  <- if (!is.null(long_qc)) length(unique(long_qc$metric)) else 1
+  # Violin + boxplot needs a bit more room per panel than a density curve
+  # (boxplot outliers, per-sample x-axis category labels).
+  vln_fig_h     <- max(5, n_qc_metrics * 1.4 + 1.0)
+  density_fig_h <- max(4, n_qc_metrics * 1.1 + 0.8)
+
   # Spatial layout: cap columns per row and scale strip text so FOV names
   # don't get truncated when there are many panels. With more panels per
   # row, each strip is narrower, so we shrink the font.
@@ -504,7 +592,7 @@ GenerateQCReport <- function(obj,
     "",
     "## QC distributions",
     "",
-    "```{r vln, fig.height=5}",
+    sprintf("```{r vln, fig.height=%.1f}", vln_fig_h),
     "if (is.null(b$long_qc)) {",
     "  cat('No requested metadata columns were found in any object.')",
     "} else {",
@@ -521,7 +609,7 @@ GenerateQCReport <- function(obj,
     "",
     "## QC density overlay",
     "",
-    "```{r density, fig.height=4}",
+    sprintf("```{r density, fig.height=%.1f}", density_fig_h),
     "if (!is.null(b$long_qc)) {",
     "  ggplot2::ggplot(b$long_qc, ggplot2::aes(x = value, color = sample)) +",
     "    ggplot2::geom_density(linewidth = 0.6) +",

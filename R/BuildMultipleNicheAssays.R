@@ -79,26 +79,11 @@ BuildMultipleNicheAssays <- function(
     #   - Visium, current Seurat/SeuratData (VisiumV2 image class) and all
     #     FOV-based platforms (Xenium/CosMx): x, y (column 'cell' = barcodes)
     # `type` is kept for backward compatibility but coordinate columns are
-    # now auto-detected so this doesn't break when a Visium object returns
-    # the newer x/y layout (see also EdgeDetectionVisium(), which normalizes
-    # the same way).
-    coords_df <- as.data.frame(
-      Seurat::GetTissueCoordinates(object[[fov]], which = "centroids")
-    )
-    if (all(c("imagecol", "imagerow") %in% colnames(coords_df))) {
-      coord_cols <- c("imagecol", "imagerow")
-    } else if (all(c("x", "y") %in% colnames(coords_df))) {
-      coord_cols <- c("x", "y")
-    } else {
-      stop("Could not find coordinate columns in GetTissueCoordinates() ",
-           "output for FOV '", fov, "' (got: ",
-           paste(colnames(coords_df), collapse = ", "), ").")
-    }
-    if ("cell" %in% colnames(coords_df)) {
-      rownames(coords_df) <- coords_df[["cell"]]
-    }
-    coords <- as.matrix(coords_df[, coord_cols])
-    colnames(coords) <- c("x", "y")
+    # now auto-detected (via the shared .get_fov_coords() helper, also used
+    # by NeighborhoodEnrichment()/detect_fov_edges()/EdgeDetectionVisium())
+    # so this doesn't break when a Visium object returns the newer x/y
+    # layout.
+    coords <- .get_fov_coords(object, fov, which = "centroids")
 
     # Find neighbors using tissue coordinates
     neighbors <- Seurat::FindNeighbors(object = coords,
@@ -111,8 +96,12 @@ BuildMultipleNicheAssays <- function(
     object[[assay]] <- niche.assay
     SeuratObject::DefaultAssay(object) <- assay
 
-    # Scale the data in the niche assay
-    object <- Seurat::ScaleData(object)
+    # Scale the data in the niche assay only. ScaleData.Seurat already
+    # defaults to DefaultAssay(object) (set to the niche assay just above),
+    # so this wasn't actually re-scaling every assay -- but pinning
+    # assay/features explicitly makes that scoping robust to the DefaultAssay
+    # line above ever moving/changing, rather than relying on call order.
+    object <- Seurat::ScaleData(object, assay = assay, features = rownames(object[[assay]]))
 
     # Replace the object in the list with the modified object
     list.object[[i]] <- object

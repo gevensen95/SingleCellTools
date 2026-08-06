@@ -60,7 +60,11 @@ MarkerHeatmap <- function(obj,
   # Average expression per cluster
   avg <- Seurat::AverageExpression(obj, features = top_genes,
                                    assays = a, return.seurat = FALSE)[[a]]
-  avg <- as.matrix(avg)
+  # Guard rather than unconditional as.matrix(): AverageExpression() output
+  # here is already small (clusters x marker genes), so this isn't a real
+  # memory concern, but skip the coercion/copy when it's already a base
+  # matrix rather than always paying for one.
+  if (!is.matrix(avg)) avg <- as.matrix(avg)
 
   if (isTRUE(scale_rows)) {
     avg <- t(scale(t(avg)))
