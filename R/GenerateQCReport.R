@@ -488,6 +488,22 @@ GenerateQCReport <- function(obj,
     top_genes_fig_h <- 4
   }
 
+  # QC distribution (violin) and density-overlay panels facet by metric
+  # (one panel per metadata_cols entry, plus the complexity score when
+  # present) with ncol = 1, so panel count grows with the number of
+  # metrics requested -- previously fig.height was fixed (5in / 4in)
+  # regardless of that count, so the default 5 metadata_cols plus the
+  # auto-added complexity score (6 panels stacked in one column) each got
+  # well under 1in of height. Scale height by facet count instead, same
+  # approach as top_genes_fig_h/spatial_fig_h above/below; floored at the
+  # original fixed values so a report with only a couple of metrics is
+  # unaffected.
+  n_qc_metrics  <- if (!is.null(long_qc)) length(unique(long_qc$metric)) else 1
+  # Violin + boxplot needs a bit more room per panel than a density curve
+  # (boxplot outliers, per-sample x-axis category labels).
+  vln_fig_h     <- max(5, n_qc_metrics * 1.4 + 1.0)
+  density_fig_h <- max(4, n_qc_metrics * 1.1 + 0.8)
+
   # Spatial layout: cap columns per row and scale strip text so FOV names
   # don't get truncated when there are many panels. With more panels per
   # row, each strip is narrower, so we shrink the font.
@@ -576,7 +592,7 @@ GenerateQCReport <- function(obj,
     "",
     "## QC distributions",
     "",
-    "```{r vln, fig.height=5}",
+    sprintf("```{r vln, fig.height=%.1f}", vln_fig_h),
     "if (is.null(b$long_qc)) {",
     "  cat('No requested metadata columns were found in any object.')",
     "} else {",
@@ -593,7 +609,7 @@ GenerateQCReport <- function(obj,
     "",
     "## QC density overlay",
     "",
-    "```{r density, fig.height=4}",
+    sprintf("```{r density, fig.height=%.1f}", density_fig_h),
     "if (!is.null(b$long_qc)) {",
     "  ggplot2::ggplot(b$long_qc, ggplot2::aes(x = value, color = sample)) +",
     "    ggplot2::geom_density(linewidth = 0.6) +",
