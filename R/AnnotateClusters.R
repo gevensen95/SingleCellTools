@@ -40,13 +40,24 @@
 #' \strong{Visium / spatial data.} This function is a winner-takes-all
 #' classifier; Visium spots are 1-10 cells of mixed types, so per-spot
 #' labels lose minority populations by construction. Use a dedicated
-#' deconvolution tool (\code{RCTD}/\code{spacexr}, \code{cell2location},
-#' \code{CARD}, \code{SpotLight}) to estimate per-spot cell-type
-#' \emph{proportions} from a reference single-cell dataset. If you do use
-#' \code{AnnotateClusters} on Visium, disable \code{filter_nonspecific},
-#' bulk up marker sets to 30-50+ genes, lower \code{min_score} (or leave
-#' \code{NA}), and consider \code{return_scores = "cluster"} so you can
-#' inspect minority signal directly.
+#' deconvolution tool -- \code{\link{RunRCTD}} in this package (wraps
+#' \code{RCTD}/\code{spacexr}), or \code{cell2location} / \code{CARD} /
+#' \code{SpotLight} -- to estimate per-spot cell-type \emph{proportions}
+#' from a reference single-cell dataset; that's the recommended primary
+#' annotation strategy for Visium, not this function.
+#'
+#' If you do still want a cluster-level descriptive label on Visium (e.g.
+#' no suitable single-cell reference for RCTD, or alongside RCTD's
+#' proportions rather than instead of them), \code{visium_mode = TRUE}
+#' applies the fallback recipe this section used to just describe in
+#' prose: disables \code{filter_nonspecific} by default (like
+#' \code{tumor_mode}, only changes defaults -- explicit args still win)
+#' and warns with the same reminders (bulk up marker sets to 30-50+
+#' genes, consider \code{return_scores = "cluster"} to inspect minority
+#' signal directly, prefer \code{\link{RunRCTD}}). Applies regardless of
+#' \code{method} -- the mixed-spot caveat is equally true for
+#' \code{"singler"} -- but only \code{filter_nonspecific} actually changes,
+#' since marker mode is the only mode with that knob.
 #'
 #' \strong{Unknown / unassigned clusters.} Two thresholds:
 #' \itemize{
@@ -81,6 +92,11 @@
 #'   (\code{filter_nonspecific = FALSE}, \code{high_relative_to_max = 0.7})
 #'   and issues a warning that labels are approximate. Defaults only —
 #'   explicit args still win. Default FALSE.
+#' @param visium_mode Logical; if TRUE, applies the Visium fallback recipe
+#'   described above (\code{filter_nonspecific = FALSE} by default, marker
+#'   mode only) and warns pointing at \code{\link{RunRCTD}} as the
+#'   preferred alternative. Defaults only — explicit args still win.
+#'   Default FALSE.
 #' @param filter_nonspecific Logical; if TRUE drop marker genes that are
 #'   broadly expressed across many clusters before scoring. Default TRUE
 #'   (or FALSE if \code{tumor_mode = TRUE} and not set explicitly).
@@ -125,6 +141,7 @@ AnnotateClusters <- function(obj,
                              assay                    = NULL,
                              new_col                  = "predicted_cell_type",
                              tumor_mode               = FALSE,
+                             visium_mode              = FALSE,
                              filter_nonspecific       = TRUE,
                              nonspecific_max_fraction = 0.5,
                              high_relative_to_max     = 0.5,
@@ -166,6 +183,31 @@ AnnotateClusters <- function(obj,
     )
   }
 
+  # ---- Visium mode: apply the documented Visium fallback recipe ----------
+  # Same missing()-gated approach as tumor_mode above -- only changes
+  # defaults, and only filter_nonspecific actually has anything to change
+  # (marker mode only; SingleR mode has no equivalent knob). The warning
+  # applies regardless of method, since the underlying "spot is a mixture
+  # of cells" caveat is the same either way.
+  if (isTRUE(visium_mode)) {
+    if (method == "marker" && missing(filter_nonspecific)) {
+      filter_nonspecific <- FALSE
+    }
+    warning(
+      "visium_mode = TRUE: this is still a winner-takes-all classifier. ",
+      "A Visium spot is a mixture of 1-10 cells of possibly different ",
+      "types, so per-spot/per-cluster labels lose minority populations ",
+      "by construction -- RunRCTD() (spacexr) is the recommended primary ",
+      "annotation strategy for Visium and estimates per-spot cell-type ",
+      "proportions instead. If you're using this function anyway (e.g. ",
+      "no suitable single-cell reference for RCTD, or as a quick ",
+      "descriptive label alongside RCTD's proportions), consider bulking ",
+      "up marker sets to 30-50+ genes and return_scores = 'cluster' to ",
+      "inspect minority signal directly.",
+      call. = FALSE
+    )
+  }
+
   # ---- Resolve NULL thresholds to mode-specific defaults -----------------
   if (is.null(min_score)) {
     min_score <- if (method == "marker") 0.10 else 0.50
@@ -180,21 +222,9 @@ AnnotateClusters <- function(obj,
             "(pass NA to disable)")
   }
 
-  .assign_with_unassigned <- function(score_mat, candidate_labels) {
-    best_idx   <- apply(score_mat, 1, which.max)
-    best_score <- apply(score_mat, 1, max)
-    sorted_per_row <- apply(score_mat, 1, sort, decreasing = TRUE)
-    second_score <- if (ncol(score_mat) >= 2) sorted_per_row[2, ] else 0
-    margins <- best_score - second_score
-    labs <- candidate_labels[best_idx]
-    if (!is.na(min_score)) {
-      labs[best_score < min_score] <- unassigned_label
-    }
-    if (!is.na(min_margin)) {
-      labs[margins < min_margin] <- unassigned_label
-    }
-    setNames(labs, rownames(score_mat))
-  }
+  # NB: .assign_with_unassigned() itself is a top-level internal function
+  # (see bottom of file) rather than a closure here, so it's independently
+  # unit-testable with a synthetic score matrix.
 
   if (method == "marker") {
     if (!requireNamespace("UCell", quietly = TRUE)) {
@@ -202,6 +232,11 @@ AnnotateClusters <- function(obj,
     }
     if (is.null(markers) || !is.list(markers) || is.null(names(markers))) {
       stop("`markers` must be a named list (cell_type -> character vector of genes).")
+    }
+    not_char <- names(markers)[!vapply(markers, is.character, logical(1))]
+    if (length(not_char) > 0) {
+      stop("`markers` element(s) must be character vectors of gene names; ",
+           "not character: ", paste(not_char, collapse = ", "))
     }
 
     # ---- Prefilter: drop genes not in the assay ---------------------------
@@ -272,20 +307,28 @@ AnnotateClusters <- function(obj,
       all_marker_genes <- unique(unlist(markers))
       clusters_vec     <- as.character(obj@meta.data[[cluster_col]])
 
-      expr_df <- tryCatch(
-        Seurat::FetchData(obj, vars = all_marker_genes,
-                          layer = "data"),
-        error = function(e) NULL
-      )
+      # genes (rows) x cells (cols) sparse matrix, subset to just the marker
+      # genes -- kept sparse via GetAssayData()/Matrix::rowMeans() rather
+      # than FetchData(), which returns a dense cells x genes data.frame for
+      # the whole marker gene set (can be sizable: all cells x all marker
+      # genes, densified, just to average it right back down per cluster).
+      expr_mat <- tryCatch({
+        genes_present <- intersect(all_marker_genes, rownames(obj[[a]]))
+        Seurat::GetAssayData(obj, assay = a, layer = "data")[genes_present, , drop = FALSE]
+      }, error = function(e) NULL)
 
-      if (is.null(expr_df)) {
+      if (is.null(expr_mat)) {
         message("  filter_nonspecific: FetchData failed; skipping filter.")
       } else {
-        cluster_means <- t(sapply(
-          split(seq_along(clusters_vec), clusters_vec),
-          function(idx) colMeans(expr_df[idx, , drop = FALSE])
-        ))
-        rownames(cluster_means) <- levels(factor(clusters_vec))
+        cluster_ids <- levels(factor(clusters_vec))
+        # sapply over clusters -> genes (rows) x clusters (cols); transpose
+        # to match the clusters (rows) x genes (cols) orientation downstream
+        # code expects (same shape FetchData()+colMeans() produced before).
+        cluster_means <- t(sapply(cluster_ids, function(cl) {
+          idx <- which(clusters_vec == cl)
+          Matrix::rowMeans(expr_mat[, idx, drop = FALSE])
+        }))
+        rownames(cluster_means) <- cluster_ids
 
         n_clusters <- nrow(cluster_means)
         is_nonspecific <- vapply(colnames(cluster_means), function(g) {
@@ -350,14 +393,18 @@ AnnotateClusters <- function(obj,
     # entry per cluster, not per label) before t() ever sees it, producing
     # a 1-row matrix instead of one row per cluster -- rbind() of the
     # per-cluster vectors is robust to this regardless of column count.
+    # na.rm = TRUE so a few NA-scored cells (e.g. a signature fully
+    # undetected in those cells) don't wipe out an otherwise-informative
+    # mean for the rest of the cluster.
     avg_per_cluster <- do.call(rbind, lapply(
       split(seq_len(nrow(score_mat)), clusters),
-      function(idx) colMeans(score_mat[idx, , drop = FALSE])
+      function(idx) colMeans(score_mat[idx, , drop = FALSE], na.rm = TRUE)
     ))
     rownames(avg_per_cluster) <- levels(factor(clusters))
     colnames(avg_per_cluster) <- names(markers)
 
-    lookup <- .assign_with_unassigned(avg_per_cluster, names(markers))
+    lookup <- .assign_with_unassigned(avg_per_cluster, names(markers),
+                                      min_score, min_margin, unassigned_label)
     obj[[new_col]] <- unname(lookup[clusters])
 
     return(.maybe_return_scores(obj, avg_per_cluster, score_mat,
@@ -422,7 +469,8 @@ AnnotateClusters <- function(obj,
   rownames(vote_frac) <- levels(factor(clusters))
   colnames(vote_frac) <- uniq_labels
 
-  lookup <- .assign_with_unassigned(vote_frac, uniq_labels)
+  lookup <- .assign_with_unassigned(vote_frac, uniq_labels,
+                                    min_score, min_margin, unassigned_label)
   obj[[new_col]] <- unname(lookup[clusters])
 
   # For SingleR "cell" scores: prefer the full scores matrix from pred$scores
@@ -436,6 +484,48 @@ AnnotateClusters <- function(obj,
   }
 
   .maybe_return_scores(obj, vote_frac, cell_scores, return_scores)
+}
+
+
+# ============================================================================
+# Internal helper: pick the best-scoring label per row, applying the
+# min_score/min_margin "Unknown" thresholds. Shared by marker mode
+# (rows = clusters, avg UCell score per label) and SingleR mode
+# (rows = clusters, majority-vote fraction per label).
+# ============================================================================
+
+#' @keywords internal
+#' @noRd
+.assign_with_unassigned <- function(score_mat, candidate_labels,
+                                    min_score, min_margin, unassigned_label) {
+  # NA scores are treated as -Inf (never best/second-best) rather than
+  # left to propagate -- max()/sort() default to na.rm = FALSE, so a
+  # single NA cell-type score can otherwise turn into an NA cluster mean,
+  # then an NA best_score/margin for the whole cluster, silently bypassing
+  # the min_score/min_margin thresholds (and can make apply(..., sort,
+  # ...) fail to simplify into a matrix at all). Most plausible on sparse
+  # data -- e.g. Visium -- where a signature can go fully undetected
+  # across a subset of cells.
+  all_na <- apply(is.na(score_mat), 1, all)
+  sm <- score_mat
+  sm[is.na(sm)] <- -Inf
+  best_idx   <- apply(sm, 1, which.max)
+  best_score <- apply(sm, 1, max)
+  sorted_per_row <- apply(sm, 1, sort, decreasing = TRUE)
+  second_score <- if (ncol(sm) >= 2) sorted_per_row[2, ] else -Inf
+  margins <- best_score - second_score
+  labs <- candidate_labels[best_idx]
+  if (!is.na(min_score)) {
+    labs[best_score < min_score] <- unassigned_label
+  }
+  if (!is.na(min_margin)) {
+    labs[margins < min_margin] <- unassigned_label
+  }
+  # A cluster with literally no non-NA score for any label has zero
+  # signal to assign from -- always Unknown, regardless of whether
+  # min_score/min_margin are enabled (which default to disabled).
+  labs[all_na] <- unassigned_label
+  setNames(labs, rownames(score_mat))
 }
 
 

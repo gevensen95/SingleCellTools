@@ -14,6 +14,7 @@ AnnotateClusters(
   assay = NULL,
   new_col = "predicted_cell_type",
   tumor_mode = FALSE,
+  visium_mode = FALSE,
   filter_nonspecific = TRUE,
   nonspecific_max_fraction = 0.5,
   high_relative_to_max = 0.5,
@@ -50,6 +51,12 @@ Default \code{"seurat_clusters"}.}
 (\code{filter_nonspecific = FALSE}, \code{high_relative_to_max = 0.7})
 and issues a warning that labels are approximate. Defaults only —
 explicit args still win. Default FALSE.}
+
+\item{visium_mode}{Logical; if TRUE, applies the Visium fallback recipe
+described above (\code{filter_nonspecific = FALSE} by default, marker
+mode only) and warns pointing at \code{\link{RunRCTD}} as the
+preferred alternative. Defaults only — explicit args still win.
+Default FALSE.}
 
 \item{filter_nonspecific}{Logical; if TRUE drop marker genes that are
 broadly expressed across many clusters before scoring. Default TRUE
@@ -136,13 +143,24 @@ approximate.
 \strong{Visium / spatial data.} This function is a winner-takes-all
 classifier; Visium spots are 1-10 cells of mixed types, so per-spot
 labels lose minority populations by construction. Use a dedicated
-deconvolution tool (\code{RCTD}/\code{spacexr}, \code{cell2location},
-\code{CARD}, \code{SpotLight}) to estimate per-spot cell-type
-\emph{proportions} from a reference single-cell dataset. If you do use
-\code{AnnotateClusters} on Visium, disable \code{filter_nonspecific},
-bulk up marker sets to 30-50+ genes, lower \code{min_score} (or leave
-\code{NA}), and consider \code{return_scores = "cluster"} so you can
-inspect minority signal directly.
+deconvolution tool -- \code{\link{RunRCTD}} in this package (wraps
+\code{RCTD}/\code{spacexr}), or \code{cell2location} / \code{CARD} /
+\code{SpotLight} -- to estimate per-spot cell-type \emph{proportions}
+from a reference single-cell dataset; that's the recommended primary
+annotation strategy for Visium, not this function.
+
+If you do still want a cluster-level descriptive label on Visium (e.g.
+no suitable single-cell reference for RCTD, or alongside RCTD's
+proportions rather than instead of them), \code{visium_mode = TRUE}
+applies the fallback recipe this section used to just describe in
+prose: disables \code{filter_nonspecific} by default (like
+\code{tumor_mode}, only changes defaults -- explicit args still win)
+and warns with the same reminders (bulk up marker sets to 30-50+
+genes, consider \code{return_scores = "cluster"} to inspect minority
+signal directly, prefer \code{\link{RunRCTD}}). Applies regardless of
+\code{method} -- the mixed-spot caveat is equally true for
+\code{"singler"} -- but only \code{filter_nonspecific} actually changes,
+since marker mode is the only mode with that knob.
 
 \strong{Unknown / unassigned clusters.} Two thresholds:
 \itemize{
