@@ -53,6 +53,17 @@
 #'   \code{future::plan(multisession)}, restored on exit. Note each worker
 #'   holds its own copy of that sample's data, so peak memory scales with
 #'   \code{workers}.
+#' @param on_disk Logical; if \code{TRUE}, move each returned object's RNA
+#'   counts layer to an on-disk BPCells matrix via \code{\link{ConvertToBPCells}}
+#'   as the very last step. Requires the \code{BPCells} package (Suggests,
+#'   not a hard dependency -- checked up front so this fails fast rather
+#'   than after building every object). This is the single highest-value
+#'   spot for it in this package: a Visium HD sample at \code{hd_bin_size =
+#'   "002um"} can be 500K+ bins, and the counts matrix is the dominant cost
+#'   of holding a multi-sample HD list in memory. Default \code{FALSE}.
+#' @param bpcells_dir Directory to write the on-disk matrices to when
+#'   \code{on_disk = TRUE}. Default \code{file.path(getwd(), "bpcells")}
+#'   (one subdirectory per sample underneath it).
 #' @return A list of Seurat Spatial objects
 #' @export
 
@@ -63,7 +74,9 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
                                 hb_pattern = '^(Hb[^p]|HB[^P])',
                                 image_backend = c("eager", "deferred"),
                                 hd_bin_size = c("008um", "002um", "016um"),
-                                workers = 1) {
+                                workers = 1,
+                                on_disk = FALSE,
+                                bpcells_dir = NULL) {
   image_backend <- match.arg(image_backend)
   hd_bin_size <- match.arg(hd_bin_size)
   if (!file_type %in% c('h5', 'directory')) {
@@ -78,6 +91,12 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
     old_plan <- future::plan(future::multisession, workers = workers)
     on.exit(future::plan(old_plan), add = TRUE)
   }
+
+  if (isTRUE(on_disk) && !requireNamespace("BPCells", quietly = TRUE)) {
+    stop("Package 'BPCells' is required for on_disk = TRUE. Install with: ",
+         "remotes::install_github('bnprks/BPCells/r')")
+  }
+  if (is.null(bpcells_dir)) bpcells_dir <- file.path(getwd(), "bpcells")
 
   # A Visium HD sample nests everything (matrix, image, tissue positions)
   # under binned_outputs/square_<hd_bin_size>um/ instead of directly in the
@@ -213,6 +232,11 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
   mt.plot <- ggplot2::ggplot(meta, aes(orig.ident, percent.mt)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
   print(gene.plot + count.plot + mt.plot)
+
+  if (isTRUE(on_disk)) {
+    seurat_objects <- ConvertToBPCells(seurat_objects, assay = "RNA",
+                                       layers = "counts", path = bpcells_dir)
+  }
 
   return(seurat_objects)
 }

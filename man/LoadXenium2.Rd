@@ -10,7 +10,9 @@ LoadXenium2(
   outs = c("matrix", "microns"),
   type = c("centroids", "segmentations"),
   mols.qv.threshold = 20,
-  microns_lazy = FALSE
+  microns_lazy = FALSE,
+  on_disk = FALSE,
+  bpcells_dir = NULL
 )
 }
 \arguments{
@@ -51,6 +53,17 @@ can later pull a gene- or region-restricted subset without re-reading
 the file. For a whole-slide Xenium run (10^8+ transcript rows) this is
 the difference between one big in-memory read and only ever touching
 the rows you actually need.}
+
+\item{on_disk}{Logical; if \code{TRUE}, move the returned object's Xenium
+counts layer to an on-disk BPCells matrix via
+\code{\link{ConvertToBPCells}} as the very last step. Requires the
+\code{BPCells} package (Suggests, not a hard dependency -- checked up
+front so this fails fast rather than after the full read). Default
+\code{FALSE}.}
+
+\item{bpcells_dir}{Directory to write the on-disk matrix to when
+\code{on_disk = TRUE}. Default \code{file.path(getwd(), "bpcells",
+sample_name)}.}
 }
 \value{
 A list of filtered Seurat objects

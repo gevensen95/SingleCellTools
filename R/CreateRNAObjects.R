@@ -93,6 +93,20 @@
 #'   sessions via \code{future::plan(multisession)}, restored on exit.
 #'   Note each worker holds its own copy of that sample's data, so peak
 #'   memory scales with \code{workers}.
+#' @param on_disk Logical; if \code{TRUE}, move each returned object's RNA
+#'   counts layer to an on-disk BPCells matrix via \code{\link{ConvertToBPCells}}
+#'   as the very last step, after doublet calling/QC. Requires the
+#'   \code{BPCells} package (Suggests, not a hard dependency -- checked up
+#'   front so this fails fast rather than after building every object).
+#'   Note this doesn't reduce peak memory \emph{during} construction (each
+#'   object is still built and doublet-called fully in memory first, since
+#'   DoubletFinder isn't written to expect a BPCells-backed matrix) -- it
+#'   reduces the memory footprint of the \emph{returned} list, which for a
+#'   many-sample GEO-scale run is the piece you'd otherwise be stuck
+#'   holding for the rest of the session. Default \code{FALSE}.
+#' @param bpcells_dir Directory to write the on-disk matrices to when
+#'   \code{on_disk = TRUE}. Default \code{file.path(getwd(), "bpcells")}
+#'   (one subdirectory per sample underneath it).
 #' @return A list of Seurat objects
 #' @export
 
@@ -107,7 +121,9 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                              doublet_vars_to_regress = "percent.mt",
                              doublet_cluster_resolution = 0.1,
                              filter_doublets = FALSE,
-                             workers = 1) {
+                             workers = 1,
+                             on_disk = FALSE,
+                             bpcells_dir = NULL) {
   doublet_normalization <- match.arg(doublet_normalization)
 
   if (workers > 1) {
@@ -118,6 +134,12 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
     old_plan <- future::plan(future::multisession, workers = workers)
     on.exit(future::plan(old_plan), add = TRUE)
   }
+
+  if (isTRUE(on_disk) && !requireNamespace("BPCells", quietly = TRUE)) {
+    stop("Package 'BPCells' is required for on_disk = TRUE. Install with: ",
+         "remotes::install_github('bnprks/BPCells/r')")
+  }
+  if (is.null(bpcells_dir)) bpcells_dir <- file.path(getwd(), "bpcells")
 
   message(sprintf('--- Reading data and creating Seurat objects (%d directories)%s ---',
                   length(data_dirs),
@@ -307,6 +329,11 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
   }
 
   print(qc_plot)
+
+  if (isTRUE(on_disk)) {
+    seurat_objects <- ConvertToBPCells(seurat_objects, assay = "RNA",
+                                       layers = "counts", path = bpcells_dir)
+  }
 
   return(seurat_objects)
 }

@@ -14,7 +14,9 @@ CreateVisiumObjects(
   hb_pattern = "^(Hb[^p]|HB[^P])",
   image_backend = c("eager", "deferred"),
   hd_bin_size = c("008um", "002um", "016um"),
-  workers = 1
+  workers = 1,
+  on_disk = FALSE,
+  bpcells_dir = NULL
 )
 }
 \arguments{
@@ -77,6 +79,19 @@ sequentially exactly as before (with per-sample progress messages);
 \code{future::plan(multisession)}, restored on exit. Note each worker
 holds its own copy of that sample's data, so peak memory scales with
 \code{workers}.}
+
+\item{on_disk}{Logical; if \code{TRUE}, move each returned object's RNA
+counts layer to an on-disk BPCells matrix via \code{\link{ConvertToBPCells}}
+as the very last step. Requires the \code{BPCells} package (Suggests,
+not a hard dependency -- checked up front so this fails fast rather
+than after building every object). This is the single highest-value
+spot for it in this package: a Visium HD sample at \code{hd_bin_size =
+"002um"} can be 500K+ bins, and the counts matrix is the dominant cost
+of holding a multi-sample HD list in memory. Default \code{FALSE}.}
+
+\item{bpcells_dir}{Directory to write the on-disk matrices to when
+\code{on_disk = TRUE}. Default \code{file.path(getwd(), "bpcells")}
+(one subdirectory per sample underneath it).}
 }
 \value{
 A list of Seurat Spatial objects

@@ -98,6 +98,7 @@ Suggests:
     data.table,
     R.utils,
     png,
+    BPCells,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Config/roxygen2/version: 8.0.0
@@ -105,4 +106,5 @@ Config/testthat/edition: 3
 Remotes:
     dmcable/spacexr,
     prabhakarlab/Banksy,
-    satijalab/seurat-wrappers
+    satijalab/seurat-wrappers,
+    bnprks/BPCells/r

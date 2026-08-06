@@ -18,7 +18,9 @@ CreateRNAObjects(
   doublet_vars_to_regress = "percent.mt",
   doublet_cluster_resolution = 0.1,
   filter_doublets = FALSE,
-  workers = 1
+  workers = 1,
+  on_disk = FALSE,
+  bpcells_dir = NULL
 )
 }
 \arguments{
@@ -74,6 +76,22 @@ messages); \code{workers > 1} spins up that many background R
 sessions via \code{future::plan(multisession)}, restored on exit.
 Note each worker holds its own copy of that sample's data, so peak
 memory scales with \code{workers}.}
+
+\item{on_disk}{Logical; if \code{TRUE}, move each returned object's RNA
+counts layer to an on-disk BPCells matrix via \code{\link{ConvertToBPCells}}
+as the very last step, after doublet calling/QC. Requires the
+\code{BPCells} package (Suggests, not a hard dependency -- checked up
+front so this fails fast rather than after building every object).
+Note this doesn't reduce peak memory \emph{during} construction (each
+object is still built and doublet-called fully in memory first, since
+DoubletFinder isn't written to expect a BPCells-backed matrix) -- it
+reduces the memory footprint of the \emph{returned} list, which for a
+many-sample GEO-scale run is the piece you'd otherwise be stuck
+holding for the rest of the session. Default \code{FALSE}.}
+
+\item{bpcells_dir}{Directory to write the on-disk matrices to when
+\code{on_disk = TRUE}. Default \code{file.path(getwd(), "bpcells")}
+(one subdirectory per sample underneath it).}
 }
 \value{
 A list of Seurat objects

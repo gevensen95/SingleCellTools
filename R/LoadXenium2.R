@@ -31,6 +31,15 @@
 #'   the file. For a whole-slide Xenium run (10^8+ transcript rows) this is
 #'   the difference between one big in-memory read and only ever touching
 #'   the rows you actually need.
+#' @param on_disk Logical; if \code{TRUE}, move the returned object's Xenium
+#'   counts layer to an on-disk BPCells matrix via
+#'   \code{\link{ConvertToBPCells}} as the very last step. Requires the
+#'   \code{BPCells} package (Suggests, not a hard dependency -- checked up
+#'   front so this fails fast rather than after the full read). Default
+#'   \code{FALSE}.
+#' @param bpcells_dir Directory to write the on-disk matrix to when
+#'   \code{on_disk = TRUE}. Default \code{file.path(getwd(), "bpcells",
+#'   sample_name)}.
 #' @return A list of filtered Seurat objects
 #' @export
 
@@ -38,7 +47,9 @@ LoadXenium2 <- function(data_dir, sample_name,
                         outs = c("matrix", "microns"),
                         type = c("centroids", "segmentations"),
                         mols.qv.threshold = 20,
-                        microns_lazy = FALSE)
+                        microns_lazy = FALSE,
+                        on_disk = FALSE,
+                        bpcells_dir = NULL)
   {
   type <- match.arg(arg = type, choices = c("centroids", "segmentations"),
                     several.ok = TRUE)
@@ -47,6 +58,12 @@ LoadXenium2 <- function(data_dir, sample_name,
   outs <- c(outs, type)
   has_dt <- requireNamespace("data.table", quietly = TRUE) &&
     requireNamespace("R.utils", quietly = TRUE)
+
+  if (isTRUE(on_disk) && !requireNamespace("BPCells", quietly = TRUE)) {
+    stop("Package 'BPCells' is required for on_disk = TRUE. Install with: ",
+         "remotes::install_github('bnprks/BPCells/r')")
+  }
+  if (is.null(bpcells_dir)) bpcells_dir <- file.path(getwd(), "bpcells", sample_name)
 
   # `arrow` is Suggests, not a hard dependency -- only actually needed when
   # "microns" (transcripts.parquet) was requested. Fail fast with a clear
@@ -159,6 +176,11 @@ LoadXenium2 <- function(data_dir, sample_name,
   if (!is.null(molecules_lazy_ds)) {
     message('  Attaching lazy arrow dataset connection at `obj@misc$molecules_lazy`')
     xenium.obj@misc$molecules_lazy <- molecules_lazy_ds
+  }
+
+  if (isTRUE(on_disk)) {
+    xenium.obj <- ConvertToBPCells(xenium.obj, assay = "Xenium",
+                                   layers = "counts", path = bpcells_dir)
   }
 
   return(xenium.obj)
