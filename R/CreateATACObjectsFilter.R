@@ -35,6 +35,16 @@
 #' @param peakwidths_min Min peak width for finding combined peaks
 #' @param passed_filters_value Min value for filtering cells based on
 #' passed_filters column
+#' @param workers Number of parallel workers to use (via \code{future.apply})
+#'   for building each sample's Seurat object -- reading singlecell.csv,
+#'   the fragment file, computing the peak x cell FeatureMatrix, and the
+#'   ChromatinAssay QC metrics, all fully independent across samples once
+#'   the combined peak set is built. Default \code{1} runs sequentially
+#'   exactly as before (with per-sample progress messages); \code{workers >
+#'   1} spins up that many background R sessions via
+#'   \code{future::plan(multisession)}, restored on exit. Note each worker
+#'   holds its own copy of that sample's fragments/counts, so peak memory
+#'   scales with \code{workers}.
 #' @return A list of filtered Seurat objects
 #' @export
 CreateATACObjectsFilter <-
@@ -44,9 +54,18 @@ CreateATACObjectsFilter <-
            pct_reads_in_peaks_min = 40, blacklist_ratio_max = 0.025,
            nucleosome_signal_max = 4, TSS.enrichment_min = 2,
            peak_region_max = 3000, peakwidths_max = 10000,
-           peakwidths_min = 20, passed_filters_value = 500) {
+           peakwidths_min = 20, passed_filters_value = 500, workers = 1) {
 
     genome <- match.arg(genome)
+
+    if (workers > 1) {
+      if (!requireNamespace("future.apply", quietly = TRUE)) {
+        stop("Package 'future.apply' is required for workers > 1. ",
+            "install.packages('future.apply')")
+      }
+      old_plan <- future::plan(future::multisession, workers = workers)
+      on.exit(future::plan(old_plan), add = TRUE)
+    }
 
     if (filter == FALSE & interactive == TRUE) {
       stop("Error: Set filter=TRUE to use interactiver, otherwise set
@@ -82,8 +101,12 @@ CreateATACObjectsFilter <-
     # Use lapply to read the peak sets for each sample
     peak_data_list <- lapply(data_dirs, function(dir) {
       # Read peaks
-      peak_data <- read.table(file = paste(dir, '/outs/peaks.bed', sep = ''),
-                              col.names = c("chr", "start", "end"))
+      # data.table::fread() instead of read.table() -- peaks.bed can be a
+      # large genome-wide peak set; fread's parser is substantially faster
+      # for this than read.table()'s.
+      peak_data <- data.table::fread(file = paste(dir, '/outs/peaks.bed', sep = ''),
+                                     header = FALSE, col.names = c("chr", "start", "end"),
+                                     data.table = FALSE)
       # Make GRanges objects
       gr <- GenomicRanges::makeGRangesFromDataFrame(peak_data)
     })
@@ -114,15 +137,29 @@ CreateATACObjectsFilter <-
     seqlevels(annotations) <- paste0('chr', seqlevels(annotations))
     genome(annotations) <- genome
 
-    message('--- Building Seurat ATAC objects per sample ---')
-    # Create Seurat objects
-    seurat_objects <- lapply(seq_along(data_dirs), function(idx) {
+    message(sprintf('--- Building Seurat ATAC objects per sample%s ---',
+                    if (workers > 1) sprintf(' (%d parallel workers)', workers) else ''))
+    # Create Seurat objects. Fully independent per sample given the shared
+    # combined.peaks/annotations built above, so this parallelizes cleanly
+    # when workers > 1.
+    .build_one <- function(idx) {
       dir <- data_dirs[[idx]]
-      message(sprintf('  Building object %d of %d: %s',
-                      idx, length(data_dirs), basename(dir)))
+      if (workers == 1) {
+        message(sprintf('  Building object %d of %d: %s',
+                        idx, length(data_dirs), basename(dir)))
+      }
 
-      # Load metadata for each sample
-      md <- read.table(file = paste(dir, "/outs/singlecell.csv", sep = ''), sep = ",", header = TRUE, row.names = 1)[-1, ] # remove the first row
+      # Load metadata for each sample. data.table::fread() instead of
+      # read.table() -- singlecell.csv is one row per barcode (often
+      # hundreds of thousands for ATAC) and read.table() is slow at that
+      # size. fread() has no row.names arg (data.table has no rownames), so
+      # column 1 is moved to rownames manually to match read.table(row.names
+      # = 1)'s behavior.
+      md <- data.table::fread(file = paste(dir, "/outs/singlecell.csv", sep = ''),
+                              sep = ",", header = TRUE, data.table = FALSE)
+      rownames(md) <- md[[1]]
+      md[[1]] <- NULL
+      md <- md[-1, ] # remove the first row
       md <- md[md$passed_filters > passed_filters_value, ]
 
       # Create fragment objects
@@ -154,7 +191,13 @@ CreateATACObjectsFilter <-
         seurat.obj$peak_region_fragments
 
       return(seurat.obj)
-    })
+    }
+
+    seurat_objects <- if (workers > 1) {
+      future.apply::future_lapply(seq_along(data_dirs), .build_one, future.seed = TRUE)
+    } else {
+      lapply(seq_along(data_dirs), .build_one)
+    }
 
     names(seurat_objects) <- if (!is.null(object_names)) object_names else basename(data_dirs)
 

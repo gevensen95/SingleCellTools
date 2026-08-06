@@ -57,6 +57,13 @@
 #' @param k_weight Number of neighbors to consider when weighting anchors
 #' @return An integrated Seurat object
 #' @param markers Find all markers
+#' @param workers Number of parallel workers to use (via \code{future.apply})
+#'   for reading/creating each sample's Seurat object -- fully independent
+#'   across samples. Default \code{1} runs sequentially exactly as before;
+#'   \code{workers > 1} spins up that many background R sessions via
+#'   \code{future::plan(multisession)}, restored on exit. Note each worker
+#'   holds its own copy of that sample's data, so peak memory scales with
+#'   \code{workers}.
 #' @export
 CreateAndIntegrateRNA <-
   function(data_dirs, cells = 3, features = 200,
@@ -76,7 +83,7 @@ CreateAndIntegrateRNA <-
            integration_normalization = 'SCT', integration_assay = 'SCT',
            integration_reduction = 'pca', new_reduction = 'harmony',
            k_anchor = NULL, k_weight = NULL,
-           markers = TRUE) {
+           markers = TRUE, workers = 1) {
     # Ensure thresholds are specified if not using quantiles
     if (!use_quantile) {
       if (!is.numeric(feature_min)) stop("Error: Did not specify threshold for feature_min")
@@ -90,11 +97,23 @@ CreateAndIntegrateRNA <-
       if (is.numeric(percent_mt_max)) stop("Error: Set quantile=TRUE and specificed hard cut off for percent.mt. Pick only one.")
     }
 
-    message(sprintf('--- Reading data and creating Seurat objects (%d directories) ---',
-                    length(data_dirs)))
-    # Use lapply to read the data and create Seurat objects
+    if (workers > 1) {
+      if (!requireNamespace("future.apply", quietly = TRUE)) {
+        stop("Package 'future.apply' is required for workers > 1. ",
+            "install.packages('future.apply')")
+      }
+      old_plan <- future::plan(future::multisession, workers = workers)
+      on.exit(future::plan(old_plan), add = TRUE)
+    }
 
-    seurat_objects <- lapply(data_dirs, function(dir) {
+    message(sprintf('--- Reading data and creating Seurat objects (%d directories)%s ---',
+                    length(data_dirs),
+                    if (workers > 1) sprintf(', %d parallel workers', workers) else ''))
+    # Reading + CreateSeuratObject is fully independent per directory, so
+    # this runs in parallel when workers > 1; otherwise a plain sequential
+    # lapply, unchanged from before.
+
+    .read_one <- function(dir) {
       if (rlang::is_empty(
         list.files(dir, 'barcodes.tsv.gz|features.tsv.gz|matrix.mtx.gz')) == FALSE) {
         # Read 10X data
@@ -144,7 +163,13 @@ CreateAndIntegrateRNA <-
                            project = dirname(dir))
       }
 
-    })
+    }
+
+    seurat_objects <- if (workers > 1) {
+      future.apply::future_lapply(data_dirs, .read_one, future.seed = TRUE)
+    } else {
+      lapply(data_dirs, .read_one)
+    }
     # Name the list elements with the base names of the directories
     if (is.null(object_names) == TRUE) {
       names(seurat_objects) <- basename(data_dirs)

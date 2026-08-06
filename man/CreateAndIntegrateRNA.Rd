@@ -35,7 +35,8 @@ CreateAndIntegrateRNA(
   new_reduction = "harmony",
   k_anchor = NULL,
   k_weight = NULL,
-  markers = TRUE
+  markers = TRUE,
+  workers = 1
 )
 }
 \arguments{
@@ -115,6 +116,14 @@ for FindNeighbors and UMAP}
 \item{k_weight}{Number of neighbors to consider when weighting anchors}
 
 \item{markers}{Find all markers}
+
+\item{workers}{Number of parallel workers to use (via \code{future.apply})
+for reading/creating each sample's Seurat object -- fully independent
+across samples. Default \code{1} runs sequentially exactly as before;
+\code{workers > 1} spins up that many background R sessions via
+\code{future::plan(multisession)}, restored on exit. Note each worker
+holds its own copy of that sample's data, so peak memory scales with
+\code{workers}.}
 }
 \value{
 An integrated Seurat object

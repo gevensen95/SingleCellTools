@@ -96,8 +96,12 @@ BuildMultipleNicheAssays <- function(
     object[[assay]] <- niche.assay
     SeuratObject::DefaultAssay(object) <- assay
 
-    # Scale the data in the niche assay
-    object <- Seurat::ScaleData(object)
+    # Scale the data in the niche assay only. ScaleData.Seurat already
+    # defaults to DefaultAssay(object) (set to the niche assay just above),
+    # so this wasn't actually re-scaling every assay -- but pinning
+    # assay/features explicitly makes that scoping robust to the DefaultAssay
+    # line above ever moving/changing, rather than relying on call order.
+    object <- Seurat::ScaleData(object, assay = assay, features = rownames(object[[assay]]))
 
     # Replace the object in the list with the modified object
     list.object[[i]] <- object

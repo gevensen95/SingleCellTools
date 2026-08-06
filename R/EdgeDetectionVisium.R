@@ -152,8 +152,13 @@ EdgeDetectionVisium <- function(seurat.obj    = NULL,
       }
       raw <- as.data.frame(arrow::read_parquet(file.path(coord_path, hit_file)))
     } else {
-      raw <- read.delim(file.path(coord_path, hit_file),
-                        header = FALSE, sep = ",")
+      # data.table::fread() instead of read.delim() -- tissue_positions.csv
+      # can be millions of rows for Visium HD 2um bins, where read.delim()'s
+      # line-by-line parsing is a real bottleneck. data.table = FALSE keeps
+      # the return type a plain data.frame so the indexing/colnames<- logic
+      # below is unchanged.
+      raw <- data.table::fread(file.path(coord_path, hit_file),
+                               header = FALSE, sep = ",", data.table = FALSE)
       # Drop a header row if spaceranger v2 wrote one (first column "barcode")
       if (identical(as.character(raw[1, 1]), "barcode")) {
         colnames(raw) <- as.character(unlist(raw[1, ]))
