@@ -290,9 +290,15 @@ NicheCoExpress <- function(seurat_obj,
     )
   }
 
-  expr_all <- as.matrix(SeuratObject::LayerData(seurat_obj,
-                                                assay = assay,
-                                                layer = layer))
+  # Kept sparse here -- densifying the *whole* assay (every gene x every
+  # cell) up front would be a large, avoidable memory spike for a typical
+  # spatial object, most of which never gets a `as.matrix()` treatment
+  # from Seurat's own I/O. Background sampling below needs the full gene
+  # universe (abundance-matched "other genes" as a null background, not
+  # just the target pairs' genes), so genes can't be pre-filtered to
+  # `wanted` either -- only the per-(sample x niche) slice actually scored
+  # gets densified, right before it's used (see `sub` in the loop below).
+  expr_all <- SeuratObject::LayerData(seurat_obj, assay = assay, layer = layer)
   wanted  <- unique(c(pairs$geneA, pairs$geneB))
   missing <- setdiff(wanted, rownames(expr_all))
   if (length(missing)) {
@@ -351,7 +357,9 @@ NicheCoExpress <- function(seurat_obj,
       cond_sp <- names(cond_tab)[1]
       if (!cond_sp %in% cond_levels) next
 
-      sub <- expr_all[, cells, drop = FALSE]
+      # Densified here, per (sample x niche) slice, rather than once for the
+      # whole assay above -- see the comment at expr_all's construction.
+      sub <- as.matrix(expr_all[, cells, drop = FALSE])
       ct_sub <- if (use_ct) {
         setNames(as.character(md[cells, celltype_col]), cells)
       } else NULL
@@ -582,9 +590,7 @@ plotNicheCoExpress <- function(res,
   if (nrow(stats_df) == 0) stop("No rows to plot after filtering.")
 
   if (type == "heatmap") {
-    ord <- stats_df[!is.na(stats_df$p_adj), ]
-    pair_rank  <- tapply(ord$p_adj, ord$pair, min, na.rm = TRUE)
-    keep_pairs <- names(sort(pair_rank))[seq_len(min(top_n, length(pair_rank)))]
+    keep_pairs <- .top_pairs_by_padj(stats_df, top_n)
     if (!is.null(pairs)) keep_pairs <- intersect(pairs, unique(stats_df$pair))
     df <- stats_df[stats_df$pair %in% keep_pairs, ]
     df$label <- star(df$p_adj)
@@ -618,9 +624,7 @@ plotNicheCoExpress <- function(res,
     ps <- res$per_sample
     if (!is.null(niches)) ps <- ps[ps$niche %in% niches, ]
     if (is.null(pairs)) {
-      ord <- stats_df[!is.na(stats_df$p_adj), ]
-      pair_rank <- tapply(ord$p_adj, ord$pair, min, na.rm = TRUE)
-      pairs <- names(sort(pair_rank))[seq_len(min(top_n, length(pair_rank)))]
+      pairs <- .top_pairs_by_padj(stats_df, top_n)
     }
     df <- ps[ps$pair %in% pairs & !is.na(ps$coexpr), ]
     if (nrow(df) == 0) stop("No per-sample scores to plot after filtering.")
@@ -650,6 +654,20 @@ plotNicheCoExpress <- function(res,
 # ============================================================================
 # Internal helpers
 # ============================================================================
+
+#' Rank gene pairs by their smallest p_adj across niches, keep the top N
+#'
+#' Internal helper for \code{plotNicheCoExpress}. Not exported. Shared by
+#' both the "heatmap" branch (ranking which pairs to show as columns) and
+#' the "scores" branch (ranking which pairs to default to when \code{pairs}
+#' isn't supplied) -- previously duplicated inline in each.
+#' @keywords internal
+#' @noRd
+.top_pairs_by_padj <- function(stats_df, top_n) {
+  ord <- stats_df[!is.na(stats_df$p_adj), ]
+  pair_rank <- tapply(ord$p_adj, ord$pair, min, na.rm = TRUE)
+  names(sort(pair_rank))[seq_len(min(top_n, length(pair_rank)))]
+}
 
 #' Observed + background MOC for a set of target gene pairs in one subset
 #'
