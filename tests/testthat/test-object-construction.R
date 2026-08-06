@@ -311,6 +311,39 @@ test_that("CreateVisiumObjects errors on an unknown file_type", {
   )
 })
 
+test_that("CreateVisiumObjects rejects invalid image_backend values", {
+  # match.arg(image_backend) runs before file_type is ever branched on, so
+  # this doesn't need a real data_dirs either.
+  expect_error(
+    CreateVisiumObjects(data_dirs = "irrelevant", image_backend = "bogus"),
+    "should be one of"
+  )
+})
+
+# GetHiresVisiumImage() -- the on-demand hires-image accessor for objects
+# built with CreateVisiumObjects(..., image_backend = "deferred"). Both
+# checks below run before any image file is touched, so a plain synthetic
+# Seurat object suffices; the actual decode (png::readPNG()) needs a real
+# Visium directory and isn't covered here, matching this file's existing
+# precedent for anything past argument validation.
+test_that("GetHiresVisiumImage requires a Seurat object", {
+  expect_error(GetHiresVisiumImage("not a seurat"), "Seurat object")
+})
+
+test_that("GetHiresVisiumImage errors when obj wasn't built with image_backend = 'deferred'", {
+  obj <- .make_small_seurat()
+  expect_error(
+    GetHiresVisiumImage(obj),
+    "hires_image_path.*CreateVisiumObjects"
+  )
+})
+
+test_that("GetHiresVisiumImage errors when the stashed hires path no longer exists on disk", {
+  obj <- .make_small_seurat()
+  obj@misc$hires_image_path <- "/no/such/hires/image.png"
+  expect_error(GetHiresVisiumImage(obj), "no longer exists")
+})
+
 test_that("CreateAndIntegrateRNA requires explicit thresholds when use_quantile = FALSE", {
   expect_error(
     CreateAndIntegrateRNA(data_dirs = "irrelevant", use_quantile = FALSE),

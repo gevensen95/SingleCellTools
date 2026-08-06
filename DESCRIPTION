@@ -97,6 +97,7 @@ Suggests:
     arrow,
     data.table,
     R.utils,
+    png,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Config/roxygen2/version: 8.0.0

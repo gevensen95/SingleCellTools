@@ -10,14 +10,18 @@
 # judged not worth the added fixture complexity for this pass.
 #
 # CreateATACObjects(Filter), CreateVisiumObjects, LoadXenium2, MakeParseObj,
-# CreateAndIntegrateRNA, EdgeDetectionVisium, detect_fov_edges,
-# detect_tissue_holes, combine_fovs, SetImageBoundary, and
-# BuildMultipleNicheAssays are not covered either -- none of them have
-# custom input-validation logic worth unit-testing in isolation (most have
-# zero stop() calls; Signac/Seurat's own readers do the validating), and
-# real coverage would require actual CellRanger/Space Ranger/Xenium/ATAC
-# fragment-file directory structures that aren't practical to synthesize
-# correctly without real example data.
+# CreateAndIntegrateRNA, detect_fov_edges, detect_tissue_holes, combine_fovs,
+# SetImageBoundary, and BuildMultipleNicheAssays are not covered either --
+# none of them have custom input-validation logic worth unit-testing in
+# isolation (most have zero stop() calls; Signac/Seurat's own readers do the
+# validating), and real coverage would require actual CellRanger/Space
+# Ranger/Xenium/ATAC fragment-file directory structures that aren't
+# practical to synthesize correctly without real example data.
+#
+# EdgeDetectionVisium()'s coord_path fallback IS covered below for its
+# tissue_positions.parquet branch (Visium HD) -- a small synthetic parquet
+# file is cheap to build with arrow::write_parquet(), unlike the full
+# CellRanger/Space Ranger directory trees the functions above would need.
 
 test_that("get_all_coords collects tissue coordinates from every FOV into one data frame", {
   .skip_if_missing("Seurat", "SeuratObject")
@@ -228,4 +232,188 @@ test_that("RunBanksyWrapper restricts coordinate lookup to a single FOV via imag
 
   expect_true("BANKSY" %in% SeuratObject::Assays(out))
   expect_equal(ncol(out), length(fov1_cells))
+})
+
+
+# ============================================================================
+# EdgeDetectionVisium() -- tissue_positions.parquet support (Visium HD)
+# ============================================================================
+
+test_that("EdgeDetectionVisium reads Visium HD tissue_positions.parquet via coord_path", {
+  .skip_if_missing("arrow")
+  d <- tempfile("visium_hd_spatial_"); dir.create(d)
+  on.exit(unlink(d, recursive = TRUE))
+
+  # A small 4x4 grid of array coordinates -- Visium HD's tissue_positions.parquet
+  # ships these exact column names already, unlike the CSV branch which has to
+  # guess whether a header row is present.
+  grid <- expand.grid(array_row = 0:3, array_col = 0:3)
+  positions <- data.frame(
+    barcode             = paste0("bc", seq_len(nrow(grid))),
+    in_tissue           = 1L,
+    array_row           = grid$array_row,
+    array_col           = grid$array_col,
+    pxl_row_in_fullres  = grid$array_row * 100,
+    pxl_col_in_fullres  = grid$array_col * 100,
+    stringsAsFactors    = FALSE
+  )
+  arrow::write_parquet(positions, file.path(d, "tissue_positions.parquet"))
+
+  out <- EdgeDetectionVisium(coord_path = d, neighbors = 3)
+  expect_equal(nrow(out), nrow(positions))
+  expect_true(all(c("barcode", "Filter", "Filter2", "Filter3", "Filter4") %in% colnames(out)))
+  expect_true(all(out$Filter %in% c("Keep", "Filter")))
+})
+
+
+# ============================================================================
+# CreateVisiumObjects() -- Visium HD directory detection
+# ============================================================================
+
+test_that("CreateVisiumObjects rejects invalid hd_bin_size values", {
+  expect_error(
+    CreateVisiumObjects(data_dirs = "irrelevant", hd_bin_size = "bogus"),
+    "should be one of"
+  )
+})
+
+test_that("CreateVisiumObjects errors clearly when a detected Visium HD sample is missing the requested bin size", {
+  # A binned_outputs/ subdirectory is enough to trip HD detection -- the
+  # error should fire (listing what IS available) before any matrix/image
+  # file is ever touched, so this doesn't need real Space Ranger output.
+  d <- tempfile("visium_hd_"); dir.create(d)
+  dir.create(file.path(d, "binned_outputs", "square_002um"), recursive = TRUE)
+  on.exit(unlink(d, recursive = TRUE))
+
+  expect_error(
+    CreateVisiumObjects(data_dirs = d, hd_bin_size = "008um"),
+    "square_008um.*square_002um"
+  )
+})
+
+
+# ============================================================================
+# SpatialObjectInfo() / DropSpatialImage() -- image/FOV-slot management,
+# generalized to cover both pixel-backed (VisiumV1) and coordinate-only
+# (FOV -- Xenium/CosMx/MERFISH-style) images. Neither function's "does it
+# correctly read/rebuild a real Visium image" behavior is covered here
+# (needs a real spaceranger spatial/ directory, same precedent as the rest
+# of this file) -- what IS covered is everything that doesn't depend on a
+# real attached VisiumV1 image: argument validation, list vs. single-object
+# handling, the pixel-image branches on a plain synthetic Seurat object
+# (.make_small_seurat(), empty @images), and the FOV branches on the real
+# (synthetic) two-FOV object from helper-spatial.R (.make_spatial_obj()).
+# ============================================================================
+
+test_that("SpatialObjectInfo requires a Seurat object or list of them", {
+  expect_error(SpatialObjectInfo("not a seurat"), "Seurat object")
+  expect_error(SpatialObjectInfo(list("not a seurat")), "Seurat object")
+})
+
+test_that("SpatialObjectInfo reports a single NA row for an object with no images", {
+  obj <- .make_small_seurat()
+  out <- SpatialObjectInfo(obj)
+  expect_equal(nrow(out), 1L)
+  expect_true(is.na(out$image_name))
+  expect_true(is.na(out$deferred))
+})
+
+test_that("SpatialObjectInfo handles a list of objects, naming unnamed entries", {
+  objs <- list(.make_small_seurat(seed = 1), .make_small_seurat(seed = 2))
+  out <- SpatialObjectInfo(objs)
+  expect_equal(nrow(out), 2L)
+  expect_setequal(out$sample, c("sample1", "sample2"))
+
+  named <- setNames(objs, c("A", "B"))
+  out2 <- SpatialObjectInfo(named)
+  expect_setequal(out2$sample, c("A", "B"))
+})
+
+test_that("SpatialObjectInfo reports FOV images (Xenium/CosMx/MERFISH-style) as coordinate-only", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_spatial_obj(seed = 1, n_per_fov = 20)
+  out <- SpatialObjectInfo(obj)
+
+  expect_equal(nrow(out), 2L)
+  expect_setequal(out$image_name, c("fov1", "fov2"))
+  expect_true(all(out$class == "FOV"))
+  # Coordinate-only: no decoded pixel array, so width/height/size_mb/deferred
+  # are all NA -- this is what distinguishes an FOV row from a VisiumV1 row.
+  expect_true(all(is.na(out$width)))
+  expect_true(all(is.na(out$height)))
+  expect_true(all(is.na(out$deferred)))
+  # But cell count and boundary sets ARE resolvable for a coordinate-only image.
+  expect_equal(out$n_cells, c(20L, 20L))
+  expect_true(all(grepl("centroids", out$boundary_sets)))
+  # No molecules boundary on this fixture (centroids only).
+  expect_false(any(out$has_molecules))
+  expect_false(any(out$molecules_lazy))
+})
+
+test_that("DropSpatialImage requires a Seurat object or list of them", {
+  expect_error(DropSpatialImage("not a seurat"), "Seurat object")
+})
+
+test_that("DropSpatialImage(mode = 'remove') empties @images and preserves single-object shape", {
+  obj <- .make_small_seurat()
+  out <- DropSpatialImage(obj, mode = "remove")
+  expect_s4_class(out, "Seurat")
+  expect_equal(length(out@images), 0L)
+})
+
+test_that("DropSpatialImage(mode = 'remove') preserves list shape and names", {
+  objs <- setNames(list(.make_small_seurat(seed = 1), .make_small_seurat(seed = 2)),
+                   c("A", "B"))
+  out <- DropSpatialImage(objs, mode = "remove")
+  expect_true(is.list(out))
+  expect_setequal(names(out), c("A", "B"))
+})
+
+test_that("DropSpatialImage(mode = 'remove') empties @images for FOV-based objects too", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_spatial_obj(seed = 1, n_per_fov = 20)
+  out <- DropSpatialImage(obj, mode = "remove")
+  expect_equal(length(out@images), 0L)
+})
+
+test_that("DropSpatialImage(mode = 'downgrade') errors when visium_image_dir isn't stashed", {
+  obj <- .make_small_seurat()
+  expect_error(
+    DropSpatialImage(obj, mode = "downgrade"),
+    "visium_image_dir"
+  )
+})
+
+test_that("DropSpatialImage(mode = 'downgrade') is a no-op when already deferred", {
+  obj <- .make_small_seurat()
+  obj@misc$hires_image_path <- "/fake/hires.png"
+  expect_message(
+    out <- DropSpatialImage(obj, mode = "downgrade"),
+    "Already deferred"
+  )
+  expect_identical(out@misc$hires_image_path, "/fake/hires.png")
+})
+
+test_that("DropSpatialImage(mode = 'downgrade') is a no-op when no images are attached", {
+  obj <- .make_small_seurat()
+  obj@misc$visium_image_dir <- "/fake/dir"
+  expect_message(
+    DropSpatialImage(obj, mode = "downgrade"),
+    "No images attached"
+  )
+})
+
+test_that("DropSpatialImage(mode = 'downgrade') skips FOV images with a message instead of erroring", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_spatial_obj(seed = 1, n_per_fov = 20)
+  # No visium_image_dir stashed (this object was never built by
+  # CreateVisiumObjects()) -- downgrade must NOT demand one for a
+  # coordinate-only object, it should just explain why it can't downgrade
+  # FOV images and leave them alone.
+  expect_message(
+    out <- DropSpatialImage(obj, mode = "downgrade"),
+    "coordinate-only"
+  )
+  expect_equal(length(out@images), 2L)
+  expect_setequal(names(out@images), c("fov1", "fov2"))
 })

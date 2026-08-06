@@ -25,7 +25,7 @@ AnnotateRegions <- function(obj,
                             region_col       = "region",
                             unassigned_label = "unassigned") {
 
-  if (!inherits(obj, "Seurat")) stop("`obj` must be a Seurat object.")
+  .assert_seurat(obj)
   if (!is.list(polygons) || is.null(names(polygons))) {
     stop("`polygons` must be a NAMED list of polygon data frames.")
   }

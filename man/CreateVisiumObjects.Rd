@@ -11,7 +11,10 @@ CreateVisiumObjects(
   file_type = "h5",
   mt_pattern = "^mt-",
   rb_pattern = "^(Rp[sl]|RP[SL])",
-  hb_pattern = "^(Hb[^p]|HB[^P])"
+  hb_pattern = "^(Hb[^p]|HB[^P])",
+  image_backend = c("eager", "deferred"),
+  hd_bin_size = c("008um", "002um", "016um"),
+  workers = 1
 )
 }
 \arguments{
@@ -36,6 +39,44 @@ mouse and human gene symbol conventions.}
 contamination. Default \code{"^(Hb[^p]|HB[^P])"} excludes the unrelated
 \code{"Hbp1"}/\code{"HBP1"} gene, a well-known false positive for naive
 \code{"^Hb"} patterns.}
+
+\item{image_backend}{One of \code{"eager"} (default) or \code{"deferred"}.
+\code{"eager"} attaches \code{tissue_hires_image.png} to every sample,
+exactly as before (a hires PNG decodes to roughly 100MB in memory --
+fine for one sample, but a list of N samples means N times that before
+you've done anything with them). \code{"deferred"} instead attaches the
+much smaller \code{tissue_lowres_image.png} (~1MB decoded) to every
+sample -- coordinates, scale factors, and everything
+\code{\link{EdgeDetectionVisium}}/\code{\link{GenerateQCReport}} use are
+identical either way, since those only read spot coordinates, never
+pixels -- and stashes the hires image's path at
+\code{obj@misc$hires_image_path} so \code{\link{GetHiresVisiumImage}}
+can decode it later for just the sample(s) you actually need full
+detail on. Every sample (regardless of \code{image_backend}) also
+gets \code{obj@misc$visium_image_dir} stashed, which
+\code{\link{DropSpatialImage}} and \code{\link{SpatialObjectInfo}} use.}
+
+\item{hd_bin_size}{For Visium HD samples only (auto-detected per sample
+by the presence of a \code{binned_outputs/} subdirectory -- regular
+Visium samples are unaffected). One of \code{"008um"} (default -- 10x's
+commonly recommended bin size, roughly cell-scale), \code{"002um"}
+(finest resolution, largest data), or \code{"016um"} (coarsest,
+smallest). Selects \code{binned_outputs/square_<hd_bin_size>/} as the
+effective sample directory for everything (matrix, image, tissue
+positions). \code{binned_outputs.tar.gz}/\code{spatial.tar.gz} etc.
+must already be extracted -- this function doesn't extract archives
+itself, matching how it already expects regular Visium output
+pre-extracted.}
+
+\item{workers}{Number of parallel workers to use (via \code{future.apply})
+for building each sample -- reading the matrix, computing QC metrics,
+running \code{\link{EdgeDetectionVisium}}, and attaching the tissue
+image, all fully independent across samples. Default \code{1} runs
+sequentially exactly as before (with per-sample progress messages);
+\code{workers > 1} spins up that many background R sessions via
+\code{future::plan(multisession)}, restored on exit. Note each worker
+holds its own copy of that sample's data, so peak memory scales with
+\code{workers}.}
 }
 \value{
 A list of Seurat Spatial objects

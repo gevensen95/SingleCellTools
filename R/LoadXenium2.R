@@ -11,7 +11,10 @@
 #'    \code{arrow} package (Suggests, not a hard dependency); errors with a
 #'    clear message up front if \code{arrow} isn't installed and this is
 #'    requested
-#' @param type Cell spatial coordinate matrices to read
+#' @param type Cell spatial coordinate matrices to read -- the resulting FOV
+#'   only gets the boundary type(s) actually requested here (requesting just
+#'   one no longer errors, previously the FOV build unconditionally required
+#'   both regardless of this argument).
 #'  - "centroids": cell centroids
 #'  - "segmentations": cell segmentations
 #' @param mols.qv.threshold Remvoe transcript molecules wiht a QV less than
@@ -120,13 +123,27 @@ LoadXenium2 <- function(data_dir, sample_name,
     }, stop("Unknown Xenium input type: ", otype))
   }, USE.NAMES = TRUE)
 
-  message('--- Building FOV (centroids + segmentations + molecules) ---')
-  segmentations.data <- list(
-    centroids = CreateCentroids(data$centroids),
-    segmentation = CreateSegmentation(data$segmentations))
+  # Only build the boundary types actually requested via `type` -- `outs`
+  # (and therefore `data`) only has entries for those, so unconditionally
+  # building both here (as this used to) would pass NULL to
+  # CreateCentroids()/CreateSegmentation() whenever the caller requested
+  # just one of the two.
+  boundaries <- list()
+  fov_types  <- character(0)
+  if ("centroids" %in% type) {
+    boundaries$centroids <- CreateCentroids(data$centroids)
+    fov_types <- c(fov_types, "centroids")
+  }
+  if ("segmentations" %in% type) {
+    boundaries$segmentation <- CreateSegmentation(data$segmentations)
+    fov_types <- c(fov_types, "segmentation")
+  }
+  message(sprintf('--- Building FOV (%s%s) ---',
+                  paste(fov_types, collapse = " + "),
+                  if ("microns" %in% outs) " + molecules" else ""))
   coords <- CreateFOV(
-    coords = segmentations.data,
-    type = c("segmentation", "centroids"),
+    coords = boundaries,
+    type = fov_types,
     molecules = data$microns,
     assay = "Xenium")
 

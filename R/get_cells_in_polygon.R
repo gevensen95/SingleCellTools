@@ -13,9 +13,7 @@ get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
   if (!requireNamespace("sf", quietly = TRUE)) {
     stop("Package 'sf' is required. Please install it.")
   }
-  if (!inherits(seurat.obj, "Seurat")) {
-    stop("`seurat.obj` must be a Seurat object.")
-  }
+  .assert_seurat(seurat.obj, "seurat.obj")
   if (!all(c("x","y") %in% names(poly_df))) {
     stop("`poly_df` must be a data frame with columns named 'x' and 'y'.")
   }

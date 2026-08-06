@@ -27,9 +27,7 @@ QueryXeniumMolecules <- function(obj, genes = NULL, x_range = NULL,
                                  y_range = NULL, qv_threshold = 20) {
   qv <- feature_name <- x_location <- y_location <- NULL  # silence R CMD check NSE notes
 
-  if (!inherits(obj, "Seurat")) {
-    stop("`obj` must be a Seurat object.")
-  }
+  .assert_seurat(obj)
   if (!is.null(genes) && !is.character(genes)) {
     stop("`genes` must be a character vector, or NULL.")
   }

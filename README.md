@@ -136,7 +136,10 @@ MarkerPlot(merged, markers)
 | `CreateRNAObjectsFilter()` | Same as above but with **interactive** QC cutoff selection. |
 | `CreateAndIntegrateRNA()` | One-shot pipeline: read &rarr; QC &rarr; merge &rarr; integrate &rarr; cluster &rarr; UMAP. |
 | `MakeParseObj()` | Build Seurat objects from Parse Biosciences pipeline output (`DGE_filtered/`). |
-| `CreateVisiumObjects()` | Load multiple Visium samples into a list. |
+| `CreateVisiumObjects()` | Load multiple Visium samples into a list. `image_backend = "deferred"` attaches the small lowres image to every sample instead of the ~100MB hires PNG, for multi-sample lists. Also handles Visium HD samples (auto-detected via a `binned_outputs/` subdirectory; `hd_bin_size` picks 002um/008um/016um, default 008um) -- requires `binned_outputs.tar.gz`/`spatial.tar.gz` already extracted. |
+| `GetHiresVisiumImage()` | Decode the full-resolution image for a sample built with `image_backend = "deferred"`, on demand. |
+| `SpatialObjectInfo()` | Audit image/FOV class, resolution, cell count, and memory footprint across a Visium *or* Xenium/CosMx/MERFISH sample or list -- see where spatial memory is going, whichever platform built the object. |
+| `DropSpatialImage()` | Retroactively free image/molecule memory on already-built spatial object(s): `mode = "remove"` drops `@images` entirely (any platform), `mode = "downgrade"` swaps pixel-backed (Visium) images to lowres (like `image_backend = "deferred"` after the fact) -- coordinate-only (FOV) images have no lowres equivalent and are left in place with a message. |
 | `LoadXenium2()` | Streamlined Xenium loader. `microns_lazy = TRUE` reads `transcripts.parquet` via `arrow`'s query engine instead of loading the full table, for whole-slide runs. |
 | `QueryXeniumMolecules()` | Windowed / gene-subset transcript query against an object loaded with `LoadXenium2(..., microns_lazy = TRUE)`, without re-reading `transcripts.parquet`. |
 | `CreateATACObjects()` / `CreateATACObjectsFilter()` | scATAC-seq object construction (latter with interactive cutoff selection). |

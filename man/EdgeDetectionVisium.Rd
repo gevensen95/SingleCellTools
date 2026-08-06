@@ -20,7 +20,8 @@ pulled with \code{GetTissueCoordinates} and barcode order is matched
 to \code{colnames(seurat.obj)}.}
 
 \item{coord_path}{Optional path to a spaceranger \code{spatial/}
-directory containing \code{tissue_positions(_list).csv}. Used only
+directory containing \code{tissue_positions(_list).csv} (regular
+Visium) or \code{tissue_positions.parquet} (Visium HD). Used only
 when \code{seurat.obj} is \code{NULL} or coordinate extraction from
 it fails.}
 
@@ -64,7 +65,9 @@ four).
 Seurat v4/v5 and avoids depending on the spaceranger output directory
 being present. If \code{seurat.obj} is \code{NULL} or no coordinates can
 be extracted from it, it falls back to reading
-\code{tissue_positions(_list).csv} from \code{coord_path}.
+\code{tissue_positions(_list).csv} from \code{coord_path} -- or, for
+Visium HD, \code{tissue_positions.parquet} (detected by file extension;
+requires the \code{arrow} package, Suggests not a hard dependency).
 
 \strong{Radius cutoff.} The original implementation hard-coded
 \code{radius = 2}, which is correct for Visium \code{array_row} /

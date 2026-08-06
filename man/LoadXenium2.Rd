@@ -27,7 +27,10 @@ clear message up front if \code{arrow} isn't installed and this is
 requested
 }}
 
-\item{type}{Cell spatial coordinate matrices to read
+\item{type}{Cell spatial coordinate matrices to read -- the resulting FOV
+only gets the boundary type(s) actually requested here (requesting just
+one no longer errors, previously the FOV build unconditionally required
+both regardless of this argument).
 \itemize{
 \item "centroids": cell centroids
 \item "segmentations": cell segmentations

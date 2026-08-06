@@ -63,7 +63,7 @@ detect_fov_edges <- function(obj,
                              label_col      = "edge_layer") {
 
   method <- match.arg(method)
-  if (!inherits(obj, "Seurat")) stop("`obj` must be a Seurat object.")
+  .assert_seurat(obj)
   if (is.null(fovs)) fovs <- names(obj@images)
   if (!length(fovs)) stop("No FOVs in obj@images.")
   missing_fovs <- setdiff(fovs, names(obj@images))
@@ -75,15 +75,8 @@ detect_fov_edges <- function(obj,
   all_layers <- setNames(integer(ncol(obj)), colnames(obj))
 
   for (fov in fovs) {
-    coords <- Seurat::GetTissueCoordinates(obj[[fov]], which = "centroids")
-    if ("cell" %in% colnames(coords)) {
-      rownames(coords) <- coords$cell
-      cells_in_fov <- intersect(coords$cell, colnames(obj))
-      coords_mat   <- as.matrix(coords[cells_in_fov, c("x", "y")])
-    } else {
-      cells_in_fov <- intersect(rownames(coords), colnames(obj))
-      coords_mat   <- as.matrix(coords[cells_in_fov, c("x", "y")])
-    }
+    coords_mat   <- .get_fov_coords(obj, fov, cells = colnames(obj))
+    cells_in_fov <- rownames(coords_mat)
     if (length(cells_in_fov) < max(k + 1, 4)) {
       message(sprintf("  '%s': only %d cells, skipping",
                       fov, length(cells_in_fov)))
