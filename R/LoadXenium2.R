@@ -16,13 +16,26 @@
 #'  - "segmentations": cell segmentations
 #' @param mols.qv.threshold Remvoe transcript molecules wiht a QV less than
 #' specified threshold (20 is recommended)
+#' @param microns_lazy Logical; if \code{FALSE} (default), \code{"microns"}
+#'   reads the entire \code{transcripts.parquet} into memory before
+#'   filtering by \code{mols.qv.threshold} -- unchanged from before. If
+#'   \code{TRUE}, the read goes through \code{arrow::open_dataset()} with
+#'   the QV filter and column selection pushed down to Arrow's query
+#'   engine instead of materializing the full table first, and the
+#'   unfiltered dataset connection is additionally attached at
+#'   \code{obj@misc$molecules_lazy} so \code{\link{QueryXeniumMolecules}}
+#'   can later pull a gene- or region-restricted subset without re-reading
+#'   the file. For a whole-slide Xenium run (10^8+ transcript rows) this is
+#'   the difference between one big in-memory read and only ever touching
+#'   the rows you actually need.
 #' @return A list of filtered Seurat objects
 #' @export
 
 LoadXenium2 <- function(data_dir, sample_name,
                         outs = c("matrix", "microns"),
                         type = c("centroids", "segmentations"),
-                        mols.qv.threshold = 20)
+                        mols.qv.threshold = 20,
+                        microns_lazy = FALSE)
   {
   type <- match.arg(arg = type, choices = c("centroids", "segmentations"),
                     several.ok = TRUE)
@@ -43,6 +56,11 @@ LoadXenium2 <- function(data_dir, sample_name,
 
   message(sprintf('--- Loading Xenium sample "%s" from %s ---', sample_name, data_dir))
   message(sprintf('  Outputs requested: %s', paste(outs, collapse = ', ')))
+
+  # Populated by the "microns" branch below when microns_lazy = TRUE, so it
+  # can be attached to the returned Seurat object after construction. Left
+  # NULL otherwise (eager mode, or "microns" not requested at all).
+  molecules_lazy_ds <- NULL
 
   data <- sapply(outs, function(otype) {
     switch(EXPR = otype, matrix = {
@@ -74,13 +92,30 @@ LoadXenium2 <- function(data_dir, sample_name,
       names(cell_boundaries_df) <- c("cell", "x", "y")
       cell_boundaries_df
     }, microns = {
-      message(sprintf('  Reading transcripts (transcripts.parquet, qv >= %g)',
-                      mols.qv.threshold))
-      transcripts <- arrow::read_parquet(file.path(data_dir, "transcripts.parquet"))
-      transcripts <- subset(transcripts, qv >= mols.qv.threshold)
+      parquet_path <- file.path(data_dir, "transcripts.parquet")
+      if (isTRUE(microns_lazy)) {
+        message(sprintf(
+          '  Reading transcripts (transcripts.parquet, qv >= %g) -- lazy via arrow::open_dataset()',
+          mols.qv.threshold))
+        # Query pushdown: the filter/select happen in Arrow's engine, so only
+        # the matching rows/columns are ever materialized into R. The
+        # unfiltered dataset itself is kept (via the <<- below) for later
+        # windowed/gene-subset queries -- see QueryXeniumMolecules().
+        ds <- arrow::open_dataset(parquet_path, format = "parquet")
+        molecules_lazy_ds <<- ds
+        filtered <- dplyr::filter(ds, qv >= mols.qv.threshold)
+        filtered <- dplyr::select(filtered, x = x_location, y = y_location,
+                                  gene = feature_name)
+        df <- as.data.frame(dplyr::collect(filtered))
+      } else {
+        message(sprintf('  Reading transcripts (transcripts.parquet, qv >= %g)',
+                        mols.qv.threshold))
+        transcripts <- arrow::read_parquet(parquet_path)
+        transcripts <- subset(transcripts, qv >= mols.qv.threshold)
 
-      df <- data.frame(x = transcripts$x_location, y = transcripts$y_location,
-                       gene = transcripts$feature_name, stringsAsFactors = FALSE)
+        df <- data.frame(x = transcripts$x_location, y = transcripts$y_location,
+                         gene = transcripts$feature_name, stringsAsFactors = FALSE)
+      }
       df
     }, stop("Unknown Xenium input type: ", otype))
   }, USE.NAMES = TRUE)
@@ -103,6 +138,11 @@ LoadXenium2 <- function(data_dir, sample_name,
   xenium.obj[["ControlCodeword"]] <- CreateAssayObject(counts = data$matrix[["Negative Control Codeword"]])
   xenium.obj[["ControlProbe"]] <- CreateAssayObject(counts = data$matrix[["Negative Control Probe"]])
   xenium.obj[["fov"]] <- coords
+
+  if (!is.null(molecules_lazy_ds)) {
+    message('  Attaching lazy arrow dataset connection at `obj@misc$molecules_lazy`')
+    xenium.obj@misc$molecules_lazy <- molecules_lazy_ds
+  }
 
   return(xenium.obj)
 }

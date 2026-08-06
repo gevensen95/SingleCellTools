@@ -336,3 +336,32 @@ test_that("LoadXenium2 rejects invalid `outs`/`type` values via match.arg", {
     "should be one of"
   )
 })
+
+# QueryXeniumMolecules() -- the windowed/gene-subset accessor for objects
+# built with LoadXenium2(..., microns_lazy = TRUE). All of the argument-shape
+# checks below run before `obj@misc$molecules_lazy` is ever touched, so a
+# plain synthetic Seurat object (no real Xenium data, no `arrow`) suffices.
+# The lazy-query behavior itself (actually filtering an arrow Dataset) would
+# need a real transcripts.parquet fixture and isn't covered here, matching
+# this file's existing precedent for anything past argument validation.
+test_that("QueryXeniumMolecules requires a Seurat object", {
+  expect_error(QueryXeniumMolecules("not a seurat"), "Seurat object")
+})
+
+test_that("QueryXeniumMolecules validates genes/x_range/y_range/qv_threshold", {
+  obj <- .make_small_seurat()
+  expect_error(QueryXeniumMolecules(obj, genes = 1:3), "character vector")
+  expect_error(QueryXeniumMolecules(obj, x_range = 1), "length 2")
+  expect_error(QueryXeniumMolecules(obj, x_range = c("a", "b")), "length 2")
+  expect_error(QueryXeniumMolecules(obj, y_range = c(1, 2, 3)), "length 2")
+  expect_error(QueryXeniumMolecules(obj, qv_threshold = c(1, 2)), "single number")
+  expect_error(QueryXeniumMolecules(obj, qv_threshold = "20"), "single number")
+})
+
+test_that("QueryXeniumMolecules errors when obj wasn't built with microns_lazy = TRUE", {
+  obj <- .make_small_seurat()
+  expect_error(
+    QueryXeniumMolecules(obj),
+    "molecules_lazy.*LoadXenium2"
+  )
+})

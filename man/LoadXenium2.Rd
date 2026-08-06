@@ -9,7 +9,8 @@ LoadXenium2(
   sample_name,
   outs = c("matrix", "microns"),
   type = c("centroids", "segmentations"),
-  mols.qv.threshold = 20
+  mols.qv.threshold = 20,
+  microns_lazy = FALSE
 )
 }
 \arguments{
@@ -34,6 +35,19 @@ requested
 
 \item{mols.qv.threshold}{Remvoe transcript molecules wiht a QV less than
 specified threshold (20 is recommended)}
+
+\item{microns_lazy}{Logical; if \code{FALSE} (default), \code{"microns"}
+reads the entire \code{transcripts.parquet} into memory before
+filtering by \code{mols.qv.threshold} -- unchanged from before. If
+\code{TRUE}, the read goes through \code{arrow::open_dataset()} with
+the QV filter and column selection pushed down to Arrow's query
+engine instead of materializing the full table first, and the
+unfiltered dataset connection is additionally attached at
+\code{obj@misc$molecules_lazy} so \code{\link{QueryXeniumMolecules}}
+can later pull a gene- or region-restricted subset without re-reading
+the file. For a whole-slide Xenium run (10^8+ transcript rows) this is
+the difference between one big in-memory read and only ever touching
+the rows you actually need.}
 }
 \value{
 A list of filtered Seurat objects

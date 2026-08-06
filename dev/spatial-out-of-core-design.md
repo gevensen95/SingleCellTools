@@ -1,6 +1,7 @@
 # Out-of-core spatial data for SingleCellTools — design doc
 
-Status: draft, not yet implemented. Nothing in this doc has been coded.
+Status: Phase 0 and Phase 1 implemented (see section 7). Phase 2/3 (images)
+still design-only.
 
 ## 1. Problem
 
@@ -191,17 +192,30 @@ skipped silently.
 
 ## 7. Phasing
 
-1. **Phase 0 (small, standalone, no new deps):** fix the undeclared
-   `arrow`/`data.table`/`R.utils` dependency bug in `DESCRIPTION`. Useful
-   regardless of whether the rest of this proceeds.
-2. **Phase 1 (molecule tables):** `LoadXenium2()`'s `microns_lazy` option,
-   since it fixes a live problem in already-shipped code and needs no new
-   heavy system dependency (arrow's already in use).
-3. **Phase 2 (images):** `LazyVisiumImage` class + `image_backend` option
-   in `CreateVisiumObjects()`. Needs the terra spike (section 3's open
-   question) resolved first.
-4. **Phase 3:** extend the same `SpatialImage` subclass approach to Xenium
-   morphology images, if Phase 2's design holds up in practice.
+1. **Phase 0 (small, standalone, no new deps) — DONE.** `arrow`,
+   `data.table`, `R.utils` declared in `DESCRIPTION` `Suggests`;
+   `LoadXenium2()`'s `microns` branch now fails fast with a clear message
+   if `arrow` isn't installed instead of an unconditional
+   `arrow::read_parquet()` call.
+2. **Phase 1 (molecule tables) — DONE.** `LoadXenium2(..., microns_lazy =
+   TRUE)` now reads `transcripts.parquet` via `arrow::open_dataset()` with
+   the QV filter/column selection pushed down to Arrow's query engine
+   instead of materializing the full table, and attaches the unfiltered
+   dataset connection at `obj@misc$molecules_lazy`. New
+   `QueryXeniumMolecules(obj, genes=, x_range=, y_range=, qv_threshold=)`
+   accessor queries that connection for a gene/region/QV subset without
+   re-reading the file. `microns_lazy` defaults to `FALSE` — existing
+   behavior is unchanged unless opted into. Argument-validation tests
+   added; the actual lazy-read behavior against a real
+   `transcripts.parquet` is untested here (needs real Xenium data),
+   matching this file's existing precedent.
+3. **Phase 2 (images) — not started.** `LazyVisiumImage` class +
+   `image_backend` option in `CreateVisiumObjects()`. Needs the terra
+   spike (section 3's open question) resolved first. `terra` confirmed as
+   a `Suggests` (guarded) dependency, not `Imports`.
+4. **Phase 3 — not started.** Extend the same `SpatialImage` subclass
+   approach to Xenium morphology images, if Phase 2's design holds up in
+   practice.
 
 ## 8. Explicitly out of scope for now
 
