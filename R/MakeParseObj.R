@@ -82,12 +82,14 @@
 #' @param workers Number of parallel workers to use (via
 #'   \code{future.apply}) for reading/creating each sample's Seurat object
 #'   and for the per-sample \code{calldoublet} calls -- the two most
-#'   expensive steps, and both fully independent across samples. Default
-#'   \code{1} runs sequentially exactly as before (with per-sample progress
-#'   messages); \code{workers > 1} spins up that many background R sessions
-#'   via \code{future::plan(multisession)}, restored on exit. Note each
-#'   worker holds its own copy of that sample's data, so peak memory scales
-#'   with \code{workers}.
+#'   expensive steps, and both fully independent across samples. Defaults
+#'   to \code{length(paths)} (one worker per sample); errors up front if
+#'   that (or an explicit value) exceeds \code{parallel::detectCores()},
+#'   naming the number of cores actually available. Pass \code{workers = 1}
+#'   to run sequentially instead. \code{workers > 1} spins up that many
+#'   background R sessions via \code{future::plan(multisession)}, restored
+#'   on exit. Note each worker holds its own copy of that sample's data, so
+#'   peak memory scales with \code{workers}.
 #'
 #' @return If \code{length(paths) == 1}, a single \code{Seurat} object.
 #'   Otherwise, a named list of \code{Seurat} objects, one per input path,
@@ -181,8 +183,10 @@ MakeParseObj <- function(paths,
                          doublet_vars_to_regress    = NULL,
                          doublet_cluster_resolution = 0.1,
                          filter_doublets            = FALSE,
-                         workers                    = 1) {
+                         workers                    = length(paths)) {
 
+  workers <- .resolve_workers(workers, n_samples = length(paths),
+                              was_default = missing(workers))
   doublet_normalization <- match.arg(doublet_normalization)
 
   if (workers > 1) {

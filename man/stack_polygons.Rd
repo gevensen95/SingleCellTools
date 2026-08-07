@@ -7,7 +7,7 @@
 stack_polygons(plot, poly, first = FALSE)
 }
 \arguments{
-\item{plot}{A \code{ggplot} object, typically from \code{\link{PlotPolygons}}.}
+\item{plot}{A \code{ggplot} object, typically from \code{\link[=PlotPolygons]{PlotPolygons()}}.}
 
 \item{poly}{The data.frame the shared coordinate range should come from --
 pass the same (unsubset) data.frame for every layer being stacked
@@ -23,7 +23,7 @@ For \code{first = TRUE}, a \code{ggplot} object. For \code{first = FALSE}, a
 previous inset) with \code{+}.
 }
 \description{
-Prepares a \code{\link{PlotPolygons}} plot to be layered into a single composite
+Prepares a \code{\link[=PlotPolygons]{PlotPolygons()}} plot to be layered into a single composite
 figure with other polygon plots -- pins it to a shared coordinate range
 (from \code{poly}, typically the full, unsubset data frame every layer's cells
 were drawn from) and strips its legend/titles so stacking doesn't shift
@@ -38,13 +38,13 @@ independent color scale (e.g. one cell type on a red gradient, another on
 blue) -- stacking full plots as transparent insets, rather than merging
 them into one \code{ggplot} object, is what lets each layer keep its own scale
 without the layers fighting over a single shared legend/scale. Recover
-the dropped legends afterward with \code{\link{collect_legend}} on the \emph{original}
+the dropped legends afterward with \code{\link[=collect_legend]{collect_legend()}} on the \emph{original}
 (pre-\code{stack_polygons()}) plots.
 
 Unlike a plain \code{ggplot2::coord_cartesian(xlim =, ylim =)} (which does not
 preserve aspect ratio), this reapplies \code{coord_fixed(xlim =, ylim =)} so
 every stacked layer keeps the same 1:1 spatial aspect ratio
-\code{\link{PlotPolygons}} sets by default -- important for segmentation polygons,
+\code{\link[=PlotPolygons]{PlotPolygons()}} sets by default -- important for segmentation polygons,
 where a stretched aspect ratio would visibly distort cell shapes.
 }
 \examples{
@@ -64,7 +64,8 @@ overlay <- stack_polygons(bg, poly, first = TRUE) +
 legends <- patchwork::wrap_plots(collect_legend(tcell), collect_legend(bcell), ncol = 1)
 overlay + legends + patchwork::plot_layout(widths = c(1, 0.25))
 }
+
 }
 \seealso{
-\code{\link{PlotPolygons}}, \code{\link{collect_legend}}
+\code{\link[=PlotPolygons]{PlotPolygons()}}, \code{\link[=collect_legend]{collect_legend()}}
 }

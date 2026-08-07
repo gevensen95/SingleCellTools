@@ -14,12 +14,12 @@ produces a guide).}
 \value{
 A \code{patchwork}-composable object (from \code{patchwork::wrap_elements()})
 wrapping the legend grob -- combine it with other plots/legends using
-\code{patchwork}'s \verb{+} / \code{plot_layout()}.
+\code{patchwork}'s \code{+} / \code{plot_layout()}.
 }
 \description{
 Pulls the legend/guide-box out of a \code{ggplot} object so it can be
 recombined separately from the plot it came from -- for example, to
-collect the (per-layer) legends that \code{\link{stack_polygons}} strips out while
+collect the (per-layer) legends that \code{\link[=stack_polygons]{stack_polygons()}} strips out while
 building a multi-layer overlay, and lay them out alongside the combined
 plot instead of losing them.
 }
@@ -34,7 +34,8 @@ tcell <- PlotPolygons(subset(poly, cell_type == "T cell"), feature = "Cd3e")
 bcell <- PlotPolygons(subset(poly, cell_type == "B cell"), feature = "Cd19")
 legends <- patchwork::wrap_plots(collect_legend(tcell), collect_legend(bcell), ncol = 1)
 }
+
 }
 \seealso{
-\code{\link{stack_polygons}}, \code{\link{PlotPolygons}}
+\code{\link[=stack_polygons]{stack_polygons()}}, \code{\link[=PlotPolygons]{PlotPolygons()}}
 }

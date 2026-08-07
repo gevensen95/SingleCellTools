@@ -87,12 +87,14 @@
 #' @param workers Number of parallel workers to use (via
 #'   \code{future.apply}) for reading/creating each sample's Seurat object
 #'   and for the per-sample \code{calldoublet} calls -- the two most
-#'   expensive steps, and both fully independent across samples. Default
-#'   \code{1} runs sequentially exactly as before (with per-sample progress
-#'   messages); \code{workers > 1} spins up that many background R
-#'   sessions via \code{future::plan(multisession)}, restored on exit.
-#'   Note each worker holds its own copy of that sample's data, so peak
-#'   memory scales with \code{workers}.
+#'   expensive steps, and both fully independent across samples. Defaults
+#'   to \code{length(data_dirs)} (one worker per sample); errors up front
+#'   if that (or an explicit value) exceeds \code{parallel::detectCores()},
+#'   naming the number of cores actually available. Pass \code{workers = 1}
+#'   to run sequentially instead. \code{workers > 1} spins up that many
+#'   background R sessions via \code{future::plan(multisession)}, restored
+#'   on exit. Note each worker holds its own copy of that sample's data, so
+#'   peak memory scales with \code{workers}.
 #' @param on_disk Logical; if \code{TRUE}, move each returned object's RNA
 #'   counts layer to an on-disk BPCells matrix via \code{\link{ConvertToBPCells}}
 #'   as the very last step, after doublet calling/QC. Requires the
@@ -121,9 +123,11 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                              doublet_vars_to_regress = "percent.mt",
                              doublet_cluster_resolution = 0.1,
                              filter_doublets = FALSE,
-                             workers = 1,
+                             workers = length(data_dirs),
                              on_disk = FALSE,
                              bpcells_dir = NULL) {
+  workers <- .resolve_workers(workers, n_samples = length(data_dirs),
+                              was_default = missing(workers))
   doublet_normalization <- match.arg(doublet_normalization)
 
   if (workers > 1) {

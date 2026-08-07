@@ -29,12 +29,14 @@
 #'   for building each sample's Seurat object -- reading singlecell.csv,
 #'   the fragment file, computing the peak x cell FeatureMatrix, and the
 #'   ChromatinAssay QC metrics, all fully independent across samples once
-#'   the combined peak set is built. Default \code{1} runs sequentially
-#'   exactly as before (with per-sample progress messages); \code{workers >
-#'   1} spins up that many background R sessions via
-#'   \code{future::plan(multisession)}, restored on exit. Note each worker
-#'   holds its own copy of that sample's fragments/counts, so peak memory
-#'   scales with \code{workers}.
+#'   the combined peak set is built. Defaults to \code{length(data_dirs)}
+#'   (one worker per sample); errors up front if that (or an explicit
+#'   value) exceeds \code{parallel::detectCores()}, naming the number of
+#'   cores actually available. Pass \code{workers = 1} to run sequentially
+#'   instead. \code{workers > 1} spins up that many background R sessions
+#'   via \code{future::plan(multisession)}, restored on exit. Note each
+#'   worker holds its own copy of that sample's fragments/counts, so peak
+#'   memory scales with \code{workers}.
 #' @return A list of Seurat objects
 #' @export
 
@@ -42,8 +44,9 @@ CreateATACObjects <-
   function(data_dirs, add_treatment = FALSE, treatment = NULL,
            genome = c("mm10", "hg38"), object_names = NULL,
            peakwidths_max = 10000, peakwidths_min = 20,
-           passed_filters_value = 500, workers = 1) {
-
+           passed_filters_value = 500, workers = length(data_dirs)) {
+    workers <- .resolve_workers(workers, n_samples = length(data_dirs),
+                                was_default = missing(workers))
     genome <- match.arg(genome)
 
     if (workers > 1) {

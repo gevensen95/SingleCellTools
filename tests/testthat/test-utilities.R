@@ -307,3 +307,62 @@ test_that(".onAttach can be invoked directly without erroring", {
     )
   )
 })
+
+
+# ============================================================================
+# .resolve_workers() -- shared workers-vs-cores validation helper, used by
+# CreateRNAObjects/CreateVisiumObjects/CreateAndIntegrateRNA/
+# CreateATACObjects/CreateATACObjectsFilter/MakeParseObj, all of which
+# default `workers` to their sample count. parallel::detectCores() is mocked
+# throughout so these are deterministic regardless of the machine actually
+# running the tests.
+# ============================================================================
+
+test_that(".resolve_workers returns workers unchanged when within available cores", {
+  testthat::local_mocked_bindings(detectCores = function(...) 8L, .package = "parallel")
+  expect_equal(.resolve_workers(4, n_samples = 4, was_default = TRUE), 4)
+  expect_equal(.resolve_workers(8, n_samples = 8, was_default = TRUE), 8)
+})
+
+test_that(".resolve_workers errors and names a usable core count when workers exceeds detectCores()", {
+  testthat::local_mocked_bindings(detectCores = function(...) 4L, .package = "parallel")
+  expect_error(.resolve_workers(12, n_samples = 12, was_default = TRUE),
+              "workers = 12 exceeds the 4 core")
+  expect_error(.resolve_workers(12, n_samples = 12, was_default = TRUE),
+              "workers = 4")
+})
+
+test_that(".resolve_workers's error message reflects whether workers was defaulted or explicit", {
+  testthat::local_mocked_bindings(detectCores = function(...) 2L, .package = "parallel")
+  expect_error(.resolve_workers(6, n_samples = 6, was_default = TRUE),
+              "defaulted to the sample count, 6")
+
+  err <- tryCatch(.resolve_workers(6, n_samples = 6, was_default = FALSE),
+                  error = function(e) conditionMessage(e))
+  expect_false(grepl("defaulted to the sample count", err, fixed = TRUE))
+})
+
+test_that(".resolve_workers skips validation when detectCores() returns NA", {
+  # Mirrors the same detectCores()-returns-NA edge case RunRCTD.R guards
+  # against (minimal/HPC shells missing wc/nproc) -- can't validate against
+  # an unknown core count, so this should pass `workers` through untouched
+  # rather than erroring.
+  testthat::local_mocked_bindings(detectCores = function(...) NA_integer_, .package = "parallel")
+  expect_equal(.resolve_workers(999, n_samples = 999, was_default = TRUE), 999)
+})
+
+
+# ============================================================================
+# workers default = sample count, across the six multi-sample loader
+# functions -- checked at the formals level rather than by actually running
+# each function, since most need real 10x/Visium/ATAC/Parse directories.
+# ============================================================================
+
+test_that("workers defaults to the sample-count expression in all six loader functions", {
+  expect_equal(deparse(formals(CreateRNAObjects)$workers), "length(data_dirs)")
+  expect_equal(deparse(formals(CreateVisiumObjects)$workers), "length(data_dirs)")
+  expect_equal(deparse(formals(CreateAndIntegrateRNA)$workers), "length(data_dirs)")
+  expect_equal(deparse(formals(CreateATACObjects)$workers), "length(data_dirs)")
+  expect_equal(deparse(formals(CreateATACObjectsFilter)$workers), "length(data_dirs)")
+  expect_equal(deparse(formals(MakeParseObj)$workers), "length(paths)")
+})

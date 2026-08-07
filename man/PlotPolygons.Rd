@@ -17,10 +17,10 @@ PlotPolygons(
 )
 }
 \arguments{
-\item{poly}{A data.frame from \code{\link{get_polygon_coords}} (or anything with the
+\item{poly}{A data.frame from \code{\link[=get_polygon_coords]{get_polygon_coords()}} (or anything with the
 same \code{cell}/\code{x}/\code{y} columns) -- optionally subset to a particular set of
 cells first (e.g. \code{subset(poly, cell_type == "T cell")}) to build one
-layer of a multi-layer overlay with \code{\link{stack_polygons}}.}
+layer of a multi-layer overlay with \code{\link[=stack_polygons]{stack_polygons()}}.}
 
 \item{feature}{Optional column in \code{poly} to color polygons by. \code{NULL}
 (default) draws every polygon in a single flat \code{background} color
@@ -33,12 +33,10 @@ gradient, everything else gets a discrete palette), \code{"continuous"}, or
 
 \item{colors}{For \code{type = "continuous"}: a vector of colors passed to
 \code{ggplot2::scale_fill_gradientn(colors = ...)}. For \code{type = "discrete"}:
-a named or unnamed vector passed to \code{ggplot2::scale_fill_manual(values =
-...)}. \code{NULL} (default) uses each scale's own default palette.}
+a named or unnamed vector passed to \code{ggplot2::scale_fill_manual(values = ...)}. \code{NULL} (default) uses each scale's own default palette.}
 
 \item{fill_limits}{Optional length-2 numeric vector fixing the color scale
-range for \code{type = "continuous"} (passed to \code{scale_fill_gradientn(limits
-= ...)}). Useful when comparing the same feature across several
+range for \code{type = "continuous"} (passed to \code{scale_fill_gradientn(limits = ...)}). Useful when comparing the same feature across several
 separately-built plots (e.g. stacked layers, or different samples) that
 should all share one color scale rather than each auto-scaling to its
 own subset's range.}
@@ -60,7 +58,7 @@ Default \code{"right"}.}
 A \code{ggplot} object.
 }
 \description{
-Draws per-cell segmentation polygons (from \code{\link{get_polygon_coords}}) as
+Draws per-cell segmentation polygons (from \code{\link[=get_polygon_coords]{get_polygon_coords()}}) as
 filled shapes, colored by any continuous or discrete column -- a more
 flexible alternative to \code{Seurat::ImageFeaturePlot()} /
 \code{Seurat::ImageDimPlot()} for building custom or layered spatial figures.
@@ -76,7 +74,8 @@ PlotPolygons(poly, feature = "cell_type")
 PlotPolygons(poly, feature = "cell_type") +
   ggplot2::ggtitle("Cell types in fov1")
 }
+
 }
 \seealso{
-\code{\link{get_polygon_coords}}, \code{\link{stack_polygons}}, \code{\link{collect_legend}}
+\code{\link[=get_polygon_coords]{get_polygon_coords()}}, \code{\link[=stack_polygons]{stack_polygons()}}, \code{\link[=collect_legend]{collect_legend()}}
 }
