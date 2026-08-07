@@ -6,3 +6,7 @@
 .DS_Store
 omnipathr-log/
 Visium_HD_test/
+Rplots.pdf
+bpcells_benchmark_results.csv
+bpcells_benchmark_comparison.csv
+bpcells_benchmark_plot.pdf

@@ -1,3 +1,25 @@
+# Internal: fetch a counts layer, joining split per-sample layers first if
+# needed. Merging multiple Seurat objects without SeuratObject::JoinLayers()
+# leaves separate layers per sample (e.g. "counts.sample_A", "counts.sample_B"
+# instead of one "counts"). SeuratObject::LayerData(obj, layer = "counts")
+# matches all of those by substring and silently returns only the first one
+# with a warning ("only the first layer is used") -- which for RunRCTD()
+# means every spot/cell outside that one sample would get silently wrong
+# counts. Detect that case and join first instead of letting it happen
+# silently.
+.rctd_get_counts <- function(obj, assay, layer = "counts") {
+  avail   <- SeuratObject::Layers(obj[[assay]])
+  matches <- avail[avail == layer | startsWith(avail, paste0(layer, "."))]
+  if (length(matches) > 1) {
+    message(sprintf(
+      "  Assay '%s' has %d unjoined '%s' layers (%s) -- joining them first ",
+      assay, length(matches), layer, paste(matches, collapse = ", ")),
+      "so all samples/cells are included (not just the first layer).")
+    obj[[assay]] <- SeuratObject::JoinLayers(obj[[assay]], layers = layer)
+  }
+  SeuratObject::LayerData(obj, assay = assay, layer = layer)
+}
+
 #' Visium spot deconvolution with RCTD (spacexr)
 #'
 #' Wraps \code{spacexr::create.RCTD} + \code{spacexr::run.RCTD} to
@@ -57,6 +79,8 @@
 #' }
 #' @importFrom Seurat DefaultAssay GetTissueCoordinates
 #' @importFrom SeuratObject LayerData
+#' @importFrom parallel detectCores
+#' @importFrom utils assignInNamespace
 #' @export
 RunRCTD <- function(obj,
                     reference,
@@ -84,8 +108,7 @@ RunRCTD <- function(obj,
   }
 
   # ---- Build RCTD reference ----------------------------------------------
-  ref_counts <- SeuratObject::LayerData(reference,
-                                        assay = assay_ref, layer = "counts")
+  ref_counts <- .rctd_get_counts(reference, assay = assay_ref, layer = "counts")
   ref_types  <- factor(as.character(reference@meta.data[[celltype_col]]))
   names(ref_types) <- colnames(reference)
 
@@ -104,42 +127,76 @@ RunRCTD <- function(obj,
 
   message(sprintf("--- Building RCTD reference (%d cells, %d types) ---",
                   length(ref_types), nlevels(ref_types)))
+  ref_nUMI        <- Matrix::colSums(ref_counts)
+  names(ref_nUMI) <- colnames(ref_counts)
   rctd_ref <- spacexr::Reference(
     counts     = ref_counts,
     cell_types = ref_types,
-    nUMI       = as.numeric(Matrix::colSums(ref_counts))
+    nUMI       = ref_nUMI
   )
 
   # ---- Build spatial "puck" ----------------------------------------------
-  # RCTD wants a Puck object: coords + counts + nUMI. Pull from the first
-  # image (Visium objects usually have exactly one).
-  img_name <- names(obj@images)[1]
-  coords <- Seurat::GetTissueCoordinates(obj[[img_name]])
-  # Normalize the coords columns depending on Seurat version
-  if ("cell" %in% colnames(coords)) {
-    rownames(coords) <- coords$cell
-    coords <- coords[, c("x", "y")]
-  } else if (all(c("imagerow", "imagecol") %in% colnames(coords))) {
-    coords <- coords[, c("imagerow", "imagecol")]
-    colnames(coords) <- c("x", "y")
-  } else {
-    coords <- coords[, 1:2]
-    colnames(coords) <- c("x", "y")
+  # RCTD wants a Puck object: coords + counts + nUMI. Visium objects merged
+  # from multiple samples/capture areas carry one image per sample under
+  # obj@images -- pulling coordinates from only the first image would
+  # silently drop every spot belonging to every other sample. Gather
+  # coordinates from every image and combine them.
+  if (length(obj@images) == 0) {
+    stop("`obj` has no images in obj@images -- RunRCTD() needs tissue coordinates.")
   }
+  coords_list <- lapply(names(obj@images), function(img_name) {
+    ic <- Seurat::GetTissueCoordinates(obj[[img_name]])
+    # Normalize the coords columns depending on Seurat version
+    if ("cell" %in% colnames(ic)) {
+      rownames(ic) <- ic$cell
+      ic <- ic[, c("x", "y")]
+    } else if (all(c("imagerow", "imagecol") %in% colnames(ic))) {
+      ic <- ic[, c("imagerow", "imagecol")]
+      colnames(ic) <- c("x", "y")
+    } else {
+      ic <- ic[, 1:2]
+      colnames(ic) <- c("x", "y")
+    }
+    ic
+  })
+  coords <- do.call(rbind, coords_list)
+  coords <- coords[!duplicated(rownames(coords)), , drop = FALSE]
+
   cells_in_both <- intersect(rownames(coords), colnames(obj))
   coords <- coords[cells_in_both, , drop = FALSE]
 
-  q_counts <- SeuratObject::LayerData(obj, assay = assay_query,
-                                      layer = "counts")[, cells_in_both,
-                                                        drop = FALSE]
+  q_counts <- .rctd_get_counts(obj, assay = assay_query,
+                               layer = "counts")[, cells_in_both, drop = FALSE]
   message(sprintf("--- Building query puck (%d spots) ---", ncol(q_counts)))
+  q_nUMI        <- Matrix::colSums(q_counts)
+  names(q_nUMI) <- colnames(q_counts)
   puck <- spacexr::SpatialRNA(
     coords = coords,
     counts = q_counts,
-    nUMI   = as.numeric(Matrix::colSums(q_counts))
+    nUMI   = q_nUMI
   )
 
   # ---- Run RCTD -----------------------------------------------------------
+  # Defensive guard: spacexr's internals call `parallel::detectCores()` in
+  # several places (e.g. inside run.RCTD()'s fitBulk/chooseSigma step) with
+  # no NA guard, as in `if (parallel::detectCores() > max_cores) ...`. On
+  # minimal HPC/container shells missing core-counting tools (`wc`, `nproc`),
+  # detectCores() returns NA and that crashes with "missing value where
+  # TRUE/FALSE needed" -- deep inside spacexr, not anything under our
+  # control. If that's the environment we're in, temporarily patch
+  # detectCores() to report `n_cores` for the duration of the RCTD call, and
+  # restore it afterward regardless of how the call finishes.
+  if (isTRUE(is.na(suppressWarnings(parallel::detectCores())))) {
+    message(sprintf(
+      "  parallel::detectCores() returned NA in this environment (likely missing 'wc'/'nproc' on a minimal shell) -- reporting %d core(s) to spacexr for the duration of this call.",
+      n_cores))
+    ns <- asNamespace("parallel")
+    orig_detectCores <- get("detectCores", envir = ns)
+    utils::assignInNamespace("detectCores", function(...) n_cores, ns = "parallel")
+    on.exit(utils::assignInNamespace("detectCores", orig_detectCores, ns = "parallel"),
+           add = TRUE)
+  }
+
   message(sprintf("--- Running RCTD (mode = %s, cores = %d) ---",
                   mode, n_cores))
   rctd <- spacexr::create.RCTD(
