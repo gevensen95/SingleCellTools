@@ -48,7 +48,7 @@ the fragment file, computing the peak x cell FeatureMatrix, and the
 ChromatinAssay QC metrics, all fully independent across samples once
 the combined peak set is built. Default \code{1} runs sequentially
 exactly as before (with per-sample progress messages); \code{workers >
-  1} spins up that many background R sessions via
+1} spins up that many background R sessions via
 \code{future::plan(multisession)}, restored on exit. Note each worker
 holds its own copy of that sample's fragments/counts, so peak memory
 scales with \code{workers}.}

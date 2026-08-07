@@ -72,7 +72,8 @@ Imports:
     rmarkdown,
     knitr,
     future,
-    future.apply
+    future.apply,
+    parallel
 Suggests:
     SingleR,
     SingleCellExperiment,
