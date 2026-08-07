@@ -211,6 +211,9 @@ MarkerPlot(merged, markers)
 | `get_all_coords()` | Pull tissue coordinates across images. |
 | `get_cells_in_polygon()` | Point-in-polygon test using `sf` &mdash; which cells fall inside a hand-drawn region? |
 | `parse_polygons()` | Parse polygon definitions for use with the above. |
+| `get_polygon_coords()` | Per-vertex cell *segmentation*-boundary coordinates for a FOV (Xenium/CosMx/MERFISH &mdash; any image with a `"segmentation"` boundary set, not just centroids), optionally joined with metadata; feeds `PlotPolygons()`. |
+| `RunRCTD()` | Wraps `spacexr::create.RCTD` + `run.RCTD` to estimate per-spot cell-type proportions on Visium data from a single-cell reference. Accepts a single object or a named list (reference built once, reused across samples). Writes per-cell-type `rctd_<celltype>` proportion columns plus `rctd_dominant`, `rctd_max_weight`, and (doublet/multi mode) `rctd_spot_class`. |
+| `SpatialCompositionPlot()` | Pie/donut glyph per spot showing its full RCTD cell-type mixture, instead of collapsing each spot to one dominant color like `SpatialDimPlot()` would. |
 | `AnnotateRegions()` | Label every cell with the name of the polygon it falls inside (or `"unassigned"`), given a named list of `x`/`y` polygon data frames &mdash; pairs with `get_cells_in_polygon()` / `parse_polygons()`. |
 | `NeighborhoodEnrichment()` | Permutation-based cell-type neighborhood enrichment (z-scores, empirical p-values, BH q-values) within and pooled across FOVs; optionally clusters each cell's neighborhood composition into spatial "niches" and returns an updated copy of the object (with the niche column added) as `$obj`. |
 | `NicheCoExpress()` | Per-sample, per-niche gene-pair co-expression (Manders Overlap Coefficient vs. an abundance-matched background), with differential testing between two conditions and optional cell-type-composition controls. |
@@ -247,6 +250,9 @@ MarkerPlot(merged, markers)
 | `MarkerHeatmap()` | Heatmap of the top N markers per cluster (from `FindAllMarkers` or computed on the fly), z-scored across clusters with optional row/column clustering. |
 | `StackedViolinPlot()` | Compact, scanpy-style stacked violin plot &mdash; one row per gene, one violin per group, optionally scaled per gene. |
 | `CompositionBarplot()` | Stacked or grouped bar plot of cell-type composition (proportions or counts), optionally faceted by condition; pairs with `CompositionAnalysis()`. |
+| `PlotPolygons()` | Flexible per-cell segmentation-polygon plot (from `get_polygon_coords()`), colored by any continuous or discrete column &mdash; a more flexible alternative to `Seurat::ImageFeaturePlot()`/`ImageDimPlot()`. Plain `ggplot`, fully chainable. |
+| `stack_polygons()` | Prepares a `PlotPolygons()` plot to be layered into one composite figure with other polygon plots on a shared coordinate range, each keeping its own color scale (as a transparent `patchwork` inset). |
+| `collect_legend()` | Pulls a plot's legend out as a standalone grob &mdash; recovers the legends `stack_polygons()` strips, so they can be laid out separately alongside the combined overlay. |
 | `Ol_Reliable()` | Shared `ggplot2` theme (clean panel borders, subtle gridlines, bold black-and-white facet strips) applied by default across this package's plotting functions. Add it to your own `ggplot()` calls (`+ Ol_Reliable()`) to match. |
 
 </details>

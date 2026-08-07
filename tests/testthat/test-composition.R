@@ -390,3 +390,80 @@ test_that("CompositionalTest (betareg backend) runs when betareg is installed", 
                            method = "betareg")
   expect_equal(unique(res$method), "betareg")
 })
+
+
+# ============================================================================
+# CompositionalTest() -- weight_cols (continuous) mode, e.g. RCTD "full"-mode
+# rctd_<celltype> proportions. Synthetic numeric metadata columns stand in
+# for real RCTD output -- weight_cols mode only cares that the columns are
+# numeric, not where they came from.
+# ============================================================================
+
+test_that("CompositionalTest weight_cols mode (wilcox backend) returns one row per weight column", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 200, n_samples = 6, n_clusters = 3)
+  set.seed(1)
+  obj$w_typeA <- stats::runif(ncol(obj))
+  obj$w_typeB <- stats::runif(ncol(obj))
+  res <- CompositionalTest(obj, weight_cols = c("w_typeA", "w_typeB"),
+                           sample_col = "sample", condition_col = "condition",
+                           method = "wilcox")
+  expect_true(all(c("cluster", "effect", "stat", "pvalue", "padj", "method")
+                 %in% colnames(res)))
+  expect_equal(unique(res$method), "wilcox")
+  expect_setequal(res$cluster, c("w_typeA", "w_typeB"))
+})
+
+test_that("CompositionalTest weight_cols mode ignores cluster_col", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 100, n_samples = 4, n_clusters = 3)
+  obj$w_typeA <- stats::runif(ncol(obj))
+  res <- CompositionalTest(obj, cluster_col = "nonexistent_column",
+                           weight_cols = "w_typeA",
+                           sample_col = "sample", condition_col = "condition",
+                           method = "wilcox")
+  expect_equal(res$cluster, "w_typeA")
+})
+
+test_that("CompositionalTest weight_cols + method = 'propeller' errors clearly", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 60, n_samples = 4)
+  obj$w_typeA <- stats::runif(ncol(obj))
+  expect_error(
+    CompositionalTest(obj, weight_cols = "w_typeA", sample_col = "sample",
+                      condition_col = "condition", method = "propeller"),
+    "propeller"
+  )
+})
+
+test_that("CompositionalTest weight_cols errors on a non-numeric column", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 60, n_samples = 4)
+  expect_error(
+    CompositionalTest(obj, weight_cols = "seurat_clusters", sample_col = "sample",
+                      condition_col = "condition", method = "wilcox"),
+    "numeric"
+  )
+})
+
+test_that("CompositionalTest weight_cols errors on a missing column", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 60, n_samples = 4)
+  expect_error(
+    CompositionalTest(obj, weight_cols = "nope", sample_col = "sample",
+                      condition_col = "condition", method = "wilcox"),
+    "nope"
+  )
+})
+
+test_that("CompositionalTest weight_cols mode (betareg backend) runs when betareg is installed", {
+  .skip_if_missing("Seurat", "SeuratObject", "betareg")
+  obj <- .make_small_seurat(seed = 1, n_cells = 200, n_samples = 6, n_clusters = 3)
+  obj$w_typeA <- stats::runif(ncol(obj), min = 0.1, max = 0.9)
+  obj$w_typeB <- stats::runif(ncol(obj), min = 0.1, max = 0.9)
+  res <- CompositionalTest(obj, weight_cols = c("w_typeA", "w_typeB"),
+                           sample_col = "sample", condition_col = "condition",
+                           method = "betareg")
+  expect_equal(unique(res$method), "betareg")
+  expect_setequal(res$cluster, c("w_typeA", "w_typeB"))
+})

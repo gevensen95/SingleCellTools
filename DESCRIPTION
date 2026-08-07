@@ -99,6 +99,7 @@ Suggests:
     data.table,
     R.utils,
     png,
+    scatterpie,
     BPCells,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr

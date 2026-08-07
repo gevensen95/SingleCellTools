@@ -17,13 +17,18 @@
    - 6.1 [Marker Dot Plots — `MarkerPlot()` / `MarkerPctPlot()`](#61-marker-dot-plots--markerplot--markerpctplot)
    - 6.2 [Cluster-level Marker Scoring — `AnnotateClusters()`](#62-cluster-level-marker-scoring--annotateclusters)
 7. [Visium Deconvolution — `RunRCTD()`](#7-visium-deconvolution--runrctd)
+   - 7.1 [Choosing a mode](#71-choosing-a-mode)
+   - 7.2 [Multiple samples](#72-multiple-samples)
+   - 7.3 [Feeding RCTD output into composition/niche tools](#73-feeding-rctd-output-into-compositionniche-tools)
+   - 7.4 [Quality/confidence fields](#74-qualityconfidence-fields)
+   - 7.5 [Visualizing the full mixture — `SpatialCompositionPlot()`](#75-visualizing-the-full-mixture--spatialcompositionplot)
 8. [Feature Density on the Tissue — `PlotFeatureDensity()`](#8-feature-density-on-the-tissue--plotfeaturedensity)
 9. [Gene Positivity — `AddGenePositivity()` / `PlotGenePositivity()`](#9-gene-positivity--addgenepositivity--plotgenepositivity)
     - 9.1 [`GenePositivityAnalysis()` and `GenePositivityEstimationPlot()`](#91-genepositivityanalysis-and-genepositivityestimationplot)
 10. [Spatial Niche Analysis — `BuildMultipleNicheAssays()`](#10-spatial-niche-analysis--buildmultiplenicheassays)
     - 10.1 [An Alternative: Spatial Domain Segmentation via `RunBanksyWrapper()`](#101-an-alternative-spatial-domain-segmentation-via-runbanksywrapper)
 11. [Neighborhood Enrichment — `NeighborhoodEnrichment()`](#11-neighborhood-enrichment--neighborhoodenrichment)
-12. [Niche Co-expression — `NicheCoExpress()`](#12-niche-co-expression--nicheco express)
+12. [Niche Co-expression — `NicheCoExpress()`](#12-niche-co-expression--nichecoexpress)
     - 12.1 [Estimation Plot — `NicheCoExpressEstimationPlot()`](#121-estimation-plot--nichecoexpressestimationplot)
 13. [Single-cell Spatial (Xenium / CosMx) — `detect_fov_edges()` / `detect_tissue_holes()`](#13-single-cell-spatial-xenium--cosmx--detect_fov_edges--detect_tissue_holes)
 14. [Subsetting Spatial Objects — `subset_opt()`](#14-subsetting-spatial-objects--subset_opt)
@@ -500,6 +505,95 @@ SpatialDimPlot(integrated, group.by = "rctd_dominant")
 ```
 
 For laminar cortex or clearly zoned tissue, RCTD proportions map cleanly onto the anatomical structure — a strong sanity check that everything is working.
+
+### 7.1 Choosing a mode
+
+`mode` controls RCTD's `doublet_mode`, and it's a real tradeoff, not just a speed knob:
+
+| Mode | Assumption | Best for |
+|---|---|---|
+| `"full"` (default) | Each spot is a mixture of *any number* of cell types | Standard Visium — spots routinely hold several types, and `"full"` is the only mode that returns their actual proportions rather than forcing a 1-2 type call |
+| `"doublet"` | Each spot has exactly 1 or 2 cell types | High-resolution or sparse tissue where that assumption roughly holds; faster, and gives a discrete, more interpretable per-spot call |
+| `"multi"` | Iteratively fits more types per spot than `"doublet"` allows | A middle ground — use if `"doublet"` visibly under-fits (e.g. a spot's residual expression clearly implies a third type) but full `"full"`-mode mixtures aren't needed |
+
+`"doublet"`/`"multi"` also give you `rctd_spot_class` (see 7.4) — a real per-spot confidence call from spacexr itself, which `"full"` mode doesn't have an equivalent for.
+
+`max_cells_per_ref_celltype` (default 10000) and `CELL_MIN_INSTANCE` (default 25) both trade reference fidelity for speed/memory: lowering `max_cells_per_ref_celltype` shrinks the reference (faster `create.RCTD()`, coarser per-type expression profiles); raising `CELL_MIN_INSTANCE` drops rare reference cell types entirely rather than trying to build an unreliable profile from too few cells. If a cell type you expect is missing from `rctd_weights`, check whether it was filtered out here before assuming something else is wrong.
+
+### 7.2 Multiple samples
+
+`obj` can be a single Visium object or a named list of them. If you've already merged samples into one object (like `integrated` above), `RunRCTD()` already handles that correctly — it gathers tissue coordinates from every image in `obj@images`, not just the first, so every sample's spots are included. If you haven't merged yet, pass the list directly instead and skip a `merge()` step you don't otherwise need:
+
+```r
+visium_list <- RunRCTD(
+  list(sample1 = visium1, sample2 = visium2, sample3 = visium3),
+  reference    = brain_ref,
+  celltype_col = "cell_type"
+)
+```
+
+The RCTD reference is built once from `reference` and reused for every sample in the list — building it is the expensive, sample-independent step, so this avoids redoing that work per sample the way a hand-written loop would.
+
+### 7.3 Feeding RCTD output into composition/niche tools
+
+`rctd_dominant` is a discrete per-spot label, so it's already a drop-in `group_col`/`niche_col` for the package's existing composition and niche tools — no extra plumbing needed:
+
+```r
+# Cell-type composition per sample/condition, using RCTD calls instead of clusters
+comp <- CompositionAnalysis(integrated,
+                            group_col     = "rctd_dominant",
+                            sample_col    = "orig.ident",
+                            condition_col = "region")
+
+# Spatial niches built around RCTD-called dominant type instead of seurat_clusters
+niches <- NicheCoExpress(integrated,
+                         niche_col     = "rctd_dominant",
+                         sample_col    = "orig.ident",
+                         condition_col = "region")
+```
+
+But collapsing every spot to its single dominant type throws away exactly what `"full"` mode was estimating in the first place — the actual mixture. `CompositionalTest()`'s `weight_cols` argument runs the proportion test directly on the continuous `rctd_<celltype>` columns instead:
+
+```r
+celltypes <- grep("^rctd_", colnames(integrated@meta.data), value = TRUE)
+celltypes <- setdiff(celltypes, c("rctd_dominant", "rctd_max_weight", "rctd_spot_class"))
+
+res_rctd <- CompositionalTest(integrated,
+                              weight_cols   = celltypes,
+                              sample_col    = "orig.ident",
+                              condition_col = "region",
+                              method        = "betareg")
+subset(res_rctd, padj < 0.05)
+```
+
+Only `method = "betareg"`/`"wilcox"` work with `weight_cols` — `"propeller"` needs a discrete per-cell cluster call, which is exactly what this path is avoiding.
+
+### 7.4 Quality/confidence fields
+
+`write_metadata = TRUE` (the default) also writes two or three diagnostic columns alongside the `rctd_<celltype>` proportions, available in every mode unless noted:
+
+- **`rctd_max_weight`** — the dominant type's proportion at that spot. This is our own simple heuristic, not something spacexr computes: low values (e.g. a spot split roughly 30/30/40 across three types) mean a genuinely ambiguous mixture, not a confident call, regardless of what `rctd_dominant` says.
+- **`rctd_spot_class`** — `"doublet"`/`"multi"` mode only. This one *is* spacexr's own diagnostic: `"singlet"` (one confident type), `"doublet_certain"`/`"doublet_uncertain"` (two types, confidence differs), or `"reject"` (no confident call at all — exclude these from downstream analysis). `"full"` mode has no equivalent built-in field, so the column simply isn't present there rather than being faked.
+
+```r
+# Sanity-check before trusting rctd_dominant downstream
+table(integrated$rctd_spot_class)                       # doublet/multi mode only
+summary(integrated$rctd_max_weight)                     # any mode
+low_confidence <- subset(integrated, rctd_max_weight < 0.4)
+```
+
+### 7.5 Visualizing the full mixture — `SpatialCompositionPlot()`
+
+`SpatialDimPlot(group.by = "rctd_dominant")` (7 above) only shows one color per spot. `SpatialCompositionPlot()` draws a pie glyph per spot instead, showing the complete `rctd_<celltype>` mixture RCTD actually estimated — the more honest picture in mixed tissue, at the cost of being harder to read at a glance. Requires the `scatterpie` package (`Suggests` only, not installed by default):
+
+```r
+SpatialCompositionPlot(integrated)                       # auto-detects rctd_<celltype> columns
+SpatialCompositionPlot(integrated, donut = TRUE, pie_scale = 0.6)
+
+# Visium objects can have thousands of spots -- n_spots_max (default 2000)
+# randomly subsamples rather than rendering an unreadable/slow wall of pies
+SpatialCompositionPlot(integrated, n_spots_max = 500)
+```
 
 ---
 

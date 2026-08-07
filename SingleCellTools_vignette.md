@@ -48,7 +48,7 @@
     - 12.3 [Parse Biosciences — `MakeParseObj()`](#123-parse-biosciences--makeparseobj)
     - 12.4 [FOV Edge / Tissue Hole Detection](#124-fov-edge--tissue-hole-detection)
     - 12.5 [Neighborhood Enrichment — `NeighborhoodEnrichment()`](#125-neighborhood-enrichment--neighborhoodenrichment)
-    - 12.6 [Niche Co-expression — `NicheCoExpress()`](#126-niche-co-expression--nicheco express)
+    - 12.6 [Niche Co-expression — `NicheCoExpress()`](#126-niche-co-expression--nichecoexpress)
     - 12.7 [Estimation Plot — `NicheCoExpressEstimationPlot()`](#127-estimation-plot--nichecoexpressestimationplot)
     - 12.8 [Visium Deconvolution — `RunRCTD()`](#128-visium-deconvolution--runrctd)
 13. [scATAC-seq — `CreateATACObjects()`](#13-scatac-seq--createatacobjects)
@@ -1743,6 +1743,41 @@ roi_obj <- subset_opt(integrated_xenium, cells = cells_in_roi)
 # Always prefer subset_opt() over subset() for spatial objects
 clean <- subset_opt(integrated_xenium, seurat_clusters %in% c("0", "1", "3"))
 ```
+
+**Segmentation polygon plots** — `get_polygon_coords()` / `PlotPolygons()` / `stack_polygons()` / `collect_legend()`
+
+For platforms with real per-cell segmentation boundaries — Xenium, CosMx, MERFISH; anywhere `Boundaries(obj[[image]])` includes `"segmentation"`, not just cell centroids — `PlotPolygons()` draws actual cell shapes colored by any feature, as a more flexible alternative to `Seurat::ImageFeaturePlot()`/`ImageDimPlot()`:
+
+```r
+# Per-vertex polygon coordinates for one FOV, joined with a metadata column
+poly <- get_polygon_coords(integrated_xenium, image = "fov1", meta_cols = "cell_type")
+
+# Continuous or discrete feature, auto-detected
+PlotPolygons(poly, feature = "cell_type")
+
+# It's a plain ggplot, fully chainable
+PlotPolygons(poly, feature = "cell_type") +
+  ggplot2::ggtitle("Cell types, fov1")
+```
+
+Layer several differently-colored subsets into one composite (e.g. two cell types on two different color gradients) with `stack_polygons()` + `collect_legend()`:
+
+```r
+bg    <- PlotPolygons(poly, background = "grey90")
+tcell <- PlotPolygons(subset(poly, cell_type == "T cell"),
+                      feature = "Cd3e", colors = c("white", "red"))
+bcell <- PlotPolygons(subset(poly, cell_type == "B cell"),
+                      feature = "Cd19", colors = c("white", "blue"))
+
+overlay <- stack_polygons(bg, poly, first = TRUE) +
+  stack_polygons(tcell, poly) +
+  stack_polygons(bcell, poly)
+
+legends <- patchwork::wrap_plots(collect_legend(tcell), collect_legend(bcell), ncol = 1)
+overlay + legends + patchwork::plot_layout(widths = c(1, 0.25))
+```
+
+`stack_polygons()` pins every layer to the same coordinate range and strips its legend/titles so stacking doesn't shift the panel; `collect_legend()` pulls each stripped legend back out so it can be laid out separately alongside the combined overlay.
 
 ---
 

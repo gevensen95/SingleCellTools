@@ -9,6 +9,7 @@ CompositionalTest(
   cluster_col = "seurat_clusters",
   sample_col = "orig.ident",
   condition_col = NULL,
+  weight_cols = NULL,
   transform = c("asin", "logit"),
   method = c("auto", "propeller", "betareg", "wilcox")
 )
@@ -17,23 +18,38 @@ CompositionalTest(
 \item{obj}{A Seurat object.}
 
 \item{cluster_col}{Metadata column holding cluster / cell-type ids.
-Default \code{"seurat_clusters"}.}
+Default \code{"seurat_clusters"}. Ignored when \code{weight_cols} is
+supplied.}
 
 \item{sample_col}{Metadata column identifying biological replicates
 (typically \code{"orig.ident"}).}
 
 \item{condition_col}{Metadata column holding the condition to compare.}
 
+\item{weight_cols}{Optional character vector of numeric metadata columns
+holding a continuous per-cell/per-spot composition -- e.g. the
+\code{rctd_<celltype>} proportion columns \code{\link{RunRCTD}} writes
+in \code{"full"} mode. When supplied, \code{cluster_col} is ignored and
+the test runs on the mean of each weight column within each sample,
+rather than on proportions derived from discrete cluster counts. This
+uses the full continuous mixture RCTD estimates instead of collapsing
+each spot to a single dominant cell type first, which throws away
+information "full" mode specifically exists to capture. Only
+\code{method = "betareg"} or \code{"wilcox"} support this --
+\code{"propeller"} needs a discrete per-cell cluster factor, not
+continuous weights, and errors if combined with \code{weight_cols}.}
+
 \item{transform}{Transformation applied by propeller before ANOVA.
 One of \code{"asin"} (arcsin-sqrt, default; propeller's recommendation)
-or \code{"logit"}.}
+or \code{"logit"}. Ignored when \code{weight_cols} is supplied.}
 
 \item{method}{Backend: \code{"auto"} (default; try propeller, then
-betareg, then wilcox), \code{"propeller"}, \code{"betareg"}, or
-\code{"wilcox"}.}
+betareg, then wilcox -- or, with \code{weight_cols}, betareg then
+wilcox), \code{"propeller"}, \code{"betareg"}, or \code{"wilcox"}.}
 }
 \value{
-A data frame with one row per cluster and columns \code{cluster},
+A data frame with one row per cluster (or, with \code{weight_cols},
+one row per weight column) and columns \code{cluster},
 \code{mean_prop_<level>} for each condition level, \code{effect},
 \code{stat}, \code{pvalue}, \code{padj}, and \code{method}.
 }
@@ -57,5 +73,14 @@ res <- CompositionalTest(obj,
                          sample_col    = "orig.ident",
                          condition_col = "treatment")
 subset(res, padj < 0.05)
+
+# Continuous RCTD "full"-mode weights instead of a discrete cluster call
+celltypes <- grep("^rctd_", colnames(visium@meta.data), value = TRUE)
+celltypes <- setdiff(celltypes, "rctd_dominant")
+res_rctd <- CompositionalTest(visium,
+                              weight_cols   = celltypes,
+                              sample_col    = "orig.ident",
+                              condition_col = "treatment",
+                              method        = "betareg")
 }
 }
