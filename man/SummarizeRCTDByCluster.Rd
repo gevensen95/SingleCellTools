@@ -76,5 +76,4 @@ res$composition    # cluster x cell-type mean-proportion matrix
 # Flag ambiguous clusters instead of always returning a best guess
 res <- SummarizeRCTDByCluster(visium, min_score = 0.3, min_margin = 0.1)
 }
-
 }
