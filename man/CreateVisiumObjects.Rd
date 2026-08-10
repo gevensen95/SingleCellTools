@@ -14,7 +14,7 @@ CreateVisiumObjects(
   hb_pattern = "^(Hb[^p]|HB[^P])",
   image_backend = c("eager", "deferred"),
   hd_bin_size = c("008um", "002um", "016um"),
-  workers = 1,
+  workers = length(data_dirs),
   on_disk = FALSE,
   bpcells_dir = NULL
 )
@@ -73,12 +73,14 @@ pre-extracted.}
 \item{workers}{Number of parallel workers to use (via \code{future.apply})
 for building each sample -- reading the matrix, computing QC metrics,
 running \code{\link{EdgeDetectionVisium}}, and attaching the tissue
-image, all fully independent across samples. Default \code{1} runs
-sequentially exactly as before (with per-sample progress messages);
-\code{workers > 1} spins up that many background R sessions via
-\code{future::plan(multisession)}, restored on exit. Note each worker
-holds its own copy of that sample's data, so peak memory scales with
-\code{workers}.}
+image, all fully independent across samples. Defaults to
+\code{length(data_dirs)} (one worker per sample); errors up front if
+that (or an explicit value) exceeds \code{parallel::detectCores()},
+naming the number of cores actually available. Pass \code{workers = 1}
+to run sequentially instead. \code{workers > 1} spins up that many
+background R sessions via \code{future::plan(multisession)}, restored
+on exit. Note each worker holds its own copy of that sample's data, so
+peak memory scales with \code{workers}.}
 
 \item{on_disk}{Logical; if \code{TRUE}, move each returned object's RNA
 counts layer to an on-disk BPCells matrix via \code{\link{ConvertToBPCells}}

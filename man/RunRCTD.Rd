@@ -18,7 +18,7 @@ RunRCTD(
 )
 }
 \arguments{
-\item{obj}{A Visium Seurat object.}
+\item{obj}{A Visium Seurat object, or a (optionally named) list of them.}
 
 \item{reference}{A single-cell Seurat object with a cell-type column
 for the reference.}
@@ -40,14 +40,14 @@ many cells per cell type before building the RCTD reference. Default
 to keep it (passed through to \code{create.RCTD}). Default 25.}
 
 \item{write_metadata}{Logical; if TRUE (default) writes proportion
-columns and dominant-type column into obj@meta.data.}
+columns and the derived columns described above into obj@meta.data.}
 
 \item{n_cores}{Number of cores for RCTD. Default 4.}
 }
 \value{
-The Visium object with \code{obj@misc$rctd_weights} (spot x
-cell-type matrix) and the associated metadata columns (if
-\code{write_metadata}).
+The Visium object (or list of them, matching the shape of
+\code{obj}) with \code{obj@misc$rctd_weights} (spot x cell-type
+matrix) and the associated metadata columns (if \code{write_metadata}).
 }
 \description{
 Wraps \code{spacexr::create.RCTD} + \code{spacexr::run.RCTD} to
@@ -72,9 +72,22 @@ types per spot. Middle ground.}
 Adds the resulting weights matrix (per-cell-type proportions) to the
 Visium object under \code{obj@misc$rctd_weights}, and — when
 \code{write_metadata = TRUE} — writes each cell type's per-spot
-proportion as a metadata column named \code{rctd_<celltype>}. The
-dominant cell type per spot is written to
-\code{obj@meta.data$rctd_dominant}.
+proportion as a metadata column named \code{rctd_<celltype>}, plus three
+derived columns: \code{rctd_dominant} (the highest-weight cell type),
+\code{rctd_max_weight} (that type's proportion -- our own simple
+confidence heuristic, low values mean a genuinely ambiguous mixture, not
+spacexr-computed), and, in \code{"doublet"}/\code{"multi"} mode only,
+\code{rctd_spot_class} -- spacexr's own per-spot call ("singlet",
+"doublet_certain", "doublet_uncertain", or "reject"; \code{"full"} mode
+has no equivalent built-in field, so this column is absent there rather
+than faked).
+
+\code{obj} may be a single Visium Seurat object or a named list of them
+(samples that haven't been merged into one object yet). The RCTD
+reference is built once from \code{reference} and reused across every
+sample -- reference construction is the expensive, sample-independent
+part, so looping \code{RunRCTD()} by hand over unmerged samples would
+otherwise redo that work every time.
 }
 \examples{
 \dontrun{
@@ -86,5 +99,10 @@ visium <- RunRCTD(visium,
 colnames(visium@misc$rctd_weights)
 # Downstream: SpatialFeaturePlot on rctd_<celltype> columns
 SpatialFeaturePlot(visium, features = "rctd_T_cell")
+
+# Multiple unmerged samples -- reference built once, reused for each
+visium_list <- RunRCTD(list(sample1 = visium1, sample2 = visium2),
+                       reference    = pbmc_ref,
+                       celltype_col = "cell_type")
 }
 }

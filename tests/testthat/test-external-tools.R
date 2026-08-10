@@ -1,14 +1,13 @@
 # Tests for SaveWithProvenance(), PseudotimeWrapper(), ToAnnData()/
-# FromAnnData(), and RunCellChat(). All are wrapped defensively (tryCatch +
-# skip for the heavier ones) since they depend on real external
+# FromAnnData(), RunCellChat(), and RunRCTD(). All are wrapped defensively
+# (tryCatch + skip for the heavier ones) since they depend on real external
 # packages/backends.
 #
-# RunRCTD() and RunLIANA() are NOT covered: both have zero custom input
-# validation (grepping each file found no stop() calls -- they just call
-# straight into spacexr/liana), and meaningful testing would require a
-# real spatial deconvolution reference dataset (RunRCTD) or a live
-# OmnipathR ligand-receptor database fetch over the network (RunLIANA),
-# neither of which is practical to set up or fake convincingly here.
+# RunLIANA() is NOT covered: it has zero custom input validation (grepping
+# the file found no stop() calls -- it just calls straight into liana), and
+# meaningful testing would require a live OmnipathR ligand-receptor
+# database fetch over the network, which isn't practical to set up or fake
+# convincingly here.
 #
 # RunCellChat() DOES have real input validation, so that part is covered
 # below with no CellChat installation required. A genuine end-to-end run
@@ -17,6 +16,13 @@
 # CellChatDB.mouse/.human -- a synthetic "Gene1"/"Gene2"/... fixture never
 # will, so an end-to-end call would only ever exercise the "zero
 # interactions survived filtering" path, not real behavior.
+#
+# RunRCTD() similarly has no CellChat-scale end-to-end test here (a real
+# RCTD run needs a real spatial deconvolution reference dataset and is
+# slow), but it DOES have real input validation -- and as of the
+# obj/reference/celltype_col checks running before the spacexr
+# requireNamespace() check, that validation is reachable and testable
+# whether or not spacexr happens to be installed. See below.
 
 # ============================================================================
 # SaveWithProvenance()
@@ -241,4 +247,163 @@ test_that("ToAnnData / FromAnnData round-trip (skipped unless zellkonverter's ba
 
   expect_true(inherits(back, "Seurat"))
   expect_equal(ncol(back), ncol(obj))
+})
+
+
+# ============================================================================
+# RunRCTD() -- validation only. reference/celltype_col/obj checks run before
+# the spacexr requireNamespace() check (see file header), so they're
+# reachable in any environment. A real end-to-end run needs a real spatial
+# deconvolution reference dataset and spacexr installed, neither of which
+# this suite assumes.
+# ============================================================================
+
+test_that("RunRCTD errors on a non-Seurat reference before touching spacexr", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 20)
+  expect_error(
+    RunRCTD(obj, reference = list(1, 2), celltype_col = "celltype"),
+    "reference.*Seurat"
+  )
+})
+
+test_that("RunRCTD errors when celltype_col is missing or invalid", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 20)
+  ref <- .make_small_seurat(seed = 2, n_cells = 20)
+  expect_error(RunRCTD(obj, reference = ref, celltype_col = NULL), "celltype_col")
+  expect_error(RunRCTD(obj, reference = ref, celltype_col = "nope"), "celltype_col")
+})
+
+test_that("RunRCTD errors on non-Seurat obj, single or as a list", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  ref <- .make_small_seurat(seed = 1, n_cells = 20)
+  expect_error(
+    RunRCTD(list(1, 2), reference = ref, celltype_col = "celltype"),
+    "Seurat object"
+  )
+})
+
+test_that("RunRCTD errors clearly when spacexr isn't installed (after cheap validation passes)", {
+  testthat::skip_if(requireNamespace("spacexr", quietly = TRUE),
+                    "spacexr is installed -- this test targets the missing-package path")
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 20)
+  ref <- .make_small_seurat(seed = 2, n_cells = 20)
+  expect_error(
+    RunRCTD(obj, reference = ref, celltype_col = "celltype"),
+    "spacexr"
+  )
+})
+
+
+# ============================================================================
+# SpatialCompositionPlot() -- validation only. Requires the scatterpie
+# package to run at all (checked first, before anything else), so most of
+# these only exercise reachable validation when scatterpie IS installed;
+# the missing-package path is tested with the inverted skip_if pattern used
+# elsewhere in this suite.
+# ============================================================================
+
+test_that("SpatialCompositionPlot errors clearly when scatterpie isn't installed", {
+  testthat::skip_if(requireNamespace("scatterpie", quietly = TRUE),
+                    "scatterpie is installed -- this test targets the missing-package path")
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 20)
+  expect_error(SpatialCompositionPlot(obj), "scatterpie")
+})
+
+test_that("SpatialCompositionPlot errors on non-Seurat input", {
+  .skip_if_missing("scatterpie")
+  expect_error(SpatialCompositionPlot(list(1, 2)), "Seurat object")
+})
+
+test_that("SpatialCompositionPlot errors when no rctd_ columns exist and weight_cols isn't supplied", {
+  .skip_if_missing("Seurat", "SeuratObject", "scatterpie")
+  obj <- .make_small_seurat(seed = 1, n_cells = 20)
+  expect_error(SpatialCompositionPlot(obj), "RunRCTD|weight_cols")
+})
+
+test_that("SpatialCompositionPlot errors on a missing weight_cols column", {
+  .skip_if_missing("Seurat", "SeuratObject", "scatterpie")
+  obj <- .make_small_seurat(seed = 1, n_cells = 20)
+  expect_error(SpatialCompositionPlot(obj, weight_cols = "nope"), "nope")
+})
+
+test_that("SpatialCompositionPlot errors on a non-numeric weight_cols column", {
+  .skip_if_missing("Seurat", "SeuratObject", "scatterpie")
+  obj <- .make_small_seurat(seed = 1, n_cells = 20)
+  expect_error(SpatialCompositionPlot(obj, weight_cols = "seurat_clusters"),
+              "numeric")
+})
+
+test_that("SpatialCompositionPlot errors when obj has no images", {
+  .skip_if_missing("Seurat", "SeuratObject", "scatterpie")
+  obj <- .make_small_seurat(seed = 1, n_cells = 20)
+  obj$w_typeA <- stats::runif(ncol(obj))
+  expect_error(SpatialCompositionPlot(obj, weight_cols = "w_typeA"), "images")
+})
+
+
+# ============================================================================
+# SummarizeRCTDByCluster() -- pure base-R aggregation + the shared
+# .assign_with_unassigned() labeler, so (unlike RunRCTD()/SpatialCompositionPlot()
+# above) these run fully end-to-end without spacexr/scatterpie -- only
+# Seurat/SeuratObject for the fixture object itself.
+# ============================================================================
+
+test_that("SummarizeRCTDByCluster averages proportions per cluster and recovers the dominant label", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 8, n_clusters = 2)
+  obj$seurat_clusters <- factor(rep(c("0", "1"), each = 4))
+  obj$rctd_TypeA <- c(0.9, 0.8, 0.7, 0.6, 0.1, 0.2, 0.05, 0.15)
+  obj$rctd_TypeB <- 1 - obj$rctd_TypeA
+
+  res <- SummarizeRCTDByCluster(obj)
+  expect_equal(sort(rownames(res$composition)), c("0", "1"))
+  expect_equal(unname(res$composition["0", "TypeA"]), mean(c(0.9, 0.8, 0.7, 0.6)))
+  expect_equal(unname(res$composition["1", "TypeB"]), mean(1 - c(0.1, 0.2, 0.05, 0.15)))
+  expect_equal(unname(res$labels["0"]), "TypeA")
+  expect_equal(unname(res$labels["1"]), "TypeB")
+})
+
+test_that("SummarizeRCTDByCluster auto-detects rctd_ columns, excluding the derived ones RunRCTD writes", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 6, n_clusters = 1)
+  obj$seurat_clusters <- factor(rep("0", 6))
+  obj$rctd_TypeA      <- stats::runif(6)
+  obj$rctd_TypeB      <- 1 - obj$rctd_TypeA
+  obj$rctd_dominant   <- "TypeA"
+  obj$rctd_max_weight <- obj$rctd_TypeA
+  obj$rctd_spot_class <- "singlet"
+
+  res <- SummarizeRCTDByCluster(obj)
+  expect_setequal(colnames(res$composition), c("TypeA", "TypeB"))
+})
+
+test_that("SummarizeRCTDByCluster min_score/min_margin flag ambiguous clusters Unknown", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 4, n_clusters = 1)
+  obj$seurat_clusters <- factor(rep("0", 4))
+  obj$rctd_TypeA <- c(0.51, 0.49, 0.52, 0.48)  # ~50/50 split, essentially no margin
+  obj$rctd_TypeB <- 1 - obj$rctd_TypeA
+
+  res <- SummarizeRCTDByCluster(obj, min_score = 0.3, min_margin = 0.2)
+  expect_equal(unname(res$labels["0"]), "Unknown")
+})
+
+test_that("SummarizeRCTDByCluster validates its inputs", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  expect_error(SummarizeRCTDByCluster(list(1, 2)), "Seurat object")
+
+  obj <- .make_small_seurat(seed = 1, n_cells = 10)
+  expect_error(SummarizeRCTDByCluster(obj, cluster_col = "nope"), "nope")
+  expect_error(SummarizeRCTDByCluster(obj), "RunRCTD|weight_cols")
+
+  obj$rctd_TypeA <- stats::runif(ncol(obj))
+  expect_error(SummarizeRCTDByCluster(obj, weight_cols = "not_a_col"), "not_a_col")
+  expect_error(
+    SummarizeRCTDByCluster(obj, weight_cols = "seurat_clusters"),
+    "numeric"
+  )
 })

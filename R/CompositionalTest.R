@@ -14,17 +14,31 @@
 #'
 #' @param obj A Seurat object.
 #' @param cluster_col Metadata column holding cluster / cell-type ids.
-#'   Default \code{"seurat_clusters"}.
+#'   Default \code{"seurat_clusters"}. Ignored when \code{weight_cols} is
+#'   supplied.
 #' @param sample_col Metadata column identifying biological replicates
 #'   (typically \code{"orig.ident"}).
 #' @param condition_col Metadata column holding the condition to compare.
+#' @param weight_cols Optional character vector of numeric metadata columns
+#'   holding a continuous per-cell/per-spot composition -- e.g. the
+#'   \code{rctd_<celltype>} proportion columns \code{\link{RunRCTD}} writes
+#'   in \code{"full"} mode. When supplied, \code{cluster_col} is ignored and
+#'   the test runs on the mean of each weight column within each sample,
+#'   rather than on proportions derived from discrete cluster counts. This
+#'   uses the full continuous mixture RCTD estimates instead of collapsing
+#'   each spot to a single dominant cell type first, which throws away
+#'   information "full" mode specifically exists to capture. Only
+#'   \code{method = "betareg"} or \code{"wilcox"} support this --
+#'   \code{"propeller"} needs a discrete per-cell cluster factor, not
+#'   continuous weights, and errors if combined with \code{weight_cols}.
 #' @param transform Transformation applied by propeller before ANOVA.
 #'   One of \code{"asin"} (arcsin-sqrt, default; propeller's recommendation)
-#'   or \code{"logit"}.
+#'   or \code{"logit"}. Ignored when \code{weight_cols} is supplied.
 #' @param method Backend: \code{"auto"} (default; try propeller, then
-#'   betareg, then wilcox), \code{"propeller"}, \code{"betareg"}, or
-#'   \code{"wilcox"}.
-#' @return A data frame with one row per cluster and columns \code{cluster},
+#'   betareg, then wilcox -- or, with \code{weight_cols}, betareg then
+#'   wilcox), \code{"propeller"}, \code{"betareg"}, or \code{"wilcox"}.
+#' @return A data frame with one row per cluster (or, with \code{weight_cols},
+#'   one row per weight column) and columns \code{cluster},
 #'   \code{mean_prop_<level>} for each condition level, \code{effect},
 #'   \code{stat}, \code{pvalue}, \code{padj}, and \code{method}.
 #' @examples
@@ -33,12 +47,22 @@
 #'                          sample_col    = "orig.ident",
 #'                          condition_col = "treatment")
 #' subset(res, padj < 0.05)
+#'
+#' # Continuous RCTD "full"-mode weights instead of a discrete cluster call
+#' celltypes <- grep("^rctd_", colnames(visium@meta.data), value = TRUE)
+#' celltypes <- setdiff(celltypes, "rctd_dominant")
+#' res_rctd <- CompositionalTest(visium,
+#'                               weight_cols   = celltypes,
+#'                               sample_col    = "orig.ident",
+#'                               condition_col = "treatment",
+#'                               method        = "betareg")
 #' }
 #' @export
 CompositionalTest <- function(obj,
                               cluster_col   = "seurat_clusters",
                               sample_col    = "orig.ident",
                               condition_col = NULL,
+                              weight_cols   = NULL,
                               transform     = c("asin", "logit"),
                               method        = c("auto", "propeller",
                                                 "betareg", "wilcox")) {
@@ -46,6 +70,72 @@ CompositionalTest <- function(obj,
   transform <- match.arg(transform)
   method    <- match.arg(method)
   if (is.null(condition_col)) stop("`condition_col` is required.")
+
+  # ---- Continuous-weights mode (e.g. RCTD "full"-mode rctd_<celltype>) ----
+  if (!is.null(weight_cols)) {
+    if (method == "propeller") {
+      stop("`method = 'propeller'` requires a discrete per-cell cluster ",
+           "factor (speckle::propeller() doesn't accept continuous weights) ",
+           "-- use `method = 'betareg'` or `'wilcox'` with `weight_cols`.")
+    }
+    missing_cols <- setdiff(c(weight_cols, sample_col, condition_col),
+                            colnames(obj@meta.data))
+    if (length(missing_cols)) {
+      stop("Column(s) not found in obj@meta.data: ",
+           paste(missing_cols, collapse = ", "))
+    }
+    md <- obj@meta.data
+    not_numeric <- weight_cols[!vapply(md[weight_cols], is.numeric, logical(1))]
+    if (length(not_numeric)) {
+      stop("`weight_cols` must be numeric columns; not numeric: ",
+           paste(not_numeric, collapse = ", "))
+    }
+
+    sample_vec <- as.character(md[[sample_col]])
+    cond_vec   <- as.character(md[[condition_col]])
+    sc <- unique(data.frame(sample = sample_vec, cond = cond_vec,
+                            stringsAsFactors = FALSE))
+    dupes <- sc$sample[duplicated(sc$sample)]
+    if (length(dupes)) {
+      stop("Samples have inconsistent condition values: ",
+           paste(utils::head(dupes, 5), collapse = ", "))
+    }
+
+    n_per_sample <- table(sample_vec)
+    eps <- 1 / (2 * max(n_per_sample))
+
+    prop_df <- do.call(rbind, lapply(weight_cols, function(wc) {
+      means <- tapply(md[[wc]], sample_vec, mean, na.rm = TRUE)
+      data.frame(sample = names(means), cluster = wc,
+                prop = as.numeric(means), stringsAsFactors = FALSE)
+    }))
+    prop_df$prop_bounded <- pmin(pmax(prop_df$prop, eps), 1 - eps)
+    prop_df$cond <- unname(setNames(sc$cond, sc$sample)[prop_df$sample])
+
+    backend <- method
+    if (backend == "auto") {
+      backend <- if (requireNamespace("betareg", quietly = TRUE)) "betareg" else "wilcox"
+    }
+
+    res <- switch(
+      backend,
+      betareg = .comp_test_betareg_continuous(prop_df),
+      wilcox  = .comp_test_wilcox_continuous(prop_df)
+    )
+    res$method <- backend
+
+    mp <- stats::aggregate(prop ~ cluster + cond, data = prop_df, FUN = mean)
+    for (lv in unique(prop_df$cond)) {
+      col <- paste0("mean_prop_", lv)
+      res[[col]] <- mp$prop[match(paste(res$cluster, lv),
+                                  paste(mp$cluster, mp$cond))]
+    }
+    res <- res[order(res$padj, na.last = TRUE), ]
+    rownames(res) <- NULL
+    return(res)
+  }
+
+  # ---- Discrete cluster_col mode (original behavior) ----------------------
   for (col in c(cluster_col, sample_col, condition_col)) {
     if (!col %in% colnames(obj@meta.data)) {
       stop("Column '", col, "' not found in obj@meta.data.")
@@ -208,6 +298,87 @@ CompositionalTest <- function(obj,
   prop_df$cond <- unname(setNames(cond_map$cond,
                                   cond_map$sample)[prop_df$sample])
 
+  clus <- unique(prop_df$cluster)
+  res <- lapply(clus, function(cl) {
+    d <- prop_df[prop_df$cluster == cl, ]
+    lv <- sort(unique(d$cond))
+    if (length(lv) != 2) {
+      return(data.frame(cluster = cl, effect = NA, stat = NA,
+                        pvalue = NA, padj = NA))
+    }
+    a <- d$prop[d$cond == lv[1]]
+    b <- d$prop[d$cond == lv[2]]
+    if (length(a) < 2 || length(b) < 2) {
+      return(data.frame(cluster = cl, effect = NA, stat = NA,
+                        pvalue = NA, padj = NA))
+    }
+    w <- suppressWarnings(stats::wilcox.test(b, a))
+    data.frame(
+      cluster = cl,
+      effect  = mean(b) - mean(a),
+      stat    = unname(w$statistic),
+      pvalue  = w$p.value,
+      padj    = NA_real_,
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, res)
+  out$padj <- stats::p.adjust(out$pvalue, method = "BH")
+  out
+}
+
+
+# ============================================================================
+# Backend: per-weight-column beta regression on continuous means (weight_cols
+# mode -- e.g. RCTD "full"-mode rctd_<celltype> proportions). Mirrors
+# .comp_test_betareg() above but takes an already-built prop_df (sample,
+# cluster, prop, prop_bounded, cond) rather than building one from discrete
+# cluster counts via table().
+# ============================================================================
+#' @keywords internal
+#' @noRd
+.comp_test_betareg_continuous <- function(prop_df) {
+  if (!requireNamespace("betareg", quietly = TRUE)) {
+    stop("'betareg' is required for betareg backend.")
+  }
+  clus <- unique(prop_df$cluster)
+  res <- lapply(clus, function(cl) {
+    d <- prop_df[prop_df$cluster == cl, ]
+    if (length(unique(d$cond)) < 2 || nrow(d) < 4) {
+      return(data.frame(cluster = cl, effect = NA, stat = NA,
+                        pvalue = NA, padj = NA))
+    }
+    fit <- tryCatch(
+      betareg::betareg(prop_bounded ~ cond, data = d),
+      error = function(e) NULL
+    )
+    if (is.null(fit)) {
+      return(data.frame(cluster = cl, effect = NA, stat = NA,
+                        pvalue = NA, padj = NA))
+    }
+    smry <- summary(fit)$coefficients$mean
+    data.frame(
+      cluster = cl,
+      effect  = smry[2, "Estimate"],
+      stat    = smry[2, "z value"],
+      pvalue  = smry[2, "Pr(>|z|)"],
+      padj    = NA_real_,
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, res)
+  out$padj <- stats::p.adjust(out$pvalue, method = "BH")
+  out
+}
+
+
+# ============================================================================
+# Backend: per-weight-column Wilcoxon on continuous means (weight_cols mode).
+# Mirrors .comp_test_wilcox() above but takes an already-built prop_df.
+# ============================================================================
+#' @keywords internal
+#' @noRd
+.comp_test_wilcox_continuous <- function(prop_df) {
   clus <- unique(prop_df$cluster)
   res <- lapply(clus, function(cl) {
     d <- prop_df[prop_df$cluster == cl, ]

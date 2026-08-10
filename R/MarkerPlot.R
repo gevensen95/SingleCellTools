@@ -28,14 +28,51 @@
 #' @param margin_factor Scaling factor for plot margins. Increase if the
 #'   annotation labels along the right edge are getting clipped.
 #' @param maxsize Maximum dot size, passed to \code{scale_size_continuous}.
-#' @param label.fontsize Font size for the right-edge annotation labels.
+#' @param label.fontsize Font size (mm, as \code{geom_text(size = ...)}
+#'   expects) for the right-edge annotation labels. \code{NULL} (default)
+#'   auto-scales down as the gene count grows -- see \strong{Auto-sizing}
+#'   below. Pass a number to override.
+#' @param axis_text_size Font size (pt) for the gene-name axis text.
+#'   \code{NULL} (default) auto-scales down as the gene count grows -- see
+#'   \strong{Auto-sizing} below. Pass a number to override.
 #' @param assay Assay name to read expression from. Default \code{"RNA"}.
 #' @param show.annotations Logical; if TRUE (default), draw the annotation
 #'   group labels along the right edge of the plot.
 #' @param cluster Logical; if TRUE (default), cluster identities by
 #'   correlation across the requested features before plotting.
+#' @param save_path Optional file path (e.g. \code{"markers.pdf"}); if
+#'   supplied, saves the plot via \code{ggplot2::ggsave()} at
+#'   \code{width}/\code{height} (auto-computed if not supplied -- see
+#'   \strong{Auto-sizing}) and still returns the plot. \code{NULL} (default)
+#'   just returns the plot without saving, and instead messages the
+#'   suggested \code{ggsave()} call so you can run it yourself.
+#' @param width,height Figure size in inches, used only when
+#'   \code{save_path} is supplied (or if you want the auto-computed values
+#'   for your own \code{ggsave()} call -- see the \code{suggested_width}/
+#'   \code{suggested_height} attributes in \strong{Value}). \code{NULL}
+#'   (default) auto-computes both from the gene/identity counts.
 #'
-#' @return A \code{ggplot} object.
+#' @return A \code{ggplot} object, with the auto-computed (or supplied)
+#'   figure size attached as \code{attr(p, "suggested_width")} /
+#'   \code{attr(p, "suggested_height")} (inches), so you can reuse them in
+#'   your own \code{ggsave()} call even when \code{save_path} isn't set.
+#'
+#' @section Auto-sizing:
+#' Marker panels can range from a handful of genes to hundreds, and a dot
+#' plot with fixed text sizes/margins looks fine at the small end and turns
+#' into an illegible wall of overlapping labels at the large end. Wherever
+#' \code{label.fontsize}/\code{axis_text_size}/\code{width}/\code{height}
+#' are left \code{NULL} (the default), this scales them from the number of
+#' genes actually plotted (after filtering) and the number of identities:
+#' \code{axis_text_size} steps down from 9pt (\eqn{\le}30 genes) to 5.5pt
+#' (>100 genes); \code{label.fontsize} steps down similarly from 3.5mm to
+#' 2.2mm; \code{height} allows roughly 0.16in per gene row plus a fixed 2in
+#' for the axis/legend/margins; \code{width} allows roughly 0.6in per
+#' identity plus a fixed 3in. These are reasonable defaults, not guarantees
+#' -- a panel with many tiny (1-2 gene) annotation groups packed together
+#' can still crowd the right-edge group labels even at the auto-computed
+#' size, since those labels sit at each group's vertical midpoint
+#' regardless of how little space is between adjacent groups.
 #'
 #' @examples
 #' \dontrun{
@@ -45,6 +82,10 @@
 #'               "Cholangiocyte", "Cholangiocyte", "Cholangiocyte")
 #' )
 #' MarkerPlot(harmony, cellID)
+#'
+#' # Large panel -- auto-sized text/margins, and save directly at the
+#' # auto-computed figure size instead of guessing width/height by hand
+#' MarkerPlot(harmony, big_marker_panel, save_path = "markers.pdf")
 #' }
 #'
 #' @importFrom magrittr %>%
@@ -59,10 +100,14 @@ MarkerPlot <- function(obj,
                        genes,
                        margin_factor    = 0.5,
                        maxsize          = 4,
-                       label.fontsize   = 3,
+                       label.fontsize   = NULL,
+                       axis_text_size   = NULL,
                        assay            = "RNA",
                        show.annotations = TRUE,
-                       cluster          = TRUE) {
+                       cluster          = TRUE,
+                       save_path        = NULL,
+                       width            = NULL,
+                       height           = NULL) {
 
   # ---- Validate inputs ----------------------------------------------------
   if (!inherits(obj, "Seurat")) {
@@ -175,9 +220,34 @@ MarkerPlot <- function(obj,
     Seurat::Idents(obj) <- factor(Seurat::Idents(obj), levels = row_order)
   }
 
+  # ---- Auto-scale text/figure size for large marker panels ----------------
+  # A dot plot with fixed text sizes/margins looks fine at a handful of
+  # genes and turns into an illegible wall of overlapping labels once a
+  # panel grows into the hundreds -- see the "Auto-sizing" doc section for
+  # the rationale behind these specific breakpoints/coefficients.
+  n_genes  <- nrow(genes)
+  n_idents <- length(unique(Seurat::Idents(obj)))
+
+  if (is.null(axis_text_size)) {
+    axis_text_size <- if (n_genes <= 30) 9
+                      else if (n_genes <= 60) 7.5
+                      else if (n_genes <= 100) 6.5
+                      else 5.5
+  }
+  if (is.null(label.fontsize)) {
+    label.fontsize <- if (n_genes <= 30) 3.5
+                      else if (n_genes <= 60) 3
+                      else if (n_genes <= 100) 2.6
+                      else 2.2
+  }
+  suggested_height <- max(6, n_genes * 0.16 + 2)
+  suggested_width  <- max(7, n_idents * 0.6 + 3)
+  final_height <- if (is.null(height)) suggested_height else height
+  final_width  <- if (is.null(width)) suggested_width else width
+
   # ---- Build the plot -----------------------------------------------------
   ordered_genes <- genes$Gene[order(genes$Details)]
-  tmp$xpos <- length(unique(Seurat::Idents(obj))) + 1
+  tmp$xpos <- n_idents + 1
 
   d <- Seurat::DotPlot(
     obj,
@@ -192,11 +262,12 @@ MarkerPlot <- function(obj,
     ggplot2::xlab("") +
     ggplot2::ylab(" ") +
     ggplot2::coord_flip(clip  = "off",
-                        ylim = c(1, length(unique(Seurat::Idents(obj))))) +
+                        ylim = c(1, n_idents)) +
     ggplot2::theme(
       legend.position = "left",
       legend.title    = ggplot2::element_text(size = 6),
       axis.text.x     = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1),
+      axis.text.y     = ggplot2::element_text(size = axis_text_size),
       plot.title      = ggplot2::element_text(hjust = 0.5, face = "bold"),
       plot.margin     = ggplot2::margin(
         t = 1 * margin_factor,
@@ -216,6 +287,23 @@ MarkerPlot <- function(obj,
       hjust   = 0,
       vjust   = 0
     )
+  }
+
+  # ---- Save (optional) / suggest a render size -----------------------------
+  attr(d, "suggested_width")  <- suggested_width
+  attr(d, "suggested_height") <- suggested_height
+
+  if (!is.null(save_path)) {
+    message(sprintf("  Saving to '%s' at %.1f x %.1f in (width x height)...",
+                    save_path, final_width, final_height))
+    ggplot2::ggsave(save_path, plot = d, width = final_width,
+                    height = final_height, limitsize = FALSE)
+  } else {
+    message(sprintf(
+      paste0("  %d genes across %d identities -- if labels look cramped, ",
+            "try: ggsave(\"markers.pdf\", plot = p, width = %.1f, height = %.1f, ",
+            "limitsize = FALSE)"),
+      n_genes, n_idents, final_width, final_height))
   }
 
   d

@@ -59,7 +59,10 @@
 #' @param markers Find all markers
 #' @param workers Number of parallel workers to use (via \code{future.apply})
 #'   for reading/creating each sample's Seurat object -- fully independent
-#'   across samples. Default \code{1} runs sequentially exactly as before;
+#'   across samples. Defaults to \code{length(data_dirs)} (one worker per
+#'   sample); errors up front if that (or an explicit value) exceeds
+#'   \code{parallel::detectCores()}, naming the number of cores actually
+#'   available. Pass \code{workers = 1} to run sequentially instead.
 #'   \code{workers > 1} spins up that many background R sessions via
 #'   \code{future::plan(multisession)}, restored on exit. Note each worker
 #'   holds its own copy of that sample's data, so peak memory scales with
@@ -83,7 +86,9 @@ CreateAndIntegrateRNA <-
            integration_normalization = 'SCT', integration_assay = 'SCT',
            integration_reduction = 'pca', new_reduction = 'harmony',
            k_anchor = NULL, k_weight = NULL,
-           markers = TRUE, workers = 1) {
+           markers = TRUE, workers = length(data_dirs)) {
+    workers <- .resolve_workers(workers, n_samples = length(data_dirs),
+                                was_default = missing(workers))
     # Ensure thresholds are specified if not using quantiles
     if (!use_quantile) {
       if (!is.numeric(feature_min)) stop("Error: Did not specify threshold for feature_min")

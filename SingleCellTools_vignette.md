@@ -48,7 +48,7 @@
     - 12.3 [Parse Biosciences — `MakeParseObj()`](#123-parse-biosciences--makeparseobj)
     - 12.4 [FOV Edge / Tissue Hole Detection](#124-fov-edge--tissue-hole-detection)
     - 12.5 [Neighborhood Enrichment — `NeighborhoodEnrichment()`](#125-neighborhood-enrichment--neighborhoodenrichment)
-    - 12.6 [Niche Co-expression — `NicheCoExpress()`](#126-niche-co-expression--nicheco express)
+    - 12.6 [Niche Co-expression — `NicheCoExpress()`](#126-niche-co-expression--nichecoexpress)
     - 12.7 [Estimation Plot — `NicheCoExpressEstimationPlot()`](#127-estimation-plot--nichecoexpressestimationplot)
     - 12.8 [Visium Deconvolution — `RunRCTD()`](#128-visium-deconvolution--runrctd)
 13. [scATAC-seq — `CreateATACObjects()`](#13-scatac-seq--createatacobjects)
@@ -532,6 +532,12 @@ print(p)
 
 # Save
 ggsave("markerplot_lung.pdf", p, width = 12, height = 8)
+```
+
+**Auto-sizing for large panels.** The example above sets `label.fontsize` by hand. If you'd rather not tune it yourself — especially for panels much larger than this one — leave `label.fontsize` and `axis_text_size` at their `NULL` default and `MarkerPlot()` scales both (plus a suggested figure size) down as the gene count grows, so a 100+ gene panel doesn't collapse into overlapping labels the way a fixed font size would. Pass `save_path` to save directly at that computed size instead of a separate `ggsave()` call:
+
+```r
+MarkerPlot(integrated, markers, save_path = "markerplot_lung.pdf")
 ```
 
 **Automatic filtering.** Before rendering, `MarkerPlot()` silently drops:
@@ -1530,6 +1536,16 @@ SpatialDimPlot(visium, group.by = "rctd_dominant")
 
 `RunRCTD()` should be the primary annotation strategy for Visium; use `AnnotateClusters()` only as a quick sanity check.
 
+`rctd_dominant` gives a per-spot winner, but collapsing to that single label before looking at the cluster level throws away exactly the mixture information RCTD estimated. `SummarizeRCTDByCluster()` instead averages the full `rctd_<celltype>` proportions within each cluster and picks a best-guess label from that averaged composition, using the same margin-based logic `AnnotateClusters()` uses internally:
+
+```r
+res <- SummarizeRCTDByCluster(visium)
+res$labels        # named vector: cluster -> most likely cell type
+res$composition    # cluster x cell-type mean-proportion matrix
+```
+
+Nothing is written back to `visium` — `res` is a plain list, so attach it to metadata yourself if you want it there. See the spatial vignette (§7.6) for a more detailed walkthrough, including flagging ambiguous clusters with `min_score`/`min_margin`.
+
 ---
 
 ## 13. scATAC-seq — `CreateATACObjects()`
@@ -1743,6 +1759,41 @@ roi_obj <- subset_opt(integrated_xenium, cells = cells_in_roi)
 # Always prefer subset_opt() over subset() for spatial objects
 clean <- subset_opt(integrated_xenium, seurat_clusters %in% c("0", "1", "3"))
 ```
+
+**Segmentation polygon plots** — `get_polygon_coords()` / `PlotPolygons()` / `stack_polygons()` / `collect_legend()`
+
+For platforms with real per-cell segmentation boundaries — Xenium, CosMx, MERFISH; anywhere `Boundaries(obj[[image]])` includes `"segmentation"`, not just cell centroids — `PlotPolygons()` draws actual cell shapes colored by any feature, as a more flexible alternative to `Seurat::ImageFeaturePlot()`/`ImageDimPlot()`:
+
+```r
+# Per-vertex polygon coordinates for one FOV, joined with a metadata column
+poly <- get_polygon_coords(integrated_xenium, image = "fov1", meta_cols = "cell_type")
+
+# Continuous or discrete feature, auto-detected
+PlotPolygons(poly, feature = "cell_type")
+
+# It's a plain ggplot, fully chainable
+PlotPolygons(poly, feature = "cell_type") +
+  ggplot2::ggtitle("Cell types, fov1")
+```
+
+Layer several differently-colored subsets into one composite (e.g. two cell types on two different color gradients) with `stack_polygons()` + `collect_legend()`:
+
+```r
+bg    <- PlotPolygons(poly, background = "grey90")
+tcell <- PlotPolygons(subset(poly, cell_type == "T cell"),
+                      feature = "Cd3e", colors = c("white", "red"))
+bcell <- PlotPolygons(subset(poly, cell_type == "B cell"),
+                      feature = "Cd19", colors = c("white", "blue"))
+
+overlay <- stack_polygons(bg, poly, first = TRUE) +
+  stack_polygons(tcell, poly) +
+  stack_polygons(bcell, poly)
+
+legends <- patchwork::wrap_plots(collect_legend(tcell), collect_legend(bcell), ncol = 1)
+overlay + legends + patchwork::plot_layout(widths = c(1, 0.25))
+```
+
+`stack_polygons()` pins every layer to the same coordinate range and strips its legend/titles so stacking doesn't shift the panel; `collect_legend()` pulls each stripped legend back out so it can be laid out separately alongside the combined overlay.
 
 ---
 

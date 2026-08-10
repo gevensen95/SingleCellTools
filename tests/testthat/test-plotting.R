@@ -142,6 +142,78 @@ test_that("MarkerPlot drops genes not present in the assay and errors if none re
   )
 })
 
+test_that("MarkerPlot auto-sizes axis text / annotation label font from gene count", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60, n_clusters = 3)
+  genes_df <- .make_annotated_genes_df(obj)  # 6 genes -> the <=30 bucket
+
+  p <- suppressMessages(MarkerPlot(obj, genes_df))
+  expect_equal(p$theme$axis.text.y$size, 9)
+
+  annot_layer <- p$layers[[length(p$layers)]]
+  expect_equal(annot_layer$aes_params$size, 3.5)
+})
+
+test_that("MarkerPlot respects explicit label.fontsize/axis_text_size overrides", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60, n_clusters = 3)
+  genes_df <- .make_annotated_genes_df(obj)
+
+  p <- suppressMessages(MarkerPlot(obj, genes_df,
+                                   axis_text_size = 11, label.fontsize = 6))
+  expect_equal(p$theme$axis.text.y$size, 11)
+
+  annot_layer <- p$layers[[length(p$layers)]]
+  expect_equal(annot_layer$aes_params$size, 6)
+})
+
+test_that("MarkerPlot attaches suggested_width/suggested_height attributes", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60, n_clusters = 3)
+  genes_df <- .make_annotated_genes_df(obj)
+
+  p <- suppressMessages(MarkerPlot(obj, genes_df))
+  expect_true(is.numeric(attr(p, "suggested_width")))
+  expect_true(is.numeric(attr(p, "suggested_height")))
+  expect_gt(attr(p, "suggested_width"), 0)
+  expect_gt(attr(p, "suggested_height"), 0)
+
+  # Explicit width/height override the auto-computed suggestion used for
+  # save_path, but the attributes always reflect the auto-computed values
+  # (they're a suggestion for your OWN ggsave() call, not an echo of what
+  # you passed in).
+  p2 <- suppressMessages(MarkerPlot(obj, genes_df, width = 12, height = 12))
+  expect_equal(attr(p2, "suggested_width"), attr(p, "suggested_width"))
+  expect_equal(attr(p2, "suggested_height"), attr(p, "suggested_height"))
+})
+
+test_that("MarkerPlot's save_path writes a file at the requested/auto-computed size", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  testthat::skip_if_not_installed("ggplot2")
+  obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60, n_clusters = 3)
+  genes_df <- .make_annotated_genes_df(obj)
+
+  out <- tempfile(fileext = ".pdf")
+  on.exit(unlink(out), add = TRUE)
+  expect_message(
+    p <- MarkerPlot(obj, genes_df, save_path = out, width = 5, height = 5),
+    "Saving to"
+  )
+  expect_true(file.exists(out))
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("MarkerPlot messages a suggested ggsave() call when save_path isn't set", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60, n_clusters = 3)
+  genes_df <- .make_annotated_genes_df(obj)
+
+  expect_message(
+    MarkerPlot(obj, genes_df),
+    "if labels look cramped"
+  )
+})
+
 test_that("MarkerPctPlot returns a ggplot in both tile and dot styles", {
   .skip_if_missing("Seurat", "SeuratObject")
   obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60, n_clusters = 3)
