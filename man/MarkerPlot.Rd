@@ -9,10 +9,14 @@ MarkerPlot(
   genes,
   margin_factor = 0.5,
   maxsize = 4,
-  label.fontsize = 3,
+  label.fontsize = NULL,
+  axis_text_size = NULL,
   assay = "RNA",
   show.annotations = TRUE,
-  cluster = TRUE
+  cluster = TRUE,
+  save_path = NULL,
+  width = NULL,
+  height = NULL
 )
 }
 \arguments{
@@ -27,7 +31,14 @@ annotation labels along the right edge are getting clipped.}
 
 \item{maxsize}{Maximum dot size, passed to \code{scale_size_continuous}.}
 
-\item{label.fontsize}{Font size for the right-edge annotation labels.}
+\item{label.fontsize}{Font size (mm, as \code{geom_text(size = ...)}
+expects) for the right-edge annotation labels. \code{NULL} (default)
+auto-scales down as the gene count grows -- see \strong{Auto-sizing}
+below. Pass a number to override.}
+
+\item{axis_text_size}{Font size (pt) for the gene-name axis text.
+\code{NULL} (default) auto-scales down as the gene count grows -- see
+\strong{Auto-sizing} below. Pass a number to override.}
 
 \item{assay}{Assay name to read expression from. Default \code{"RNA"}.}
 
@@ -36,9 +47,25 @@ group labels along the right edge of the plot.}
 
 \item{cluster}{Logical; if TRUE (default), cluster identities by
 correlation across the requested features before plotting.}
+
+\item{save_path}{Optional file path (e.g. \code{"markers.pdf"}); if
+supplied, saves the plot via \code{ggplot2::ggsave()} at
+\code{width}/\code{height} (auto-computed if not supplied -- see
+\strong{Auto-sizing}) and still returns the plot. \code{NULL} (default)
+just returns the plot without saving, and instead messages the
+suggested \code{ggsave()} call so you can run it yourself.}
+
+\item{width, height}{Figure size in inches, used only when
+\code{save_path} is supplied (or if you want the auto-computed values
+for your own \code{ggsave()} call -- see the \code{suggested_width}/
+\code{suggested_height} attributes in \strong{Value}). \code{NULL}
+(default) auto-computes both from the gene/identity counts.}
 }
 \value{
-A \code{ggplot} object.
+A \code{ggplot} object, with the auto-computed (or supplied)
+figure size attached as \code{attr(p, "suggested_width")} /
+\code{attr(p, "suggested_height")} (inches), so you can reuse them in
+your own \code{ggsave()} call even when \code{save_path} isn't set.
 }
 \description{
 Builds a Seurat \code{DotPlot} in which the features are organized by an
@@ -63,6 +90,25 @@ and \code{.cluster_mat} defined in \code{dotplot-helpers.R}. If sourcing
 files directly (rather than loading as a package), source that file
 before this one.
 }
+\section{Auto-sizing}{
+
+Marker panels can range from a handful of genes to hundreds, and a dot
+plot with fixed text sizes/margins looks fine at the small end and turns
+into an illegible wall of overlapping labels at the large end. Wherever
+\code{label.fontsize}/\code{axis_text_size}/\code{width}/\code{height}
+are left \code{NULL} (the default), this scales them from the number of
+genes actually plotted (after filtering) and the number of identities:
+\code{axis_text_size} steps down from 9pt (\eqn{\le}30 genes) to 5.5pt
+(>100 genes); \code{label.fontsize} steps down similarly from 3.5mm to
+2.2mm; \code{height} allows roughly 0.16in per gene row plus a fixed 2in
+for the axis/legend/margins; \code{width} allows roughly 0.6in per
+identity plus a fixed 3in. These are reasonable defaults, not guarantees
+-- a panel with many tiny (1-2 gene) annotation groups packed together
+can still crowd the right-edge group labels even at the auto-computed
+size, since those labels sit at each group's vertical midpoint
+regardless of how little space is between adjacent groups.
+}
+
 \examples{
 \dontrun{
 cellID <- data.frame(
@@ -71,6 +117,10 @@ cellID <- data.frame(
               "Cholangiocyte", "Cholangiocyte", "Cholangiocyte")
 )
 MarkerPlot(harmony, cellID)
+
+# Large panel -- auto-sized text/margins, and save directly at the
+# auto-computed figure size instead of guessing width/height by hand
+MarkerPlot(harmony, big_marker_panel, save_path = "markers.pdf")
 }
 
 }

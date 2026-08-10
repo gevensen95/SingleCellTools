@@ -343,3 +343,67 @@ test_that("SpatialCompositionPlot errors when obj has no images", {
   obj$w_typeA <- stats::runif(ncol(obj))
   expect_error(SpatialCompositionPlot(obj, weight_cols = "w_typeA"), "images")
 })
+
+
+# ============================================================================
+# SummarizeRCTDByCluster() -- pure base-R aggregation + the shared
+# .assign_with_unassigned() labeler, so (unlike RunRCTD()/SpatialCompositionPlot()
+# above) these run fully end-to-end without spacexr/scatterpie -- only
+# Seurat/SeuratObject for the fixture object itself.
+# ============================================================================
+
+test_that("SummarizeRCTDByCluster averages proportions per cluster and recovers the dominant label", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 8, n_clusters = 2)
+  obj$seurat_clusters <- factor(rep(c("0", "1"), each = 4))
+  obj$rctd_TypeA <- c(0.9, 0.8, 0.7, 0.6, 0.1, 0.2, 0.05, 0.15)
+  obj$rctd_TypeB <- 1 - obj$rctd_TypeA
+
+  res <- SummarizeRCTDByCluster(obj)
+  expect_equal(sort(rownames(res$composition)), c("0", "1"))
+  expect_equal(unname(res$composition["0", "TypeA"]), mean(c(0.9, 0.8, 0.7, 0.6)))
+  expect_equal(unname(res$composition["1", "TypeB"]), mean(1 - c(0.1, 0.2, 0.05, 0.15)))
+  expect_equal(unname(res$labels["0"]), "TypeA")
+  expect_equal(unname(res$labels["1"]), "TypeB")
+})
+
+test_that("SummarizeRCTDByCluster auto-detects rctd_ columns, excluding the derived ones RunRCTD writes", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 6, n_clusters = 1)
+  obj$seurat_clusters <- factor(rep("0", 6))
+  obj$rctd_TypeA      <- stats::runif(6)
+  obj$rctd_TypeB      <- 1 - obj$rctd_TypeA
+  obj$rctd_dominant   <- "TypeA"
+  obj$rctd_max_weight <- obj$rctd_TypeA
+  obj$rctd_spot_class <- "singlet"
+
+  res <- SummarizeRCTDByCluster(obj)
+  expect_setequal(colnames(res$composition), c("TypeA", "TypeB"))
+})
+
+test_that("SummarizeRCTDByCluster min_score/min_margin flag ambiguous clusters Unknown", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 4, n_clusters = 1)
+  obj$seurat_clusters <- factor(rep("0", 4))
+  obj$rctd_TypeA <- c(0.51, 0.49, 0.52, 0.48)  # ~50/50 split, essentially no margin
+  obj$rctd_TypeB <- 1 - obj$rctd_TypeA
+
+  res <- SummarizeRCTDByCluster(obj, min_score = 0.3, min_margin = 0.2)
+  expect_equal(unname(res$labels["0"]), "Unknown")
+})
+
+test_that("SummarizeRCTDByCluster validates its inputs", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  expect_error(SummarizeRCTDByCluster(list(1, 2)), "Seurat object")
+
+  obj <- .make_small_seurat(seed = 1, n_cells = 10)
+  expect_error(SummarizeRCTDByCluster(obj, cluster_col = "nope"), "nope")
+  expect_error(SummarizeRCTDByCluster(obj), "RunRCTD|weight_cols")
+
+  obj$rctd_TypeA <- stats::runif(ncol(obj))
+  expect_error(SummarizeRCTDByCluster(obj, weight_cols = "not_a_col"), "not_a_col")
+  expect_error(
+    SummarizeRCTDByCluster(obj, weight_cols = "seurat_clusters"),
+    "numeric"
+  )
+})

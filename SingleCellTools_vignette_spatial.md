@@ -22,6 +22,7 @@
    - 7.3 [Feeding RCTD output into composition/niche tools](#73-feeding-rctd-output-into-compositionniche-tools)
    - 7.4 [Quality/confidence fields](#74-qualityconfidence-fields)
    - 7.5 [Visualizing the full mixture — `SpatialCompositionPlot()`](#75-visualizing-the-full-mixture--spatialcompositionplot)
+   - 7.6 [Cluster-level composition — `SummarizeRCTDByCluster()`](#76-cluster-level-composition--summarizerctdbycluster)
 8. [Feature Density on the Tissue — `PlotFeatureDensity()`](#8-feature-density-on-the-tissue--plotfeaturedensity)
 9. [Gene Positivity — `AddGenePositivity()` / `PlotGenePositivity()`](#9-gene-positivity--addgenepositivity--plotgenepositivity)
     - 9.1 [`GenePositivityAnalysis()` and `GenePositivityEstimationPlot()`](#91-genepositivityanalysis-and-genepositivityestimationplot)
@@ -405,6 +406,12 @@ print(p)
 ggsave("markerplot_brain.pdf", p, width = 14, height = 10)
 ```
 
+**Auto-sizing for large panels.** The example above sets `label.fontsize` explicitly. Leave it (and `axis_text_size`) at their `NULL` default instead and `MarkerPlot()` scales both, plus a suggested figure size, down as the gene count grows — a real concern once you're annotating dozens of neuroanatomical subtypes instead of the ~9 broad classes above. `save_path` saves directly at that computed size instead of a separate `ggsave()` call:
+
+```r
+MarkerPlot(integrated, brain_markers, save_path = "markerplot_brain.pdf")
+```
+
 ### Assign neuroanatomical labels
 
 After reviewing the dot plot, relabel clusters with their anatomical identity.
@@ -594,6 +601,31 @@ SpatialCompositionPlot(integrated, donut = TRUE, pie_scale = 0.6)
 # randomly subsamples rather than rendering an unreadable/slow wall of pies
 SpatialCompositionPlot(integrated, n_spots_max = 500)
 ```
+
+### 7.6 Cluster-level composition — `SummarizeRCTDByCluster()`
+
+`rctd_dominant` (7 above) is a per-*spot* winner-takes-all label. Tabulating or averaging it at the cluster level — e.g. via `CompositionAnalysis(group_col = "rctd_dominant")` in 7.3 — throws away exactly the mixture information `"full"` mode estimated, one level later than `AnnotateClusters()` would on raw expression, but the same information loss. `SummarizeRCTDByCluster()` instead averages the *soft* `rctd_<celltype>` proportions within each cluster first, then picks a per-cluster label from that averaged composition using the same margin-based "best label, else Unknown" logic `AnnotateClusters()` uses internally — just applied to RCTD's already mixture-aware proportions instead of re-scoring raw expression, which sidesteps issues like a dominant cell type's expression leaking into every cluster's marker score (see `AnnotateClusters()`'s `visium_mode` docs):
+
+```r
+res <- SummarizeRCTDByCluster(integrated)
+res$composition    # cluster x cell-type matrix of mean RCTD proportions
+res$labels          # named vector: cluster -> most likely cell type
+
+# e.g. relabel clusters for a plot title/legend
+DimPlot(integrated, label = TRUE) +
+  ggtitle(paste(names(res$labels), res$labels, sep = ": ", collapse = " | "))
+```
+
+Nothing is written back to `integrated` — `res` is a plain list, so attach it to metadata yourself (e.g. `integrated$cluster_celltype <- res$labels[as.character(integrated$seurat_clusters)]`) if you want it there.
+
+By default `min_score`/`min_margin` are both `NA` (disabled), so every cluster gets a best guess regardless of confidence — the same default `AnnotateClusters()` uses. Pass explicit thresholds to flag ambiguous clusters instead of silently guessing:
+
+```r
+res <- SummarizeRCTDByCluster(integrated, min_score = 0.3, min_margin = 0.1)
+table(res$labels)   # clusters with no clear winner come back "Unknown"
+```
+
+`weight_cols` defaults to every `rctd_<celltype>` column, excluding the derived `rctd_dominant`/`rctd_max_weight`/`rctd_spot_class` columns — pass it explicitly if you've renamed columns or want to restrict the comparison to a subset of cell types.
 
 ---
 

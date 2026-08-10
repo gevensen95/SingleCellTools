@@ -436,6 +436,12 @@ ggsave("markerplot_ifnb.pdf", p, width = 14, height = 9)
 `MarkerPlot()` will automatically drop any gene absent from the assay or with zero
 expression, and report those drops as messages — no manual filtering needed.
 
+**Auto-sizing for large panels.** The example above sets `label.fontsize` explicitly. Leave it (and `axis_text_size`) at their `NULL` default instead and `MarkerPlot()` scales both, plus a suggested figure size, down as the gene count grows — handy for marker panels much bigger than this one. `save_path` saves directly at that computed size:
+
+```r
+MarkerPlot(integrated, pbmc_markers, save_path = "markerplot_ifnb.pdf")
+```
+
 ### Assign cell-type labels
 
 After reviewing the dot plot, rename clusters:
