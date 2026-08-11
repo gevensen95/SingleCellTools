@@ -407,3 +407,60 @@ test_that("SummarizeRCTDByCluster validates its inputs", {
     "numeric"
   )
 })
+
+
+# ============================================================================
+# RCTDCompositionHeatmap() -- accepts a Seurat object (calls
+# SummarizeRCTDByCluster internally), the list SummarizeRCTDByCluster()
+# returns, or a raw matrix/data frame directly. Pure ggplot2 + base R, no
+# extra Suggests package needed beyond Seurat/SeuratObject for the fixture.
+# ============================================================================
+
+.make_rctd_composition_obj <- function() {
+  obj <- .make_small_seurat(seed = 1, n_cells = 9, n_clusters = 3)
+  obj$seurat_clusters <- factor(rep(c("0", "1", "2"), each = 3))
+  # TypeA/TypeB vary a lot by cluster; Constant has zero variance across
+  # clusters -- exercises the scale()-produces-NaN-for-a-constant-column
+  # guard.
+  obj$rctd_TypeA     <- c(0.9, 0.85, 0.95, 0.1, 0.15, 0.05, 0.5, 0.55, 0.45)
+  obj$rctd_TypeB     <- 1 - obj$rctd_TypeA
+  obj$rctd_Constant  <- rep(0.3, 9)
+  obj
+}
+
+test_that("RCTDCompositionHeatmap accepts a Seurat object and z-scores by default", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_rctd_composition_obj()
+  p <- RCTDCompositionHeatmap(obj)
+  expect_s3_class(p, "ggplot")
+  expect_true(all(is.finite(p$data$value)))  # includes the constant column -> 0, not NaN
+  expect_equal(p$labels$fill, "Z-score")
+})
+
+test_that("RCTDCompositionHeatmap accepts the list SummarizeRCTDByCluster() returns", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_rctd_composition_obj()
+  res <- SummarizeRCTDByCluster(obj)
+  p <- RCTDCompositionHeatmap(res)
+  expect_s3_class(p, "ggplot")
+  expect_setequal(levels(p$data$cluster), c("0", "1", "2"))
+})
+
+test_that("RCTDCompositionHeatmap accepts a raw composition matrix, scale_cols = FALSE keeps raw values", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_rctd_composition_obj()
+  res <- SummarizeRCTDByCluster(obj)
+  p <- RCTDCompositionHeatmap(res$composition, scale_cols = FALSE, cluster_rows = FALSE)
+  expect_s3_class(p, "ggplot")
+  expect_equal(p$labels$fill, "Proportion")
+  raw_val <- p$data$value[p$data$cluster == "0" & p$data$cell_type == "TypeA"]
+  expect_equal(raw_val, unname(res$composition["0", "TypeA"]))
+})
+
+test_that("RCTDCompositionHeatmap errors on fewer than 2 clusters and on unresolvable input", {
+  expect_error(
+    RCTDCompositionHeatmap(matrix(1:3, nrow = 1, dimnames = list("0", c("a", "b", "c")))),
+    "at least 2"
+  )
+  expect_error(RCTDCompositionHeatmap(list(not_composition = 1)), "numeric")
+})

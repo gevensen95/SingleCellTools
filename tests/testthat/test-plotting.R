@@ -98,6 +98,56 @@ test_that("MarkerHeatmap errors when nothing passes the significance filter", {
   expect_error(MarkerHeatmap(obj, markers = markers), "No genes passed")
 })
 
+test_that("MarkerHeatmap pseudobulk = TRUE returns a ggplot with finite z-scores", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60, n_clusters = 3)
+  markers <- data.frame(
+    gene       = rownames(obj)[1:10],
+    cluster    = rep(levels(obj$seurat_clusters), length.out = 10),
+    avg_log2FC = runif(10, 1, 3),
+    p_val_adj  = rep(0.001, 10),
+    stringsAsFactors = FALSE
+  )
+  p <- suppressMessages(MarkerHeatmap(obj, markers = markers, n = 3, pseudobulk = TRUE))
+  expect_s3_class(p, "ggplot")
+  expect_true(all(is.finite(p$data$value)))
+  expect_equal(p$labels$fill, "Z-score")
+})
+
+test_that("MarkerHeatmap pseudobulk = TRUE, scale_rows = FALSE labels the fill as pseudobulk log-CPM", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60, n_clusters = 3)
+  markers <- data.frame(
+    gene       = rownames(obj)[1:10],
+    cluster    = rep(levels(obj$seurat_clusters), length.out = 10),
+    avg_log2FC = runif(10, 1, 3),
+    p_val_adj  = rep(0.001, 10),
+    stringsAsFactors = FALSE
+  )
+  p <- suppressMessages(MarkerHeatmap(obj, markers = markers, n = 3,
+                                      pseudobulk = TRUE, scale_rows = FALSE))
+  expect_s3_class(p, "ggplot")
+  expect_equal(p$labels$fill, "Pseudobulk log-CPM")
+  expect_true(all(p$data$value >= 0))  # log1p(CPM) is never negative
+})
+
+test_that("MarkerHeatmap pseudobulk = TRUE messages and drops marker genes absent from the assay", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60, n_clusters = 3)
+  markers <- data.frame(
+    gene       = c(rownames(obj)[1:9], "NotAGene"),
+    cluster    = rep(levels(obj$seurat_clusters), length.out = 10),
+    avg_log2FC = runif(10, 1, 3),
+    p_val_adj  = rep(0.001, 10),
+    stringsAsFactors = FALSE
+  )
+  expect_message(
+    p <- MarkerHeatmap(obj, markers = markers, n = 10, pseudobulk = TRUE),
+    "NotAGene"
+  )
+  expect_false("NotAGene" %in% levels(p$data$gene))
+})
+
 
 # ============================================================================
 # MarkerPlot() / MarkerPctPlot()

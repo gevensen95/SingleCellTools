@@ -10,13 +10,37 @@
 #'   If NULL, \code{FindAllMarkers} is run.
 #' @param n Number of top markers per cluster to display. Default 10.
 #' @param assay Assay to read from. Default DefaultAssay.
+#' @param pseudobulk Logical; if TRUE, sum raw counts per cluster first
+#'   (\code{Seurat::AggregateExpression}), normalize once, and z-score that
+#'   instead of \code{AverageExpression}'s per-cell-averaged values. Default
+#'   \code{FALSE}. See Details.
 #' @param scale_rows Logical; z-score each gene across clusters. Default TRUE.
 #' @param colors Diverging color vector for the gradient. Default RdBu.
 #' @param cluster_rows,cluster_cols Logical; hierarchical clustering of
 #'   rows / columns. Defaults: rows = TRUE, cols = FALSE (clusters in factor
 #'   order).
 #' @return A \code{ggplot} object.
-#' @importFrom Seurat DefaultAssay AverageExpression FindAllMarkers
+#' @details
+#' \strong{\code{pseudobulk = TRUE}.} \code{AverageExpression()} (the
+#' default) averages already-normalized per-cell values, which is fast but
+#' still exposed to per-cell/per-spot sampling noise -- a real concern on
+#' sparse data (Visium spots routinely carry only a few hundred to a few
+#' thousand UMIs). Pseudobulking sums \emph{raw} counts across every cell
+#' in a cluster into one profile first, then normalizes once (CPM-style,
+#' scale factor 1e4, \code{log1p}) -- the statistically preferred order of
+#' operations (summing before normalizing, not averaging already-normalized
+#' values), and the same noise-collapsing idea \code{\link{PseudobulkDE}}
+#' uses for differential expression. Z-scoring that pseudobulk profile
+#' across clusters is what actually protects against a broadly/ambiently
+#' expressed gene dominating every cluster -- pseudobulking alone reduces
+#' \emph{stochastic} noise, not a systematic contamination signal, so it
+#' doesn't replace the z-scoring step, it makes the values being z-scored
+#' more reliable. Slower and more memory-heavy than the default: the whole
+#' assay is aggregated (via \code{Seurat::AggregateExpression}, which
+#' doesn't reliably support a \code{features} subset across Seurat
+#' versions) before being subset down to the marker genes actually needed.
+#' @importFrom Seurat DefaultAssay AverageExpression AggregateExpression FindAllMarkers
+#' @importFrom SeuratObject LayerData
 #' @importFrom dplyr group_by slice_max ungroup arrange
 #' @importFrom ggplot2 ggplot aes geom_tile theme_minimal theme element_text scale_fill_gradientn labs
 #' @importFrom RColorBrewer brewer.pal
@@ -25,6 +49,7 @@ MarkerHeatmap <- function(obj,
                           markers       = NULL,
                           n             = 10,
                           assay         = NULL,
+                          pseudobulk    = FALSE,
                           scale_rows    = TRUE,
                           colors        = NULL,
                           cluster_rows  = TRUE,
@@ -57,14 +82,48 @@ MarkerHeatmap <- function(obj,
   top_genes <- unique(top$gene)
   if (!length(top_genes)) stop("No genes passed the marker filter.")
 
-  # Average expression per cluster
-  avg <- Seurat::AverageExpression(obj, features = top_genes,
-                                   assays = a, return.seurat = FALSE)[[a]]
-  # Guard rather than unconditional as.matrix(): AverageExpression() output
-  # here is already small (clusters x marker genes), so this isn't a real
-  # memory concern, but skip the coercion/copy when it's already a base
-  # matrix rather than always paying for one.
-  if (!is.matrix(avg)) avg <- as.matrix(avg)
+  if (isTRUE(pseudobulk)) {
+    # True pseudobulk: sum raw counts per cluster first, then normalize once.
+    # AggregateExpression() can return a plain matrix, a dgCMatrix, or an
+    # Assay/Assay5 depending on Seurat version -- same coercion PseudobulkDE()
+    # already relies on for the same function.
+    agg_raw <- Seurat::AggregateExpression(obj, assays = a,
+                                           return.seurat = FALSE,
+                                           slot = "counts")[[a]]
+    if (inherits(agg_raw, c("Assay", "Assay5"))) {
+      agg_raw <- SeuratObject::LayerData(agg_raw, layer = "counts")
+    }
+    agg_raw <- if (is.matrix(agg_raw)) agg_raw else as.matrix(agg_raw)
+
+    keep_genes <- intersect(top_genes, rownames(agg_raw))
+    if (!length(keep_genes)) {
+      stop("None of the top marker genes are present in the pseudobulk ",
+           "assay '", a, "'.")
+    }
+    if (length(keep_genes) < length(top_genes)) {
+      message(sprintf(
+        "  pseudobulk: %d/%d marker gene(s) not found in assay '%s': %s",
+        length(top_genes) - length(keep_genes), length(top_genes), a,
+        paste(setdiff(top_genes, keep_genes), collapse = ", ")))
+    }
+    agg_raw <- agg_raw[keep_genes, , drop = FALSE]
+
+    # CPM-style normalize per pseudobulk cluster, then log1p -- matches this
+    # package's other log-normalization conventions (scale.factor = 1e4),
+    # just applied once per cluster instead of once per cell.
+    lib_size <- Matrix::colSums(agg_raw)
+    avg <- sweep(agg_raw, 2, pmax(lib_size, 1), "/") * 1e4
+    avg <- log1p(avg)
+  } else {
+    # Average expression per cluster
+    avg <- Seurat::AverageExpression(obj, features = top_genes,
+                                     assays = a, return.seurat = FALSE)[[a]]
+    # Guard rather than unconditional as.matrix(): AverageExpression() output
+    # here is already small (clusters x marker genes), so this isn't a real
+    # memory concern, but skip the coercion/copy when it's already a base
+    # matrix rather than always paying for one.
+    if (!is.matrix(avg)) avg <- as.matrix(avg)
+  }
 
   if (isTRUE(scale_rows)) {
     avg <- t(scale(t(avg)))
@@ -103,5 +162,11 @@ MarkerHeatmap <- function(obj,
       panel.grid  = ggplot2::element_blank()
     ) +
     ggplot2::labs(x = NULL, y = NULL,
-                  fill = if (isTRUE(scale_rows)) "Z-score" else "Avg. expr.")
+                  fill = if (isTRUE(scale_rows)) {
+                    "Z-score"
+                  } else if (isTRUE(pseudobulk)) {
+                    "Pseudobulk log-CPM"
+                  } else {
+                    "Avg. expr."
+                  })
 }
