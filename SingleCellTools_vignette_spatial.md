@@ -15,7 +15,8 @@
 5. [Merge and Integrate — `MergeSeurat()`](#5-merge-and-integrate--mergeseurat)
 6. [Annotate Spatial Domains](#6-annotate-spatial-domains)
    - 6.1 [Marker Dot Plots — `MarkerPlot()` / `MarkerPctPlot()`](#61-marker-dot-plots--markerplot--markerpctplot)
-   - 6.2 [Cluster-level Marker Scoring — `AnnotateClusters()`](#62-cluster-level-marker-scoring--annotateclusters)
+   - 6.2 [Heatmap View — `MarkerHeatmap()`](#62-heatmap-view--markerheatmap)
+   - 6.3 [Cluster-level Marker Scoring — `AnnotateClusters()`](#63-cluster-level-marker-scoring--annotateclusters)
 7. [Visium Deconvolution — `RunRCTD()`](#7-visium-deconvolution--runrctd)
    - 7.1 [Choosing a mode](#71-choosing-a-mode)
    - 7.2 [Multiple samples](#72-multiple-samples)
@@ -345,6 +346,39 @@ SpatialDimPlot(integrated, label = FALSE) +
   ggtitle("Clusters mapped back to tissue")
 ```
 
+### Reliable point rendering — `SpatialDimPlotFixed()` / `SpatialFeaturePlotFixed()`
+
+`Seurat::SpatialDimPlot()`/`SpatialFeaturePlot()` draw the tissue image and
+spots together inside a custom `GeomSpatial` geom, and `pt.size.factor` has
+real, documented regressions in recent Seurat releases where it silently has
+no effect on rendered spot size (see
+[satijalab/seurat#9491](https://github.com/satijalab/seurat/issues/9491) and
+[#6179](https://github.com/satijalab/seurat/issues/6179)) — spots can render
+tiny regardless of what you pass. If you hit that, `SpatialDimPlotFixed()`
+and `SpatialFeaturePlotFixed()` are drop-in `ggplot2` replacements built on
+an ordinary `geom_point(size = ...)` layer instead, so point size is
+guaranteed to respond:
+
+```r
+SpatialDimPlotFixed(integrated, group.by = "seurat_clusters", pt.size = 3) +
+  ggtitle("Clusters mapped back to tissue")
+
+# Multi-sample: one panel per image, shared/collected legend
+SpatialDimPlotFixed(integrated, group.by = "seurat_clusters", pt.size = 2)
+
+# Continuous features (genes, module scores) work the same way
+SpatialFeaturePlotFixed(integrated, features = "Mbp", pt.size = 2)
+```
+
+Both accept `crop` (zoom to the spot bounding box, default `TRUE`),
+`image.alpha` (dim the tissue image), and `combine = FALSE` to get a list of
+per-panel `ggplot` objects back instead of a single combined `patchwork`
+object. These are plain `ggplot2` objects, so anything you'd do with
+`SpatialDimPlot()`'s output — theming, `+ ggtitle(...)`, saving via
+`ggsave()` — works the same way. Use the fixed versions whenever
+`SpatialDimPlot()`/`SpatialFeaturePlot()` spot size looks wrong; otherwise
+Seurat's own functions are equally fine to keep using.
+
 ---
 
 ## 6. Annotate Spatial Domains
@@ -438,6 +472,8 @@ integrated <- RenameIdents(integrated, region_labels)
 integrated$spatial_domain <- Idents(integrated)
 
 # Visualize labeled domains on tissue
+# (swap in SpatialDimPlotFixed() here if spot size looks wrong -- see the
+# note at the end of Section 5)
 SpatialDimPlot(integrated, group.by = "spatial_domain", label = FALSE) +
   ggtitle("Annotated spatial domains")
 ggsave("spatial_domains_brain.pdf", width = 14, height = 7)
@@ -445,7 +481,22 @@ ggsave("spatial_domains_brain.pdf", width = 14, height = 7)
 
 ---
 
-### 6.2 Cluster-level Marker Scoring — `AnnotateClusters()`
+### 6.2 Heatmap View — `MarkerHeatmap()`
+
+`MarkerHeatmap()` is a complementary view to the dot plot above: it runs (or accepts an existing) `FindAllMarkers()` table, picks the top markers per cluster, and z-scores their expression across clusters as a heatmap. On Visium specifically, reach for `pseudobulk = TRUE`: spots typically carry only a few hundred to a few thousand UMIs, so the default per-cell-averaged path is more exposed to per-spot sampling noise than it would be on higher-depth single-cell data. `pseudobulk = TRUE` sums raw counts per cluster first and normalizes once, collapsing that noise before it ever reaches the z-score:
+
+```r
+MarkerHeatmap(integrated, pseudobulk = TRUE)
+
+# Reuse an existing FindAllMarkers()-style table instead of recomputing it
+MarkerHeatmap(integrated, markers = cluster_markers, n = 8, pseudobulk = TRUE)
+```
+
+Note this still z-scores across clusters either way (`scale_rows = TRUE` by default) — pseudobulking reduces stochastic per-spot noise, but it's the z-scoring step that actually protects against a broadly/ambiently expressed gene (e.g. hepatocyte transcripts in liver — see §7.6) dominating every cluster's raw magnitude, the same principle behind `RCTDCompositionHeatmap()`.
+
+---
+
+### 6.3 Cluster-level Marker Scoring — `AnnotateClusters()`
 
 For Visium, use `AnnotateClusters()` with Visium-appropriate defaults — the winner-takes-all limitation applies here (each spot mixes cell types), so `return_scores = "cluster"` is often more informative than the winner label alone.
 
@@ -642,6 +693,11 @@ Check the coefficient of variation per cell type (`sd / mean` down each column o
 ## 8. Feature Density on the Tissue — `PlotFeatureDensity()`
 
 `PlotFeatureDensity()` gives a much cleaner view of sparse markers than `SpatialFeaturePlot()` when combined with the UMAP or a spatial 2D coordinate reduction. On a UMAP:
+
+For a direct spot-level view of a gene or module score on the tissue itself
+(rather than density on a reduction), `SpatialFeaturePlotFixed()` is a
+`ggplot2`-based, point-size-reliable alternative to `SpatialFeaturePlot()` —
+see the note at the end of Section 5.
 
 `PlotFeatureDensity()` isn't limited to genes — any numeric metadata column works,
 including a module score. `AddModuleScore()` writes a column named `<name>1`; copy

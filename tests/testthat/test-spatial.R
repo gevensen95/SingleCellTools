@@ -417,3 +417,119 @@ test_that("DropSpatialImage(mode = 'downgrade') skips FOV images with a message 
   expect_equal(length(out@images), 2L)
   expect_setequal(names(out@images), c("fov1", "fov2"))
 })
+
+
+# ============================================================================
+# SpatialDimPlotFixed() / SpatialFeaturePlotFixed() -- ggplot2-based
+# replacements for Seurat::SpatialDimPlot()/SpatialFeaturePlot(), built to
+# work around pt.size.factor silently doing nothing in recent Seurat
+# releases (GeomSpatial's custom draw_panel() -- see the functions' own
+# docs for the specific GitHub issues). Since that's exactly the bug being
+# worked around, `pt.size` actually reaching geom_point()'s rendered size is
+# checked directly via ggplot2::layer_data(), not just "does it error".
+# ============================================================================
+
+test_that("SpatialDimPlotFixed errors on non-Seurat input", {
+  expect_error(SpatialDimPlotFixed(list(1)), "Seurat object")
+})
+
+test_that("SpatialDimPlotFixed errors when obj has no images", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat()
+  expect_error(SpatialDimPlotFixed(obj), "no images")
+})
+
+test_that("SpatialDimPlotFixed errors on an unknown image name", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10)
+  expect_error(SpatialDimPlotFixed(obj, images = "not_a_slice"), "not found")
+})
+
+test_that("SpatialDimPlotFixed errors on an unknown group.by column", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10)
+  expect_error(SpatialDimPlotFixed(obj, group.by = "nope"), "nope")
+})
+
+test_that("SpatialDimPlotFixed errors when `colors` has too few values", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10)
+  expect_error(
+    SpatialDimPlotFixed(obj, group.by = "seurat_clusters", colors = "red"),
+    "colors"
+  )
+})
+
+test_that("SpatialDimPlotFixed returns a single ggplot with all spots and the requested point size", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 12, n_images = 1)
+  p <- SpatialDimPlotFixed(obj, group.by = "seurat_clusters", pt.size = 3)
+  expect_s3_class(p, "ggplot")
+  expect_false(inherits(p, "patchwork"))
+
+  pts <- ggplot2::layer_data(p, 2)  # layer 1 = annotation_raster, layer 2 = geom_point
+  expect_equal(nrow(pts), 12L)
+  expect_true(all(pts$size == 3))
+})
+
+test_that("SpatialDimPlotFixed combines multiple images into one patchwork by default", {
+  .skip_if_missing("Seurat", "SeuratObject", "patchwork")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 8, n_images = 2)
+  p <- SpatialDimPlotFixed(obj, group.by = "seurat_clusters")
+  expect_true(inherits(p, "patchwork"))
+})
+
+test_that("SpatialDimPlotFixed(combine = FALSE) returns one ggplot per image", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 8, n_images = 2)
+  plots <- SpatialDimPlotFixed(obj, group.by = "seurat_clusters", combine = FALSE)
+  expect_type(plots, "list")
+  expect_equal(length(plots), 2L)
+  expect_true(all(vapply(plots, inherits, logical(1), "ggplot")))
+  # Each image's panel should only have that image's own spots.
+  expect_equal(nrow(ggplot2::layer_data(plots[[1]], 2)), 8L)
+})
+
+test_that("SpatialFeaturePlotFixed errors on non-character/empty features", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10)
+  expect_error(SpatialFeaturePlotFixed(obj, features = character(0)), "features")
+  expect_error(SpatialFeaturePlotFixed(obj, features = 1), "features")
+})
+
+test_that("SpatialFeaturePlotFixed errors on an unknown image name", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10)
+  expect_error(
+    SpatialFeaturePlotFixed(obj, features = "Gene1", images = "not_a_slice"),
+    "not found"
+  )
+})
+
+test_that("SpatialFeaturePlotFixed returns a single ggplot for one feature/one image", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 12, n_images = 1)
+  p <- SpatialFeaturePlotFixed(obj, features = "Gene1", pt.size = 2.5)
+  expect_s3_class(p, "ggplot")
+  expect_false(inherits(p, "patchwork"))
+
+  pts <- ggplot2::layer_data(p, 2)
+  expect_equal(nrow(pts), 12L)
+  expect_true(all(pts$size == 2.5))
+})
+
+test_that("SpatialFeaturePlotFixed(combine = FALSE) returns one panel per feature x image", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 6, n_images = 2)
+  plots <- SpatialFeaturePlotFixed(obj, features = c("Gene1", "Gene2"), combine = FALSE)
+  expect_type(plots, "list")
+  expect_equal(length(plots), 4L)  # 2 features x 2 images
+  expect_true(all(vapply(plots, inherits, logical(1), "ggplot")))
+})
+
+test_that("SpatialFeaturePlotFixed combines into one patchwork by default", {
+  .skip_if_missing("Seurat", "SeuratObject", "patchwork")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 6, n_images = 2)
+  p <- SpatialFeaturePlotFixed(obj, features = "Gene1")
+  expect_true(inherits(p, "patchwork"))
+})
