@@ -627,6 +627,16 @@ table(res$labels)   # clusters with no clear winner come back "Unknown"
 
 `weight_cols` defaults to every `rctd_<celltype>` column, excluding the derived `rctd_dominant`/`rctd_max_weight`/`rctd_spot_class` columns — pass it explicitly if you've renamed columns or want to restrict the comparison to a subset of cell types.
 
+**A common trap in tissue with one very abundant type.** In liver, hepatocytes routinely make up 60-80%+ of every spot's RCTD proportions in *every* cluster — real biology (hepatocytes dominate liver RNA content almost everywhere at Visium resolution), not a bug. But `res$labels` is still a winner-takes-all pick on top of `res$composition`, so it will report "Hepatocyte" for every cluster in that situation even when the composition matrix underneath has real, meaningful cluster-to-cluster differences in the minority cell types — the actual signal just isn't visible from raw proportions, because a moderately-elevated-everywhere type (in this hypothetical, something like Myeloid) can still numerically beat a real, sharp, cluster-specific spike (e.g. Cholangiocyte in one cluster) even after excluding Hepatocyte from consideration. `RCTDCompositionHeatmap()` z-scores each cell type across clusters by default, which surfaces relative enrichment instead of raw magnitude:
+
+```r
+RCTDCompositionHeatmap(integrated)                 # calls SummarizeRCTDByCluster() internally
+RCTDCompositionHeatmap(res)                         # or reuse an already-computed result
+RCTDCompositionHeatmap(res$composition, scale_cols = FALSE)  # raw proportions instead of z-scores
+```
+
+Check the coefficient of variation per cell type (`sd / mean` down each column of `res$composition`) if you want this quantitatively rather than visually — a type with low CV (stable across every cluster) is your tissue's dominant baseline, not a differentiator; the high-CV types are where cluster identity actually lives.
+
 ---
 
 ## 8. Feature Density on the Tissue — `PlotFeatureDensity()`

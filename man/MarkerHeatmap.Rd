@@ -9,6 +9,7 @@ MarkerHeatmap(
   markers = NULL,
   n = 10,
   assay = NULL,
+  pseudobulk = FALSE,
   scale_rows = TRUE,
   colors = NULL,
   cluster_rows = TRUE,
@@ -26,6 +27,11 @@ If NULL, \code{FindAllMarkers} is run.}
 
 \item{assay}{Assay to read from. Default DefaultAssay.}
 
+\item{pseudobulk}{Logical; if TRUE, sum raw counts per cluster first
+(\code{Seurat::AggregateExpression}), normalize once, and z-score that
+instead of \code{AverageExpression}'s per-cell-averaged values. Default
+\code{FALSE}. See Details.}
+
 \item{scale_rows}{Logical; z-score each gene across clusters. Default TRUE.}
 
 \item{colors}{Diverging color vector for the gradient. Default RdBu.}
@@ -41,4 +47,24 @@ A \code{ggplot} object.
 Picks the top \code{n} markers per cluster by \code{avg_log2FC}, averages
 expression per cluster, and draws a heatmap. Works either from an existing
 \code{FindAllMarkers} table or computes one on the fly.
+}
+\details{
+\strong{\code{pseudobulk = TRUE}.} \code{AverageExpression()} (the
+default) averages already-normalized per-cell values, which is fast but
+still exposed to per-cell/per-spot sampling noise -- a real concern on
+sparse data (Visium spots routinely carry only a few hundred to a few
+thousand UMIs). Pseudobulking sums \emph{raw} counts across every cell
+in a cluster into one profile first, then normalizes once (CPM-style,
+scale factor 1e4, \code{log1p}) -- the statistically preferred order of
+operations (summing before normalizing, not averaging already-normalized
+values), and the same noise-collapsing idea \code{\link{PseudobulkDE}}
+uses for differential expression. Z-scoring that pseudobulk profile
+across clusters is what actually protects against a broadly/ambiently
+expressed gene dominating every cluster -- pseudobulking alone reduces
+\emph{stochastic} noise, not a systematic contamination signal, so it
+doesn't replace the z-scoring step, it makes the values being z-scored
+more reliable. Slower and more memory-heavy than the default: the whole
+assay is aggregated (via \code{Seurat::AggregateExpression}, which
+doesn't reliably support a \code{features} subset across Seurat
+versions) before being subset down to the marker genes actually needed.
 }
