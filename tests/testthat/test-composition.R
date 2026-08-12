@@ -383,6 +383,32 @@ test_that("CompositionalTest (propeller backend) runs when speckle is installed"
   expect_true("padj" %in% colnames(res))
 })
 
+test_that("CompositionalTest (propeller backend) handles condition_col with > 2 levels (ANOVA path)", {
+  # Regression test: speckle::propeller() dispatches to propeller.anova()
+  # when `group` has more than 2 levels, which returns Fstatistic (no
+  # Tstatistic, no PropRatio) instead of the 2-group propeller.ttest()
+  # columns -- .comp_test_propeller() used to assume Tstatistic always
+  # existed and crashed building the result data.frame in this case
+  # (res$Tstatistic is NULL, not NA, so data.frame() can't recycle it).
+  .skip_if_missing("Seurat", "SeuratObject", "speckle")
+  obj <- .make_small_seurat(seed = 1, n_cells = 200, n_samples = 6, n_clusters = 3)
+  # Relabel to 3 condition levels instead of the fixture's default 2 (A/B),
+  # keeping it constant within each sample as CompositionalTest() requires.
+  sample_to_cond <- setNames(rep(c("A", "B", "C"), length.out = 6),
+                             paste0("S", 1:6))
+  obj$condition <- unname(sample_to_cond[obj$sample])
+
+  res <- CompositionalTest(obj, sample_col = "sample", condition_col = "condition",
+                           method = "propeller")
+  expect_equal(unique(res$method), "propeller")
+  expect_true(all(c("cluster", "effect", "stat", "stat_type", "pvalue", "padj")
+                 %in% colnames(res)))
+  expect_equal(unique(res$stat_type), "F")
+  expect_true(all(is.na(res$effect)))  # no single PropRatio across 3 groups
+  expect_false(any(is.na(res$stat)))   # Fstatistic should be populated, not NA
+  expect_equal(nrow(res), length(unique(obj$seurat_clusters)))
+})
+
 test_that("CompositionalTest (betareg backend) runs when betareg is installed", {
   .skip_if_missing("Seurat", "SeuratObject", "betareg")
   obj <- .make_small_seurat(seed = 1, n_cells = 200, n_samples = 6, n_clusters = 3)

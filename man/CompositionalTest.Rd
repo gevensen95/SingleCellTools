@@ -51,7 +51,12 @@ wilcox), \code{"propeller"}, \code{"betareg"}, or \code{"wilcox"}.}
 A data frame with one row per cluster (or, with \code{weight_cols},
 one row per weight column) and columns \code{cluster},
 \code{mean_prop_<level>} for each condition level, \code{effect},
-\code{stat}, \code{pvalue}, \code{padj}, and \code{method}.
+\code{stat}, \code{pvalue}, \code{padj}, and \code{method}. When the
+\code{propeller} backend runs, an additional \code{stat_type} column
+("T" or "F") records which test \code{speckle::propeller()} actually
+used: a t-test (\code{effect} = \code{PropRatio}) when
+\code{condition_col} has exactly 2 levels, or an ANOVA F-test (no
+single ratio, so \code{effect} is \code{NA}) when it has more than 2.
 }
 \description{
 Wraps \code{speckle::propeller} — an empirical-Bayes-moderated ANOVA on
