@@ -68,3 +68,97 @@
   }
   coords_mat
 }
+
+
+# ============================================================================
+# .spatial_panel_base() / .combine_spatial_plots() -- shared by
+# SpatialDimPlotFixed() and SpatialFeaturePlotFixed(). Both exist because
+# Seurat's own SpatialDimPlot()/SpatialFeaturePlot() draw everything (tissue
+# image + spots) inside a single custom GeomSpatial layer whose point-size
+# calculation has had real, documented regressions across Seurat 5.x
+# releases (pt.size.factor silently doing nothing -- see
+# https://github.com/satijalab/seurat/issues/9491,
+# https://github.com/satijalab/seurat/issues/6179,
+# https://github.com/satijalab/seurat/issues/4272). These build the
+# equivalent plot from ordinary ggplot2 layers instead -- a real
+# geom_point(size = ...) that's guaranteed to respond to its size argument
+# -- so they don't depend on that code path at all.
+# ============================================================================
+
+#' @keywords internal
+#' @noRd
+.spatial_panel_base <- function(obj, image_name, crop, image.alpha, pad,
+                                cells = NULL) {
+  if (!image_name %in% names(obj@images)) {
+    stop("Image '", image_name, "' not found in obj@images. Available: ",
+         paste(names(obj@images), collapse = ", "))
+  }
+  img_arr <- obj@images[[image_name]]@image
+  h <- dim(img_arr)[1]
+  w <- dim(img_arr)[2]
+
+  coords <- .get_fov_coords(obj, image_name, cells = cells)
+  if (nrow(coords) == 0) {
+    stop("No cells with coordinates found for image '", image_name, "'.")
+  }
+  coords <- as.data.frame(coords)
+  coords$cell <- rownames(coords)
+  # GetTissueCoordinates()'s row coordinate increases downward (standard
+  # image pixel convention); negate it so "up" agrees between the points and
+  # the raster below, rather than relying on scale_y_reverse() interacting
+  # correctly with annotation_raster() (a real ggplot2/grob-level ambiguity
+  # this sidesteps entirely by just doing the flip with arithmetic).
+  coords$y <- -coords$y
+
+  if (isTRUE(crop)) {
+    xr <- range(coords$x)
+    yr <- range(coords$y)
+    xpad <- max(diff(xr) * pad, 1)
+    ypad <- max(diff(yr) * pad, 1)
+    xlim <- xr + c(-xpad, xpad)
+    ylim <- yr + c(-ypad, ypad)
+  } else {
+    xlim <- c(0, w)
+    ylim <- c(-h, 0)
+  }
+
+  p <- ggplot2::ggplot() +
+    ggplot2::annotation_raster(
+      grDevices::as.raster(img_arr),
+      xmin = 0, xmax = w, ymin = -h, ymax = 0,
+      interpolate = TRUE
+    )
+
+  if (image.alpha < 1) {
+    # annotation_raster() has no alpha argument -- fake dimming by overlaying
+    # a semi-transparent white rectangle over the whole image extent.
+    p <- p + ggplot2::annotate(
+      "rect", xmin = 0, xmax = w, ymin = -h, ymax = 0,
+      fill = "white", alpha = 1 - image.alpha
+    )
+  }
+
+  p <- p +
+    ggplot2::coord_fixed(xlim = xlim, ylim = ylim, expand = FALSE) +
+    ggplot2::theme_void() +
+    Ol_Reliable() +
+    ggplot2::theme(
+      panel.border     = ggplot2::element_blank(),
+      panel.background = ggplot2::element_blank(),
+      panel.grid       = ggplot2::element_blank(),
+      axis.text        = ggplot2::element_blank(),
+      axis.ticks       = ggplot2::element_blank(),
+      axis.title       = ggplot2::element_blank()
+    )
+
+  list(plot = p, coords = coords)
+}
+
+#' @keywords internal
+#' @noRd
+.combine_spatial_plots <- function(plots, ncol, combine) {
+  if (length(plots) == 1) return(plots[[1]])
+  if (!isTRUE(combine)) return(plots)
+  if (is.null(ncol)) ncol <- min(length(plots), 4)
+  patchwork::wrap_plots(plots, ncol = ncol, guides = "collect")
+}

@@ -417,3 +417,306 @@ test_that("DropSpatialImage(mode = 'downgrade') skips FOV images with a message 
   expect_equal(length(out@images), 2L)
   expect_setequal(names(out@images), c("fov1", "fov2"))
 })
+
+
+# ============================================================================
+# SpatialDimPlotFixed() / SpatialFeaturePlotFixed() -- ggplot2-based
+# replacements for Seurat::SpatialDimPlot()/SpatialFeaturePlot(), built to
+# work around pt.size.factor silently doing nothing in recent Seurat
+# releases (GeomSpatial's custom draw_panel() -- see the functions' own
+# docs for the specific GitHub issues). Since that's exactly the bug being
+# worked around, `pt.size` actually reaching geom_point()'s rendered size is
+# checked directly via ggplot2::layer_data(), not just "does it error".
+# ============================================================================
+
+test_that("SpatialDimPlotFixed errors on non-Seurat input", {
+  expect_error(SpatialDimPlotFixed(list(1)), "Seurat object")
+})
+
+test_that("SpatialDimPlotFixed errors when obj has no images", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat()
+  expect_error(SpatialDimPlotFixed(obj), "no images")
+})
+
+test_that("SpatialDimPlotFixed errors on an unknown image name", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10)
+  expect_error(SpatialDimPlotFixed(obj, images = "not_a_slice"), "not found")
+})
+
+test_that("SpatialDimPlotFixed errors on an unknown group.by column", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10)
+  expect_error(SpatialDimPlotFixed(obj, group.by = "nope"), "nope")
+})
+
+test_that("SpatialDimPlotFixed errors when `colors` has too few values", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10)
+  expect_error(
+    SpatialDimPlotFixed(obj, group.by = "seurat_clusters", colors = "red"),
+    "colors"
+  )
+})
+
+test_that("SpatialDimPlotFixed returns a single ggplot with all spots and the requested point size", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 12, n_images = 1)
+  p <- SpatialDimPlotFixed(obj, group.by = "seurat_clusters", pt.size = 3)
+  expect_s3_class(p, "ggplot")
+  expect_false(inherits(p, "patchwork"))
+
+  pts <- ggplot2::layer_data(p, 2)  # layer 1 = annotation_raster, layer 2 = geom_point
+  expect_equal(nrow(pts), 12L)
+  expect_true(all(pts$size == 3))
+})
+
+test_that("SpatialDimPlotFixed combines multiple images into one patchwork by default", {
+  .skip_if_missing("Seurat", "SeuratObject", "patchwork")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 8, n_images = 2)
+  p <- SpatialDimPlotFixed(obj, group.by = "seurat_clusters")
+  expect_true(inherits(p, "patchwork"))
+})
+
+test_that("SpatialDimPlotFixed(combine = FALSE) returns one ggplot per image", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 8, n_images = 2)
+  plots <- SpatialDimPlotFixed(obj, group.by = "seurat_clusters", combine = FALSE)
+  expect_type(plots, "list")
+  expect_equal(length(plots), 2L)
+  expect_true(all(vapply(plots, inherits, logical(1), "ggplot")))
+  # Each image's panel should only have that image's own spots.
+  expect_equal(nrow(ggplot2::layer_data(plots[[1]], 2)), 8L)
+})
+
+test_that("SpatialFeaturePlotFixed errors on non-character/empty features", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10)
+  expect_error(SpatialFeaturePlotFixed(obj, features = character(0)), "features")
+  expect_error(SpatialFeaturePlotFixed(obj, features = 1), "features")
+})
+
+test_that("SpatialFeaturePlotFixed errors on an unknown image name", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10)
+  expect_error(
+    SpatialFeaturePlotFixed(obj, features = "Gene1", images = "not_a_slice"),
+    "not found"
+  )
+})
+
+test_that("SpatialFeaturePlotFixed returns a single ggplot for one feature/one image", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 12, n_images = 1)
+  p <- SpatialFeaturePlotFixed(obj, features = "Gene1", pt.size = 2.5)
+  expect_s3_class(p, "ggplot")
+  expect_false(inherits(p, "patchwork"))
+
+  pts <- ggplot2::layer_data(p, 2)
+  expect_equal(nrow(pts), 12L)
+  expect_true(all(pts$size == 2.5))
+})
+
+test_that("SpatialFeaturePlotFixed(combine = FALSE) returns one panel per feature x image", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 6, n_images = 2)
+  plots <- SpatialFeaturePlotFixed(obj, features = c("Gene1", "Gene2"), combine = FALSE)
+  expect_type(plots, "list")
+  expect_equal(length(plots), 4L)  # 2 features x 2 images
+  expect_true(all(vapply(plots, inherits, logical(1), "ggplot")))
+})
+
+test_that("SpatialFeaturePlotFixed combines into one patchwork by default", {
+  .skip_if_missing("Seurat", "SeuratObject", "patchwork")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 6, n_images = 2)
+  p <- SpatialFeaturePlotFixed(obj, features = "Gene1")
+  expect_true(inherits(p, "patchwork"))
+})
+
+
+# ============================================================================
+# SpatialConcordance()
+# ============================================================================
+
+test_that("SpatialConcordance errors on non-Seurat input", {
+  expect_error(SpatialConcordance(list(1), group.by = "seurat_clusters"), "Seurat object")
+})
+
+test_that("SpatialConcordance errors when obj has no images", {
+  obj <- .make_small_seurat()
+  expect_error(SpatialConcordance(obj, group.by = "seurat_clusters"), "no images")
+})
+
+test_that("SpatialConcordance errors on an unknown image name", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 20)
+  expect_error(
+    SpatialConcordance(obj, group.by = "seurat_clusters", images = "not_a_slice"),
+    "not found"
+  )
+})
+
+test_that("SpatialConcordance errors on an unknown group.by column", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 20)
+  expect_error(SpatialConcordance(obj, group.by = "nope"), "nope")
+})
+
+test_that("SpatialConcordance validates k and n_perm", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 20)
+  expect_error(SpatialConcordance(obj, group.by = "seurat_clusters", k = 0), "k")
+  expect_error(SpatialConcordance(obj, group.by = "seurat_clusters", n_perm = 0), "n_perm")
+})
+
+test_that("SpatialConcordance detects real spatial structure (z > 0) and finds none in random labels", {
+  .skip_if_missing("Seurat", "SeuratObject", "RANN")
+  set.seed(42)
+  structured <- .make_visium_seurat(seed = 2, spots_per_image = 60,
+                                    cluster_by_position = TRUE)
+  res <- SpatialConcordance(structured, group.by = "seurat_clusters", k = 6, n_perm = 100)
+  expect_equal(nrow(res), 1L)
+  expect_true(all(c("sample", "n_spots", "k_used", "observed", "null_mean",
+                    "null_sd", "z", "p", "padj") %in% colnames(res)))
+  # Labels are a clean left/right spatial split -- concordance should be well
+  # above the shuffled-label null.
+  expect_true(res$z[1] > 0)
+  expect_true(res$observed[1] > res$null_mean[1])
+
+  random <- .make_visium_seurat(seed = 2, spots_per_image = 60,
+                                cluster_by_position = FALSE)
+  res_random <- SpatialConcordance(random, group.by = "seurat_clusters", k = 6, n_perm = 100)
+  # Random labels: observed concordance should sit close to the null mean,
+  # not systematically far above it the way the spatially structured case is.
+  expect_true(abs(res_random$z[1]) < res$z[1])
+})
+
+test_that("SpatialConcordance `exclude` drops matching labels before scoring", {
+  .skip_if_missing("Seurat", "SeuratObject", "RANN")
+  obj <- .make_visium_seurat(seed = 3, spots_per_image = 20, cluster_by_position = TRUE)
+  # Recode a few spots to an "Unclassified" bucket and confirm `exclude`
+  # actually removes them from n_spots.
+  obj$seurat_clusters <- as.character(obj$seurat_clusters)
+  obj$seurat_clusters[1:5] <- "Unclassified"
+  res_default <- SpatialConcordance(obj, group.by = "seurat_clusters", k = 4, n_perm = 20)
+  res_excl <- SpatialConcordance(obj, group.by = "seurat_clusters", k = 4, n_perm = 20,
+                                 exclude = c(NA, "Unclassified"))
+  expect_equal(res_default$n_spots[1], 20L)
+  expect_equal(res_excl$n_spots[1], 15L)
+})
+
+
+# ============================================================================
+# RenameSpatialImages()
+# ============================================================================
+
+test_that("RenameSpatialImages errors on non-Seurat input", {
+  expect_error(RenameSpatialImages(list(1), group_col = "sample"), "Seurat object")
+})
+
+test_that("RenameSpatialImages errors when obj has no images", {
+  obj <- .make_small_seurat()
+  expect_error(RenameSpatialImages(obj, group_col = "seurat_clusters"), "no images")
+})
+
+test_that("RenameSpatialImages errors when both or neither of group_col/new_names are given", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10, n_images = 2)
+  expect_error(RenameSpatialImages(obj), "both are NULL")
+  expect_error(
+    RenameSpatialImages(obj, group_col = "sample", new_names = c("a", "b")),
+    "both were given"
+  )
+})
+
+test_that("RenameSpatialImages auto-derives names from group_col by cell identity, not position", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10, n_images = 2)
+  # slice1's cells -> "sampleB", slice2's cells -> "sampleA" -- deliberately
+  # not alphabetical/appearance order, so a naive positional rename would
+  # get this backwards.
+  obj$sample <- ifelse(obj$sample == "slice1", "sampleB", "sampleA")
+
+  out <- RenameSpatialImages(obj, group_col = "sample")
+  expect_setequal(names(out@images), c("sampleA", "sampleB"))
+  # Confirm identity, not just presence: the image now called "sampleB"
+  # must still contain the cells that were originally slice1's.
+  orig_slice1_cells <- colnames(obj)[obj$sample == "sampleB"]
+  expect_setequal(SeuratObject::Cells(out[["sampleB"]]), orig_slice1_cells)
+})
+
+test_that("RenameSpatialImages errors on an unknown group_col", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10, n_images = 2)
+  expect_error(RenameSpatialImages(obj, group_col = "nope"), "nope")
+})
+
+test_that("RenameSpatialImages errors when an image spans more than one group_col value", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10, n_images = 2)
+  slice1_cells <- colnames(obj)[obj$sample == "slice1"]
+  obj$sample[slice1_cells[1]] <- "slice2"  # one stray cell now disagrees
+  expect_error(RenameSpatialImages(obj, group_col = "sample"), "distinct value")
+})
+
+test_that("RenameSpatialImages errors when an image's group_col values are all NA", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10, n_images = 2)
+  obj$sample <- as.character(obj$sample)
+  obj$sample[obj$sample == "slice1"] <- NA
+  expect_error(RenameSpatialImages(obj, group_col = "sample"), "NA")
+})
+
+test_that("RenameSpatialImages new_names positional mode renames in names(obj@images) order", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10, n_images = 2)
+  out <- RenameSpatialImages(obj, new_names = c("first", "second"))
+  expect_equal(names(out@images), c("first", "second"))
+})
+
+test_that("RenameSpatialImages new_names positional mode requires matching length", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10, n_images = 2)
+  expect_error(RenameSpatialImages(obj, new_names = "only_one"), "length")
+})
+
+test_that("RenameSpatialImages new_names named mode does a partial rename", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10, n_images = 2)
+  out <- RenameSpatialImages(obj, new_names = c(slice1 = "anterior"))
+  expect_setequal(names(out@images), c("anterior", "slice2"))
+})
+
+test_that("RenameSpatialImages new_names named mode errors on an unknown old name", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10, n_images = 2)
+  expect_error(
+    RenameSpatialImages(obj, new_names = c(not_a_slice = "anterior")),
+    "not found"
+  )
+})
+
+test_that("RenameSpatialImages errors when resolved names would collide", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 10, n_images = 2)
+  expect_error(RenameSpatialImages(obj, new_names = c("same", "same")), "collide")
+})
+
+test_that("SpatialConcordance returns one row per image and skips tiny images with a message", {
+  .skip_if_missing("Seurat", "SeuratObject", "RANN")
+  obj <- .make_visium_seurat(seed = 4, spots_per_image = 15, n_images = 2)
+  res <- SpatialConcordance(obj, group.by = "seurat_clusters", k = 4, n_perm = 20)
+  expect_equal(nrow(res), 2L)
+  expect_setequal(res$sample, c("slice1", "slice2"))
+
+  # Force everything in slice2 to be excluded so it has < 2 usable cells.
+  obj$seurat_clusters <- as.character(obj$seurat_clusters)
+  obj$seurat_clusters[obj$sample == "slice2"] <- NA
+  expect_message(
+    res2 <- SpatialConcordance(obj, group.by = "seurat_clusters", k = 4, n_perm = 20),
+    "skipping"
+  )
+  expect_equal(nrow(res2), 1L)
+  expect_equal(res2$sample, "slice1")
+})

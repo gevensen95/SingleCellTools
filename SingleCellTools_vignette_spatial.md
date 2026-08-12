@@ -15,7 +15,8 @@
 5. [Merge and Integrate — `MergeSeurat()`](#5-merge-and-integrate--mergeseurat)
 6. [Annotate Spatial Domains](#6-annotate-spatial-domains)
    - 6.1 [Marker Dot Plots — `MarkerPlot()` / `MarkerPctPlot()`](#61-marker-dot-plots--markerplot--markerpctplot)
-   - 6.2 [Cluster-level Marker Scoring — `AnnotateClusters()`](#62-cluster-level-marker-scoring--annotateclusters)
+   - 6.2 [Heatmap View — `MarkerHeatmap()`](#62-heatmap-view--markerheatmap)
+   - 6.3 [Cluster-level Marker Scoring — `AnnotateClusters()`](#63-cluster-level-marker-scoring--annotateclusters)
 7. [Visium Deconvolution — `RunRCTD()`](#7-visium-deconvolution--runrctd)
    - 7.1 [Choosing a mode](#71-choosing-a-mode)
    - 7.2 [Multiple samples](#72-multiple-samples)
@@ -29,6 +30,7 @@
 10. [Spatial Niche Analysis — `BuildMultipleNicheAssays()`](#10-spatial-niche-analysis--buildmultiplenicheassays)
     - 10.1 [An Alternative: Spatial Domain Segmentation via `RunBanksyWrapper()`](#101-an-alternative-spatial-domain-segmentation-via-runbanksywrapper)
 11. [Neighborhood Enrichment — `NeighborhoodEnrichment()`](#11-neighborhood-enrichment--neighborhoodenrichment)
+    - 11.1 [Validating a spatial label — `SpatialConcordance()`](#111-validating-a-spatial-label--spatialconcordance)
 12. [Niche Co-expression — `NicheCoExpress()`](#12-niche-co-expression--nichecoexpress)
     - 12.1 [Estimation Plot — `NicheCoExpressEstimationPlot()`](#121-estimation-plot--nichecoexpressestimationplot)
 13. [Single-cell Spatial (Xenium / CosMx) — `detect_fov_edges()` / `detect_tissue_holes()`](#13-single-cell-spatial-xenium--cosmx--detect_fov_edges--detect_tissue_holes)
@@ -345,6 +347,39 @@ SpatialDimPlot(integrated, label = FALSE) +
   ggtitle("Clusters mapped back to tissue")
 ```
 
+### Reliable point rendering — `SpatialDimPlotFixed()` / `SpatialFeaturePlotFixed()`
+
+`Seurat::SpatialDimPlot()`/`SpatialFeaturePlot()` draw the tissue image and
+spots together inside a custom `GeomSpatial` geom, and `pt.size.factor` has
+real, documented regressions in recent Seurat releases where it silently has
+no effect on rendered spot size (see
+[satijalab/seurat#9491](https://github.com/satijalab/seurat/issues/9491) and
+[#6179](https://github.com/satijalab/seurat/issues/6179)) — spots can render
+tiny regardless of what you pass. If you hit that, `SpatialDimPlotFixed()`
+and `SpatialFeaturePlotFixed()` are drop-in `ggplot2` replacements built on
+an ordinary `geom_point(size = ...)` layer instead, so point size is
+guaranteed to respond:
+
+```r
+SpatialDimPlotFixed(integrated, group.by = "seurat_clusters", pt.size = 3) +
+  ggtitle("Clusters mapped back to tissue")
+
+# Multi-sample: one panel per image, shared/collected legend
+SpatialDimPlotFixed(integrated, group.by = "seurat_clusters", pt.size = 2)
+
+# Continuous features (genes, module scores) work the same way
+SpatialFeaturePlotFixed(integrated, features = "Mbp", pt.size = 2)
+```
+
+Both accept `crop` (zoom to the spot bounding box, default `TRUE`),
+`image.alpha` (dim the tissue image), and `combine = FALSE` to get a list of
+per-panel `ggplot` objects back instead of a single combined `patchwork`
+object. These are plain `ggplot2` objects, so anything you'd do with
+`SpatialDimPlot()`'s output — theming, `+ ggtitle(...)`, saving via
+`ggsave()` — works the same way. Use the fixed versions whenever
+`SpatialDimPlot()`/`SpatialFeaturePlot()` spot size looks wrong; otherwise
+Seurat's own functions are equally fine to keep using.
+
 ---
 
 ## 6. Annotate Spatial Domains
@@ -438,6 +473,8 @@ integrated <- RenameIdents(integrated, region_labels)
 integrated$spatial_domain <- Idents(integrated)
 
 # Visualize labeled domains on tissue
+# (swap in SpatialDimPlotFixed() here if spot size looks wrong -- see the
+# note at the end of Section 5)
 SpatialDimPlot(integrated, group.by = "spatial_domain", label = FALSE) +
   ggtitle("Annotated spatial domains")
 ggsave("spatial_domains_brain.pdf", width = 14, height = 7)
@@ -445,7 +482,22 @@ ggsave("spatial_domains_brain.pdf", width = 14, height = 7)
 
 ---
 
-### 6.2 Cluster-level Marker Scoring — `AnnotateClusters()`
+### 6.2 Heatmap View — `MarkerHeatmap()`
+
+`MarkerHeatmap()` is a complementary view to the dot plot above: it runs (or accepts an existing) `FindAllMarkers()` table, picks the top markers per cluster, and z-scores their expression across clusters as a heatmap. On Visium specifically, reach for `pseudobulk = TRUE`: spots typically carry only a few hundred to a few thousand UMIs, so the default per-cell-averaged path is more exposed to per-spot sampling noise than it would be on higher-depth single-cell data. `pseudobulk = TRUE` sums raw counts per cluster first and normalizes once, collapsing that noise before it ever reaches the z-score:
+
+```r
+MarkerHeatmap(integrated, pseudobulk = TRUE)
+
+# Reuse an existing FindAllMarkers()-style table instead of recomputing it
+MarkerHeatmap(integrated, markers = cluster_markers, n = 8, pseudobulk = TRUE)
+```
+
+Note this still z-scores across clusters either way (`scale_rows = TRUE` by default) — pseudobulking reduces stochastic per-spot noise, but it's the z-scoring step that actually protects against a broadly/ambiently expressed gene (e.g. hepatocyte transcripts in liver — see §7.6) dominating every cluster's raw magnitude, the same principle behind `RCTDCompositionHeatmap()`.
+
+---
+
+### 6.3 Cluster-level Marker Scoring — `AnnotateClusters()`
 
 For Visium, use `AnnotateClusters()` with Visium-appropriate defaults — the winner-takes-all limitation applies here (each spot mixes cell types), so `return_scores = "cluster"` is often more informative than the winner label alone.
 
@@ -642,6 +694,11 @@ Check the coefficient of variation per cell type (`sd / mean` down each column o
 ## 8. Feature Density on the Tissue — `PlotFeatureDensity()`
 
 `PlotFeatureDensity()` gives a much cleaner view of sparse markers than `SpatialFeaturePlot()` when combined with the UMAP or a spatial 2D coordinate reduction. On a UMAP:
+
+For a direct spot-level view of a gene or module score on the tissue itself
+(rather than density on a reduction), `SpatialFeaturePlotFixed()` is a
+`ggplot2`-based, point-size-reliable alternative to `SpatialFeaturePlot()` —
+see the note at the end of Section 5.
 
 `PlotFeatureDensity()` isn't limited to genes — any numeric metadata column works,
 including a module score. `AddModuleScore()` writes a column named `<name>1`; copy
@@ -1002,6 +1059,36 @@ pheatmap::pheatmap(enrich$z, cluster_rows = FALSE, cluster_cols = FALSE)
 
 Complementary to `BuildMultipleNicheAssays()` — this one focuses on statistical enrichment of specific cell-type pairings; the other builds a full neighborhood assay usable in downstream Seurat workflows.
 
+### 11.1 Validating a spatial label — `SpatialConcordance()`
+
+`NeighborhoodEnrichment()` above pools cells across every image and asks
+*which* label pairs co-localize. `SpatialConcordance()` asks a coarser,
+per-sample question instead: is a single categorical label — a zonation
+call, `spatial_domain` from Section 6, or the `niche` column
+`NeighborhoodEnrichment()` just wrote above — spatially coherent at all, on
+each sample independently? It's a same-label k-NN concordance, permutation
+tested against shuffled labels, one row per image:
+
+```r
+SpatialConcordance(integrated, group.by = "spatial_domain")
+
+#      sample n_spots k_used  observed null_mean    null_sd        z p  padj
+# 1 anterior1    2558      6 0.7421875 0.3120978 0.01013259 42.61... 0 0.000
+
+# Or check the data-driven niche assignment from Section 11 instead
+SpatialConcordance(integrated, group.by = "niche", k = 10)
+```
+
+A large positive `z` (and small `p`/`padj`) means neighboring spots really
+do tend to share a label far more often than chance — the assignment is
+spatially coherent, not scattered noise. If a sample's `z` is small or
+negative, that sample's domain/niche calls are worth a second look before
+trusting downstream analyses (composition tests, `NicheCoExpress()`, etc.)
+that assume the label reflects real spatial structure. Use `exclude` to
+drop a catch-all bucket that shouldn't count as meaningful structure, e.g.
+`exclude = c(NA, "Unclassified")` for a zonation column with an
+unclassified/ambiguous category.
+
 ---
 
 ## 12. Niche Co-expression — `NicheCoExpress()`
@@ -1189,6 +1276,21 @@ matrix.
 **`check_gene_ids_across_objects()` before merging sections from different runs.**
 Mouse gene symbols are consistent across standard 10x Genomics pipelines, but if you
 ever mix CellRanger versions or genome builds, identifiers can drift.
+
+**Renaming `obj@images` safely.** `names(obj@images) <- new_names` is the
+standard way to rename spatial images, but a plain positional assignment
+trusts that `new_names` (e.g. `unique(obj$orig.ident)`) is already in the
+same order the images were attached in — nothing guarantees that, and a
+mismatch silently swaps which name lands on which sample's data.
+`RenameSpatialImages()` derives each image's new name from its own cells
+instead (`group_col = "orig.ident"`), or validates an explicit `new_names`
+mapping (positional or named, for a partial rename) before applying it —
+either way it errors on an ambiguous or colliding name rather than
+producing a mismatched object:
+
+```r
+integrated <- RenameSpatialImages(integrated, group_col = "orig.ident")
+```
 
 **Memory management for large spatial runs.** `image_backend = "deferred"` on
 `CreateVisiumObjects()` and `DropSpatialImage()`/`SpatialObjectInfo()` handle
