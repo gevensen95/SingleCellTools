@@ -160,10 +160,13 @@ MarkerPlot(merged, markers)
 | `detect_fov_edges()` | Flags cells near the outer boundary of any spatial FOV (Visium, Xenium, MERFISH, ...) using an angular-gap + local-density test, with iterative ring labeling. |
 | `detect_tissue_holes()` | Flags cells bordering internal gaps/holes within a spatial FOV via a 2D occupancy grid and flood fill &mdash; complements `detect_fov_edges()`. |
 | `GenerateQCReport()` | Renders a self-contained HTML QC report: per-sample overview, violin/density plots, QC scatters, top expressed genes, suggested filtering cutoffs, cell-cycle/doublet breakdowns, sample-correlation heatmap, and (for spatial input) per-FOV QC maps including edge and tissue-hole sections. |
+| `ApplyQCFilters()` | Applies the recommended per-sample, per-metric cutoffs from a `GenerateQCReport()` sidecar CSV &mdash; keeps cells only where *every* selected metric falls within its suggested range, with optional per-sample/per-metric overrides and doublet filtering. |
+| `QCComparePlots()` | Violin overlays of QC metrics from paired pre-/post-filter Seurat objects (or lists) &mdash; one violin per (sample, filter-state) with an `n_before -> n_after` annotation, to sanity-check what `ApplyQCFilters()` actually did. |
 | `DetectGenes()` | Bulk detection / quality flags on a feature set. |
 | `detect_gene_id_type()` | Inspects rownames to tell you if your features are HGNC/MGI symbols, Ensembl IDs, RefSeq, or Entrez. |
 | `check_gene_ids_across_objects()` | Same check across a list &mdash; catches the silent "one object is symbols, another is Ensembl" trap before a merge. |
 | `check_duplicate_genes()` | Reports duplicated feature names per object/assay &mdash; catches the most common cause of the `"duplicate 'row.names' are not allowed"` error during `merge()`. |
+| `CellSuiteSummary()` | One-command project summary: cell/gene counts, per-cluster counts, QC-metric medians/IQRs, top markers per cluster, reductions present, and (optionally) per-sample counts &mdash; everything you'd want at the top of a README or handoff, with a pretty `print()` method. |
 
 </details>
 
@@ -174,12 +177,14 @@ MarkerPlot(merged, markers)
 |---|---|
 | `MergeSeurat()` | Merge a list, normalize (SCT or LogNormalize), PCA, integrate (`HarmonyIntegration`/`RPCA`/`CCA`/`JointPCA`), cluster, UMAP, and (optionally) run `FindAllMarkers`. Supports spatial assays (`Visium`, `Xenium`); pass `banksy = TRUE` (with `spatial = "Visium"`/`"Xenium"`) to run BANKSY spatial-aware clustering instead of plain PCA. `HarmonyIntegration` calls `harmony::RunHarmony()` directly rather than `Seurat::IntegrateLayers()`, so it works with current `harmony` releases. |
 | `RunBanksyWrapper()` | Thin wrapper around `SeuratWrappers::RunBanksy()` that resolves spatial x/y coordinates automatically (via `get_all_coords()` for imaging-based FOVs, or Seurat's native spatial framework for Visium) and optionally runs `RunPCA()` on the resulting BANKSY assay. Used internally by `MergeSeurat(banksy = TRUE)`, but can be called directly. |
+| `BatchEffectQC()` | Quantifies batch mixing / integration quality on a reduction (silhouette width by batch and by cell type, kNN batch-mixing ratio, kNN cell-type purity) &mdash; run before and after integration (e.g. `MergeSeurat()`'s Harmony/RPCA/CCA/JointPCA) to check whether it actually helped. |
 | `subset_opt()` | Subset variant written specifically for CosMx/Xenium `FOV` objects (uses their `centroids`/`molecules` sub-slots) &mdash; keeps FOVs in sync with the cell list and optionally cleans the molecules slot afterward. Not for Visium (`VisiumV1`/`VisiumV2`) images; use `SubsetSpatial()` for those. |
 | `SubsetSpatial()` | General-purpose spatial-safe subset: works on *any* image type (Visium pixel-backed or FOV coordinate-only). `base::subset()` on a Seurat object can leave `@images` internally inconsistent (upstream Seurat bug, [satijalab/seurat#8848](https://github.com/satijalab/seurat/issues/8848)) &mdash; the error ("All cells in images must be present in the Seurat object") doesn't surface at subset time, only later, whenever something else (`RunPCA()`, `PrepSCTFindMarkers()`, `ScaleData()`, ...) happens to call `validObject()`. `SubsetSpatial()` explicitly re-subsets every image against the object's post-subset cells afterward, so it can't happen &mdash; unlike `DropSpatialImage()`, images stay attached and usable for plotting. |
 | `SubsetAndRecluster()` | Subset cells by identity, metadata column/value, or an explicit cell list, drop empty cells/genes left behind, then re-run PCA &rarr; integrate (optional) &rarr; UMAP &rarr; clustering on the subset. Useful for cell-type-specific re-analysis. |
 | `combine_metadata()` | Stack `@meta.data` from a list of Seurat objects into one long tibble, tagging each row with its source sample and original cell barcode. |
 | `CleanMolSlot()` | For spatial objects, drop molecules not assigned to any FOV from the molecules slot, shrinking the object. |
 | `strip_workflow_artifacts()` | Remove normalized/scaled layers, variable-feature sets, and dimensional reductions (`pca`, `umap`, `harmony`, ...), leaving just counts + metadata &mdash; handy before saving or sharing an object. |
+| `SaveWithProvenance()` | Writes a Seurat object as `.rds` plus a `<name>_provenance.json` sidecar recording package versions, assay/layer/reduction/metadata state, cell/gene counts, and (optionally) the calling script's git SHA &mdash; so a saved object's analysis state is inspectable without loading it. |
 
 </details>
 
@@ -192,13 +197,17 @@ MarkerPlot(merged, markers)
 | `GenePositivityAnalysis()` | Per-gene, per-sample positivity rates (optionally stratified by cell type/cluster/niche), with an optional chi-square or Fisher's exact test comparing rates across conditions &mdash; the `AddGenePositivity()` counterpart to `CompositionAnalysis()`. |
 | `GenePositivityEstimationPlot()` | Bootstrap effect-size ("estimation") plots (via `dabestr`) for a `GenePositivityAnalysis()` result &mdash; per-gene positivity-rate shift between two conditions with a 95% CI, as a complement to its p-value, in the same spirit as `CompositionEstimationPlot()`. |
 | `assign_cell_cycle_phase()` | Cell-cycle phase assignment via UCell &mdash; like `CellCycleScoring` but with `AddModuleScore_UCell` under the hood. |
+| `AnnotateWithReference()` | Reference-based cell-type annotation via one of three backends: CellTypist (Python, no reference needed &mdash; pre-trained model zoo), scANVI (Python, semi-supervised VAE from a labeled reference), or scmap (R-native, Bioconductor). Writes a predicted-label column (and, where available, a confidence-score column) to `@meta.data`. |
 | `AnnotateClusters()` | Assign per-cluster cell-type labels: either average UCell marker-set scores per cluster ("marker" mode) or run SingleR against a reference and take a per-cluster majority vote ("singler" mode), with optional score/margin thresholds for an "Unknown" label. |
 | `CompositionAnalysis()` | Cell counts and within-sample proportions per group (cluster/cell type) and sample, with an optional chi-square or Fisher's exact test comparing distributions across conditions. |
+| `CellComposition()` | Per-sample proportions of each cluster / cell type as a tidy data frame, with `"stack"`/`"box"`/`"line"` ggplot styles &mdash; a lighter-weight sibling to `CompositionAnalysis()` without the significance test. |
+| `CompositionalTest()` | Standalone statistical engine behind `CompositionAnalysis()`'s test option &mdash; chi-square/Fisher's exact for categorical composition, or `propeller`-based (t-test for 2 groups, ANOVA for >2) for continuous per-sample proportions, with optional sample-level weights. |
 | `CompositionEstimationPlot()` | Bootstrap effect-size ("estimation") plots (via `dabestr`) for a `CompositionAnalysis()` result &mdash; per-cell-type proportion shift between two conditions with a 95% CI, alongside the raw per-sample values, as a complement to `CompositionAnalysis()`'s p-value. |
 | `get_all_children()` | Recursively walk a GO term to collect every descendant. |
 | `RunCellChat()` | Wraps the full `CellChat` pipeline (`createCellChat` through `aggregateNet`) into one call for a single Seurat subset (e.g. one condition/sample) &mdash; pairs naturally with `RunLIANA()` for a second, complementary ligand-receptor method. |
 | `call_mixture_states()` | Fits a Gaussian mixture model (via `mclust`) on one or more numeric metadata columns and returns a BIC-selected, ranked state call per row plus posterior-probability confidence/severity scores &mdash; a principled alternative to a hand-picked quantile cutoff on a module/composite score. |
 | `call_stress_states()` | Thin convenience wrapper around `call_mixture_states()` reproducing a fixed legacy column-naming convention (`annotation_first_pass` cell-type column, `stress_composite` score column by default). |
+| `PseudotimeWrapper()` | Wraps `slingshot` to fit lineage curves through a reduced-dimensional embedding (cluster labels as anchors) and writes one pseudotime metadata column per detected lineage, with the full `SlingshotDataSet` stashed in `@misc$slingshot`. |
 
 </details>
 
@@ -235,6 +244,8 @@ MarkerPlot(merged, markers)
 | Function | What it does |
 |---|---|
 | `PseudobulkDE()` | Aggregates single-cell counts per (sample, group) and runs DESeq2 to test a contrast between two conditions &mdash; the statistically correct alternative to per-cell Wilcoxon DE when there are multiple cells per donor. Returns DE results plus size-factor-normalized pseudobulk counts. |
+| `CompareMarkers()` | Merges two DE result data frames (e.g. two `PseudobulkDE()`/`FindMarkers()` contrasts), classifies genes as shared-up/shared-down/opposite-sign/only-in-one, and runs a Fisher's exact test on the overlap &mdash; "which markers are shared, which are unique, do they agree in direction." |
+| `PlotVolcano()` | Volcano plot for any DE result table, with automatic column-name detection (`FindMarkers`- or `PseudobulkDE`-style), configurable significance/effect thresholds, and top-N gene labeling. |
 
 </details>
 
@@ -255,8 +266,11 @@ MarkerPlot(merged, markers)
 |---|---|
 | `MarkerPlot()` | Annotated dot plot. Genes are grouped by a `Details` column, identities can be optionally clustered by correlation, and absent or all-zero-expression genes are dropped automatically so you never see a blank row. Text size and a suggested figure size auto-scale with the gene count (large panels get smaller text and a taller suggested height) so a 100+ gene panel doesn't collapse into overlapping labels; pass `save_path` to save directly at that size. |
 | `MarkerHeatmap()` | Heatmap of the top N markers per cluster (from `FindAllMarkers` or computed on the fly), z-scored across clusters with optional row/column clustering. `pseudobulk = TRUE` sums raw counts per cluster and normalizes once instead of averaging per-cell values &mdash; more robust on sparse data (e.g. Visium) where per-cell/per-spot noise is a real concern. |
+| `MarkerPctPlot()` | Sibling to `MarkerPlot()` that isolates percent-positive as a heatmap or sized dot plot (instead of entangling it with average-expression color), organized by the same gene-annotation grouping, with optional identity clustering. |
+| `PlotFeatureDensity()` | Nebulosa-style 2D kernel-density plot of expression (or module scores) on a reduction &mdash; much easier to read than `Seurat::FeaturePlot()`'s grey-to-blue points in dense regions. Optional joint co-expression density panel. |
 | `StackedViolinPlot()` | Compact, scanpy-style stacked violin plot &mdash; one row per gene, one violin per group, optionally scaled per gene. |
 | `CompositionBarplot()` | Stacked or grouped bar plot of cell-type composition (proportions or counts), optionally faceted by condition; pairs with `CompositionAnalysis()`. |
+| `PlotGenePositivity()` | Visualizes the `AddGenePositivity()` logical columns as a dodged bar chart, group x gene heatmap, or stacked co-expression-combination chart; accepts a single object, a list, or one object with a `sample_col` for per-sample facets. |
 | `PlotPolygons()` | Flexible per-cell segmentation-polygon plot (from `get_polygon_coords()`), colored by any continuous or discrete column &mdash; a more flexible alternative to `Seurat::ImageFeaturePlot()`/`ImageDimPlot()`. Plain `ggplot`, fully chainable. |
 | `stack_polygons()` | Prepares a `PlotPolygons()` plot to be layered into one composite figure with other polygon plots on a shared coordinate range, each keeping its own color scale (as a transparent `patchwork` inset). |
 | `collect_legend()` | Pulls a plot's legend out as a standalone grob &mdash; recovers the legends `stack_polygons()` strips, so they can be laid out separately alongside the combined overlay. |
