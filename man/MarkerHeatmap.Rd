@@ -7,6 +7,7 @@
 MarkerHeatmap(
   obj,
   markers = NULL,
+  genes = NULL,
   n = 10,
   assay = NULL,
   pseudobulk = FALSE,
@@ -21,9 +22,18 @@ MarkerHeatmap(
 
 \item{markers}{Optional data frame from \code{FindAllMarkers} (must have
 columns \code{gene}, \code{cluster}, \code{avg_log2FC}, \code{p_val_adj}).
-If NULL, \code{FindAllMarkers} is run.}
+If NULL, \code{FindAllMarkers} is run. Mutually exclusive with
+\code{genes}.}
 
-\item{n}{Number of top markers per cluster to display. Default 10.}
+\item{genes}{Optional character vector of gene names to plot directly,
+bypassing marker selection entirely (\code{n}, \code{p_val_adj} /
+\code{avg_log2FC} filtering, and \code{FindAllMarkers} are all skipped).
+Useful for a curated panel rather than a data-driven top-N marker list.
+Mutually exclusive with \code{markers}. Genes not found in \code{assay}
+are dropped with a message.}
+
+\item{n}{Number of top markers per cluster to display. Ignored when
+\code{genes} is supplied. Default 10.}
 
 \item{assay}{Assay to read from. Default DefaultAssay.}
 
@@ -46,7 +56,9 @@ A \code{ggplot} object.
 \description{
 Picks the top \code{n} markers per cluster by \code{avg_log2FC}, averages
 expression per cluster, and draws a heatmap. Works either from an existing
-\code{FindAllMarkers} table or computes one on the fly.
+\code{FindAllMarkers} table, computes one on the fly, or -- via
+\code{genes} -- plots an explicit, caller-supplied gene list instead of
+any marker selection.
 }
 \details{
 \strong{\code{pseudobulk = TRUE}.} \code{AverageExpression()} (the

@@ -2,13 +2,23 @@
 #'
 #' Picks the top \code{n} markers per cluster by \code{avg_log2FC}, averages
 #' expression per cluster, and draws a heatmap. Works either from an existing
-#' \code{FindAllMarkers} table or computes one on the fly.
+#' \code{FindAllMarkers} table, computes one on the fly, or -- via
+#' \code{genes} -- plots an explicit, caller-supplied gene list instead of
+#' any marker selection.
 #'
 #' @param obj A Seurat object.
 #' @param markers Optional data frame from \code{FindAllMarkers} (must have
 #'   columns \code{gene}, \code{cluster}, \code{avg_log2FC}, \code{p_val_adj}).
-#'   If NULL, \code{FindAllMarkers} is run.
-#' @param n Number of top markers per cluster to display. Default 10.
+#'   If NULL, \code{FindAllMarkers} is run. Mutually exclusive with
+#'   \code{genes}.
+#' @param genes Optional character vector of gene names to plot directly,
+#'   bypassing marker selection entirely (\code{n}, \code{p_val_adj} /
+#'   \code{avg_log2FC} filtering, and \code{FindAllMarkers} are all skipped).
+#'   Useful for a curated panel rather than a data-driven top-N marker list.
+#'   Mutually exclusive with \code{markers}. Genes not found in \code{assay}
+#'   are dropped with a message.
+#' @param n Number of top markers per cluster to display. Ignored when
+#'   \code{genes} is supplied. Default 10.
 #' @param assay Assay to read from. Default DefaultAssay.
 #' @param pseudobulk Logical; if TRUE, sum raw counts per cluster first
 #'   (\code{Seurat::AggregateExpression}), normalize once, and z-score that
@@ -47,6 +57,7 @@
 #' @export
 MarkerHeatmap <- function(obj,
                           markers       = NULL,
+                          genes         = NULL,
                           n             = 10,
                           assay         = NULL,
                           pseudobulk    = FALSE,
@@ -56,31 +67,58 @@ MarkerHeatmap <- function(obj,
                           cluster_cols  = FALSE) {
 
   if (!inherits(obj, "Seurat")) stop("`obj` must be a Seurat object.")
+  if (!is.null(markers) && !is.null(genes)) {
+    stop("Supply either `markers` or `genes`, not both.")
+  }
   a <- if (is.null(assay)) Seurat::DefaultAssay(obj) else assay
 
-  if (is.null(markers)) {
-    message("--- Running FindAllMarkers ---")
-    markers <- Seurat::FindAllMarkers(obj, only.pos = TRUE,
-                                      min.pct = 0.25,
-                                      logfc.threshold = 0.25,
-                                      verbose = FALSE)
-  }
-  required <- c("gene", "cluster", "avg_log2FC", "p_val_adj")
-  if (!all(required %in% colnames(markers))) {
-    stop("`markers` is missing required columns: ",
-         paste(setdiff(required, colnames(markers)), collapse = ", "))
+  if (!is.null(genes)) {
+    if (!is.character(genes) || !length(genes)) {
+      stop("`genes` must be a non-empty character vector of gene names.")
+    }
+    top_genes <- unique(genes)
+  } else {
+    if (is.null(markers)) {
+      message("--- Running FindAllMarkers ---")
+      markers <- Seurat::FindAllMarkers(obj, only.pos = TRUE,
+                                        min.pct = 0.25,
+                                        logfc.threshold = 0.25,
+                                        verbose = FALSE)
+    }
+    required <- c("gene", "cluster", "avg_log2FC", "p_val_adj")
+    if (!all(required %in% colnames(markers))) {
+      stop("`markers` is missing required columns: ",
+           paste(setdiff(required, colnames(markers)), collapse = ", "))
+    }
+
+    cluster <- avg_log2FC <- p_val_adj <- NULL  # NSE
+    top <- markers %>%
+      dplyr::filter(p_val_adj < 0.05) %>%
+      dplyr::group_by(cluster) %>%
+      dplyr::slice_max(avg_log2FC, n = n, with_ties = FALSE) %>%
+      dplyr::ungroup() %>%
+      dplyr::arrange(cluster, dplyr::desc(avg_log2FC))
+
+    top_genes <- unique(top$gene)
+    if (!length(top_genes)) stop("No genes passed the marker filter.")
   }
 
-  cluster <- avg_log2FC <- p_val_adj <- NULL  # NSE
-  top <- markers %>%
-    dplyr::filter(p_val_adj < 0.05) %>%
-    dplyr::group_by(cluster) %>%
-    dplyr::slice_max(avg_log2FC, n = n, with_ties = FALSE) %>%
-    dplyr::ungroup() %>%
-    dplyr::arrange(cluster, dplyr::desc(avg_log2FC))
-
-  top_genes <- unique(top$gene)
-  if (!length(top_genes)) stop("No genes passed the marker filter.")
+  # Drop any requested gene not present in the target assay -- applies to
+  # both marker-derived and caller-supplied `genes` lists (a hand-typed
+  # `markers` table or `genes` vector can easily contain a typo/absent gene;
+  # FindAllMarkers()-derived tables never do, so this is a no-op there).
+  assay_genes <- rownames(obj[[a]])
+  keep_genes  <- intersect(top_genes, assay_genes)
+  if (!length(keep_genes)) {
+    stop("None of the requested genes are present in assay '", a, "'.")
+  }
+  if (length(keep_genes) < length(top_genes)) {
+    message(sprintf(
+      "  MarkerHeatmap: %d/%d gene(s) not found in assay '%s': %s",
+      length(top_genes) - length(keep_genes), length(top_genes), a,
+      paste(setdiff(top_genes, keep_genes), collapse = ", ")))
+  }
+  top_genes <- keep_genes
 
   if (isTRUE(pseudobulk)) {
     # True pseudobulk: sum raw counts per cluster first, then normalize once.
@@ -95,14 +133,18 @@ MarkerHeatmap <- function(obj,
     }
     agg_raw <- if (is.matrix(agg_raw)) agg_raw else as.matrix(agg_raw)
 
+    # top_genes is already filtered to genes present in `a`'s rownames above,
+    # but AggregateExpression()'s output can in principle be missing a gene
+    # that was present pre-aggregation (e.g. it got dropped for having zero
+    # counts everywhere) -- re-intersect defensively rather than assume.
     keep_genes <- intersect(top_genes, rownames(agg_raw))
     if (!length(keep_genes)) {
-      stop("None of the top marker genes are present in the pseudobulk ",
+      stop("None of the requested genes are present in the pseudobulk ",
            "assay '", a, "'.")
     }
     if (length(keep_genes) < length(top_genes)) {
       message(sprintf(
-        "  pseudobulk: %d/%d marker gene(s) not found in assay '%s': %s",
+        "  pseudobulk: %d/%d gene(s) dropped during aggregation from assay '%s': %s",
         length(top_genes) - length(keep_genes), length(top_genes), a,
         paste(setdiff(top_genes, keep_genes), collapse = ", ")))
     }

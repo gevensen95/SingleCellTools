@@ -148,6 +148,39 @@ test_that("MarkerHeatmap pseudobulk = TRUE messages and drops marker genes absen
   expect_false("NotAGene" %in% levels(p$data$gene))
 })
 
+test_that("MarkerHeatmap genes= plots a caller-supplied gene list, bypassing markers", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60, n_clusters = 3)
+  want <- rownames(obj)[c(3, 1, 5)]
+  p <- MarkerHeatmap(obj, genes = want)
+  expect_s3_class(p, "ggplot")
+  expect_setequal(levels(p$data$gene), want)
+})
+
+test_that("MarkerHeatmap errors when both markers and genes are supplied", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60, n_clusters = 3)
+  markers <- data.frame(gene = rownames(obj)[1:3], cluster = "0",
+                        avg_log2FC = 1, p_val_adj = 0.001,
+                        stringsAsFactors = FALSE)
+  expect_error(
+    MarkerHeatmap(obj, markers = markers, genes = rownames(obj)[1:3]),
+    "either .markers. or .genes."
+  )
+})
+
+test_that("MarkerHeatmap genes= validates and drops genes absent from the assay", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60, n_clusters = 3)
+  expect_error(MarkerHeatmap(obj, genes = character(0)), "non-empty character vector")
+  expect_message(
+    p <- MarkerHeatmap(obj, genes = c(rownames(obj)[1:3], "NotAGene")),
+    "NotAGene"
+  )
+  expect_false("NotAGene" %in% levels(p$data$gene))
+  expect_error(MarkerHeatmap(obj, genes = "NotAGene"), "None of the requested genes")
+})
+
 
 # ============================================================================
 # MarkerPlot() / MarkerPctPlot()
