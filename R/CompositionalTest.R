@@ -40,7 +40,12 @@
 #' @return A data frame with one row per cluster (or, with \code{weight_cols},
 #'   one row per weight column) and columns \code{cluster},
 #'   \code{mean_prop_<level>} for each condition level, \code{effect},
-#'   \code{stat}, \code{pvalue}, \code{padj}, and \code{method}.
+#'   \code{stat}, \code{pvalue}, \code{padj}, and \code{method}. When the
+#'   \code{propeller} backend runs, an additional \code{stat_type} column
+#'   ("T" or "F") records which test \code{speckle::propeller()} actually
+#'   used: a t-test (\code{effect} = \code{PropRatio}) when
+#'   \code{condition_col} has exactly 2 levels, or an ANOVA F-test (no
+#'   single ratio, so \code{effect} is \code{NA}) when it has more than 2.
 #' @examples
 #' \dontrun{
 #' res <- CompositionalTest(obj,
@@ -215,12 +220,27 @@ CompositionalTest <- function(obj,
     group     = md_ss$cond,
     transform = transform
   )
+  # speckle::propeller() dispatches internally on how many levels `group`
+  # has: exactly 2 -> propeller.ttest() (PropRatio + Tstatistic columns);
+  # more than 2 -> propeller.anova() instead (no PropRatio -- there's no
+  # single ratio across >2 groups -- and Fstatistic in place of Tstatistic).
+  # Assuming Tstatistic always exists crashes data.frame() below in the
+  # >2-group case (res$Tstatistic is NULL, not NA, so its 0-length can't be
+  # recycled against the other columns) -- check for either column instead.
+  stat_col <- if ("Tstatistic" %in% colnames(res)) {
+    "Tstatistic"
+  } else if ("Fstatistic" %in% colnames(res)) {
+    "Fstatistic"
+  } else {
+    NA
+  }
   data.frame(
-    cluster = rownames(res),
-    effect  = if ("PropRatio" %in% colnames(res)) res$PropRatio else NA,
-    stat    = res$Tstatistic,
-    pvalue  = res$P.Value,
-    padj    = res$FDR,
+    cluster   = rownames(res),
+    effect    = if ("PropRatio" %in% colnames(res)) res$PropRatio else NA,
+    stat      = if (!is.na(stat_col)) res[[stat_col]] else NA,
+    stat_type = if (is.na(stat_col)) NA_character_ else sub("statistic$", "", stat_col),
+    pvalue    = res$P.Value,
+    padj      = res$FDR,
     stringsAsFactors = FALSE
   )
 }

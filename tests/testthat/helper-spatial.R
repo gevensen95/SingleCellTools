@@ -89,7 +89,17 @@
                    dimnames = list(genes, spots))
   storage.mode(counts) <- "double"
 
-  sf <- SeuratObject::scalefactors(spot = 1, fiducial = 1, hires = 1, lowres = 0.5)
+  # `scalefactors` isn't an S4 class -- it's an S3 class defined in Seurat
+  # (not SeuratObject) via `structure(list(...), class = "scalefactors")`
+  # and registered with `setOldClass()` so S4 slots (VisiumV1@scale.factors)
+  # can hold it. `setOldClass()` is what produces the "virtual class" error
+  # if you try `methods::new("scalefactors", ...)` on it -- build the S3
+  # object directly instead, exactly like Seurat's own (possibly
+  # unexported) `scalefactors()` constructor does internally.
+  sf <- structure(
+    list(spot = 1, fiducial = 1, hires = 1, lowres = 0.5),
+    class = "scalefactors"
+  )
 
   # Build each image's coordinates up front so cluster_by_position can derive
   # labels from them before the Seurat object (which needs the full meta.data
