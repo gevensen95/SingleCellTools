@@ -720,3 +720,81 @@ test_that("SpatialConcordance returns one row per image and skips tiny images wi
   expect_equal(nrow(res2), 1L)
   expect_equal(res2$sample, "slice1")
 })
+
+test_that("SubsetSpatial errors on non-Seurat input", {
+  expect_error(SubsetSpatial(list(a = 1)), "Seurat object")
+})
+
+test_that("SubsetSpatial with no images just delegates to subset()", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 20, n_clusters = 2)
+  res <- SubsetSpatial(obj, subset = seurat_clusters == levels(obj$seurat_clusters)[1])
+  expect_true(all(as.character(res$seurat_clusters) == levels(obj$seurat_clusters)[1]))
+  expect_equal(length(res@images), 0L)
+})
+
+test_that("SubsetSpatial subset= keeps only matching cells and every image stays consistent", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 20, n_images = 2)
+  res <- SubsetSpatial(obj, subset = seurat_clusters == "0")
+
+  expect_true(all(as.character(res$seurat_clusters) == "0"))
+  for (img in names(res@images)) {
+    expect_true(all(SeuratObject::Cells(res@images[[img]]) %in% colnames(res)))
+  }
+  # every kept cell should be accounted for by exactly the images it belongs to
+  expect_equal(
+    sum(vapply(res@images, function(i) length(SeuratObject::Cells(i)), integer(1))),
+    ncol(res)
+  )
+})
+
+test_that("SubsetSpatial cells= (character) and idents= both work", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 2, spots_per_image = 15, n_images = 2)
+
+  keep <- colnames(obj)[1:10]
+  res_cells <- SubsetSpatial(obj, cells = keep)
+  expect_setequal(colnames(res_cells), keep)
+  for (img in names(res_cells@images)) {
+    expect_true(all(SeuratObject::Cells(res_cells@images[[img]]) %in% colnames(res_cells)))
+  }
+
+  res_idents <- SubsetSpatial(obj, idents = "0")
+  expect_true(all(as.character(Seurat::Idents(res_idents)) == "0"))
+  for (img in names(res_idents@images)) {
+    expect_true(all(SeuratObject::Cells(res_idents@images[[img]]) %in% colnames(res_idents)))
+  }
+})
+
+test_that("SubsetSpatial drops an image entirely (with a message) when 0 cells survive", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 3, spots_per_image = 10, n_images = 2)
+  expect_message(
+    res <- SubsetSpatial(obj, subset = sample == "slice1"),
+    "slice2.*dropping"
+  )
+  expect_false("slice2" %in% names(res@images))
+  expect_true("slice1" %in% names(res@images))
+  expect_true(all(SeuratObject::Cells(res@images[["slice1"]]) %in% colnames(res)))
+})
+
+test_that("SubsetSpatial features= subsets genes without touching images", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_visium_seurat(seed = 1, n_genes = 20, spots_per_image = 10, n_images = 1)
+  keep_genes <- rownames(obj)[1:5]
+  res <- SubsetSpatial(obj, features = keep_genes)
+  expect_setequal(rownames(res), keep_genes)
+  expect_equal(ncol(res), ncol(obj))
+  expect_true(all(SeuratObject::Cells(res@images[["slice1"]]) %in% colnames(res)))
+})
+
+test_that("SubsetSpatial works on FOV-based (Xenium/CosMx-style) objects too", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_spatial_obj(seed = 1, n_per_fov = 60)
+  res <- SubsetSpatial(obj, subset = celltype == "TypeA")
+  expect_true(all(res$celltype == "TypeA"))
+  for (img in names(res@images)) {
+    expect_true(all(SeuratObject::Cells(res@images[[img]]) %in% colnames(res)))
+  }
+})
