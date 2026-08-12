@@ -491,9 +491,15 @@ MarkerHeatmap(integrated, pseudobulk = TRUE)
 
 # Reuse an existing FindAllMarkers()-style table instead of recomputing it
 MarkerHeatmap(integrated, markers = cluster_markers, n = 8, pseudobulk = TRUE)
+
+# Or skip marker selection entirely and plot a curated panel directly
+MarkerHeatmap(integrated, genes = c("Slc17a7", "Gad1", "Gfap", "Mbp", "Pecam1", "Cx3cr1"),
+             pseudobulk = TRUE)
 ```
 
 Note this still z-scores across clusters either way (`scale_rows = TRUE` by default) — pseudobulking reduces stochastic per-spot noise, but it's the z-scoring step that actually protects against a broadly/ambiently expressed gene (e.g. hepatocyte transcripts in liver — see §7.6) dominating every cluster's raw magnitude, the same principle behind `RCTDCompositionHeatmap()`.
+
+`genes` and `markers` are mutually exclusive — pass one or the other. `genes` is useful when you already know the panel you want plotted (e.g. the same curated marker list used for `MarkerPlot()`/`MarkerPctPlot()`) and don't need a data-driven top-N selection; any requested gene absent from the assay is dropped with a message rather than erroring the whole call.
 
 ---
 
