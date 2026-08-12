@@ -34,7 +34,7 @@
 12. [Niche Co-expression — `NicheCoExpress()`](#12-niche-co-expression--nichecoexpress)
     - 12.1 [Estimation Plot — `NicheCoExpressEstimationPlot()`](#121-estimation-plot--nichecoexpressestimationplot)
 13. [Single-cell Spatial (Xenium / CosMx) — `detect_fov_edges()` / `detect_tissue_holes()`](#13-single-cell-spatial-xenium--cosmx--detect_fov_edges--detect_tissue_holes)
-14. [Subsetting Spatial Objects — `subset_opt()`](#14-subsetting-spatial-objects--subset_opt)
+14. [Subsetting Spatial Objects — `SubsetSpatial()`](#14-subsetting-spatial-objects--subsetspatial)
 15. [Tips Specific to Spatial Data](#15-tips-specific-to-spatial-data)
 16. [Session Info](#16-session-info)
 
@@ -1199,42 +1199,68 @@ xenium <- xenium[, xenium$edge_layer == 0 & xenium$hole_layer == 0]
 
 ---
 
-## 14. Subsetting Spatial Objects — `subset_opt()`
+## 14. Subsetting Spatial Objects — `SubsetSpatial()`
 
-Always use `subset_opt()` instead of `subset()` for spatial Seurat objects. Seurat's
-built-in `subset()` can leave stale image metadata attached after cell removal, which
-causes downstream errors. `subset_opt()` keeps FOVs and images synchronized.
+Never use plain `subset()` on a spatial Seurat object. Seurat's built-in `subset()`
+can leave `obj@images` internally inconsistent after cell removal — an upstream,
+still-unresolved bug ([satijalab/seurat#8848](https://github.com/satijalab/seurat/issues/8848)).
+The subset call itself won't error; the inconsistency only surfaces later, whenever
+some other function (`RunPCA()`, `PrepSCTFindMarkers()`, `ScaleData()`, and others)
+happens to call `validObject()`, with `invalid class "Seurat" object: All cells in
+images must be present in the Seurat object`. By then the stack trace points at
+whatever you were running, not the subset call that actually caused it.
+
+`SubsetSpatial()` avoids this by explicitly re-subsetting every attached image
+against the object's own post-subset cells, rather than trusting `subset()`'s
+own per-image handling. It works on **any** image type — pixel-backed Visium
+images (`VisiumV1`/`VisiumV2`, used throughout this vignette) and coordinate-only
+FOV images (Xenium/CosMx/MERFISH-style) alike — and, unlike `DropSpatialImage()`,
+keeps images attached (correctly re-subset, not removed), so the result is still
+usable for spatial plotting afterward:
 
 ```r
 # Isolate oligodendrocyte spots from one section
-oligo_ant <- subset_opt(
+oligo_ant <- SubsetSpatial(
   niche_list[["anterior1"]],
   subset = spatial_domain == "Oligodendrocyte"
 )
 
 cat("Oligodendrocyte spots:", ncol(oligo_ant), "\n")
 
-# Visualize just oligodendrocytes on tissue
-SpatialDimPlot(oligo_ant) + ggtitle("Oligodendrocyte spots — anterior")
+# Visualize just oligodendrocytes on tissue -- safe because images are still
+# correctly attached
+SpatialDimPlotFixed(oligo_ant, group.by = "spatial_domain") +
+  ggtitle("Oligodendrocyte spots — anterior")
 
 # Subset by niche
-white_matter_niche <- subset_opt(
+white_matter_niche <- SubsetSpatial(
   niche_list[["anterior1"]],
   subset = best_niche %in% c("1", "3")   # adjust niche IDs to match your run
 )
 ```
 
-`subset_opt()` also accepts an explicit `cells` vector, which is useful after
+`SubsetSpatial()` also accepts an explicit `cells` vector, which is useful after
 polygon-based selection:
 
 ```r
 # Keep only cells in a specific niche AND expressing Mbp
-mbp_oligo <- subset_opt(
+mbp_oligo <- SubsetSpatial(
   niche_list[["anterior1"]],
   cells = WhichCells(niche_list[["anterior1"]],
                      expression = spatial_domain == "Oligodendrocyte" & Mbp_pos == TRUE)
 )
 ```
+
+**`subset_opt()` is a separate, narrower tool.** It's written specifically for
+CosMx/Xenium `FOV` objects — it reaches into a `centroids` sub-slot and an
+optional `molecules` slot to also drop out-of-bounds molecules after subsetting
+(`cleanMolecules = TRUE`, the default), which `SubsetSpatial()` doesn't do. It
+does **not** work on Visium's pixel-backed images (there's no `centroids`/
+`molecules` sub-slot to find), so for Visium data — including every example in
+this vignette — use `SubsetSpatial()`. For FOV-based platforms where you also
+want the molecules-slot cleanup, `subset_opt()` remains the right choice; you
+can still run `CleanMolSlot()` on a `SubsetSpatial()` result afterward if you
+want that cleanup without its FOV-specific subsetting path.
 
 ---
 
