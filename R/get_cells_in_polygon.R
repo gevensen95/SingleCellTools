@@ -38,6 +38,15 @@ get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
   } else if (!all(c("x", "y") %in% names(coords))) {
     stop("Couldn't find 'x'/'y' or 'imagecol'/'imagerow' in tissue coordinates.")
   }
+  # GetTissueCoordinates() only returns a 'cell' column for FOV/imaging-style
+  # images (Xenium/CosMx) and current (v5) Visium images -- older-style
+  # Visium output (the imagecol/imagerow branch just above) carries cell
+  # identity in rownames instead, with no 'cell' column at all. Without this,
+  # `cells_sf$cell` below would be NULL and every returned cell would lose
+  # its barcode/name entirely.
+  if (!"cell" %in% names(coords)) {
+    coords$cell <- rownames(coords)
+  }
 
   # Points → sf
   cells_sf <- sf::st_as_sf(coords, coords = c("x", "y"), crs = NA)

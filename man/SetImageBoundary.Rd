@@ -2,14 +2,14 @@
 % Please edit documentation in R/SetImageBoundary.R
 \name{SetImageBoundary}
 \alias{SetImageBoundary}
-\title{Set Boudnary of Images}
+\title{Set Boundary of Images}
 \usage{
 SetImageBoundary(seurat_obj, boundary)
 }
 \arguments{
-\item{boundary}{Boundry (segmentation or centroids)}
+\item{seurat_obj}{Seurat object (spatial)}
 
-\item{obj}{Seurat object (spatial)}
+\item{boundary}{Boundary name (e.g. "segmentation" or "centroids")}
 }
 \value{
 a Seurat object

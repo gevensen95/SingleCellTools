@@ -80,9 +80,17 @@ ConvertToBPCells <- function(obj, assay = NULL, layers = "counts",
   message(sprintf('--- Converting %d object(s) to on-disk BPCells matrices (path = %s) ---',
                   length(objs), path))
 
-  objs <- lapply(seq_along(objs), function(i) {
-    o <- objs[[i]]
-    a <- if (is.null(assay)) SeuratObject::DefaultAssay(o) else assay
+  # ---- Pass 1: validate everything before writing anything to disk --------
+  # Assay existence, the ChromatinAssay check, and "target directory already
+  # exists without overwrite = TRUE" are all checked across every object x
+  # layer combination here, before any BPCells::write_matrix_dir() call.
+  # Without this, a failure partway through a many-object list (say, object
+  # 15 of 20) would abort the whole call *after* objects 1-14 had already
+  # had their (potentially many-GB) matrices written to disk -- work the
+  # caller gets no object reference to and has to notice/clean up manually.
+  plan <- lapply(seq_along(objs), function(i) {
+    o   <- objs[[i]]
+    a   <- if (is.null(assay)) SeuratObject::DefaultAssay(o) else assay
     tag <- if (length(objs) > 1) paste0(" ('", dir_names[i], "')") else ""
     if (!a %in% names(o@assays)) {
       stop("Assay '", a, "' not found in object", tag, ".")
@@ -94,25 +102,40 @@ ConvertToBPCells <- function(obj, assay = NULL, layers = "counts",
            "ConvertToBPCells() doesn't support it. This is why `on_disk` ",
            "isn't offered on CreateATACObjects()/CreateATACObjectsFilter().")
     }
+    avail_layers <- SeuratObject::Layers(o[[a]])
+    obj_path     <- if (length(objs) > 1) file.path(path, dir_names[i]) else path
+    ly_paths     <- stats::setNames(file.path(obj_path, layers), layers)
+
+    for (ly in layers) {
+      if (!ly %in% avail_layers) next  # warned about (not fatal) in pass 2
+      ly_path <- ly_paths[[ly]]
+      if (dir.exists(ly_path) && !isTRUE(overwrite)) {
+        stop("'", ly_path, "' already exists. Set overwrite = TRUE to ",
+             "replace it, or choose a different `path`.")
+      }
+    }
+    list(a = a, tag = tag, avail_layers = avail_layers, ly_paths = ly_paths)
+  })
+
+  # ---- Pass 2: do the actual conversion/writing ----------------------------
+  objs <- lapply(seq_along(objs), function(i) {
+    o    <- objs[[i]]
+    info <- plan[[i]]
+    a    <- info$a
+    tag  <- info$tag
 
     if (!inherits(o[[a]], "Assay5")) {
       o[[a]] <- methods::as(o[[a]], Class = "Assay5")
     }
-    avail_layers <- SeuratObject::Layers(o[[a]])
-    obj_path <- if (length(objs) > 1) file.path(path, dir_names[i]) else path
 
     for (ly in layers) {
-      if (!ly %in% avail_layers) {
+      if (!ly %in% info$avail_layers) {
         warning("Layer '", ly, "' not found in assay '", a, "'", tag,
                 "; skipping.", call. = FALSE)
         next
       }
-      ly_path <- file.path(obj_path, ly)
+      ly_path <- info$ly_paths[[ly]]
       if (dir.exists(ly_path)) {
-        if (!isTRUE(overwrite)) {
-          stop("'", ly_path, "' already exists. Set overwrite = TRUE to ",
-               "replace it, or choose a different `path`.")
-        }
         unlink(ly_path, recursive = TRUE)
       }
       # Only the parent is created here -- BPCells::write_matrix_dir() below

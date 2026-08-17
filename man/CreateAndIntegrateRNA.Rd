@@ -8,6 +8,7 @@ CreateAndIntegrateRNA(
   data_dirs,
   cells = 3,
   features = 200,
+  mt_pattern = "^mt-",
   rb_pattern = "^(Rp[sl]|RP[SL])",
   hb_pattern = "^(Hb[^p]|HB[^P])",
   treatment = NULL,
@@ -46,6 +47,12 @@ barcodes.tsv or .h5 files.}
 \item{cells}{Features must be expressed in at least this many cells}
 
 \item{features}{Cells must have at least this many features}
+
+\item{mt_pattern}{Pattern for calculating percent mitochondrial reads
+(\code{percent.mt}), which this function's own quantile/threshold
+filtering thresholds on directly. Default \code{"^mt-"} (mouse gene
+symbol convention, e.g. \code{"mt-Nd1"}); pass \code{"^MT-"} for human
+data.}
 
 \item{rb_pattern}{Pattern for calculating percent ribosomal-protein reads
 (\code{percent.rb}), computed alongside \code{percent.mt} for reference

@@ -107,6 +107,14 @@ SpatialCompositionPlot <- function(obj,
       nrow(df), n_spots_max, n_spots_max),
       "for plotting speed/legibility. Set n_spots_max higher to plot more, ",
       "or lower to speed things up further.", call. = FALSE)
+    old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) get(".Random.seed", envir = .GlobalEnv) else NULL
+    on.exit({
+      if (is.null(old_seed)) {
+        if (exists(".Random.seed", envir = .GlobalEnv)) rm(".Random.seed", envir = .GlobalEnv)
+      } else {
+        assign(".Random.seed", old_seed, envir = .GlobalEnv)
+      }
+    }, add = TRUE)
     set.seed(seed)
     df <- df[sample(nrow(df), n_spots_max), ]
   }

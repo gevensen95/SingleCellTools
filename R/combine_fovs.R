@@ -7,6 +7,9 @@
 #' @param n_cols Number of columns for combined FOVs
 #' @param offset Number of pixels for offset
 #' @param fov_name Name of combined FOV
+#' @param append If \code{FALSE}, the original per-FOV images are removed
+#'   from \code{obj@images} once the combined FOV is built. Default
+#'   \code{TRUE} (original FOVs are kept alongside the new combined one).
 #' @return a Seurat object
 #' @export
 combine_fovs = function(obj,
@@ -15,8 +18,6 @@ combine_fovs = function(obj,
                         offset = 5000,
                         fov_name = "combined",
                         append = TRUE) {
-  if (!("Seurat" %in% .packages())) library(Seurat)
-
   all_molecules = rownames(obj)
 
   n_fovs     = length(obj@images)
@@ -46,7 +47,13 @@ combine_fovs = function(obj,
     y_offsets[image] = starting_y
     cum_y_max        = max(cum_y_max, y_max_i + starting_y)
 
-    if ((image + 1) %% n_cols == 1) {
+    if (image %% n_cols == 0) {
+      # Wrap to a new row after every n_cols-th FOV. Written as
+      # `image %% n_cols == 0` rather than the equivalent-looking
+      # `(image + 1) %% n_cols == 1` -- the latter is never TRUE when
+      # n_cols == 1 (x %% 1 is always 0, never 1), so a single-column
+      # layout would silently never wrap and lay every FOV out in one row
+      # instead of stacking them.
       starting_x = 0
       starting_y = cum_y_max + offset
     } else {
@@ -78,7 +85,15 @@ combine_fovs = function(obj,
     if (image == 1) final_centroids = centroids_i  # scaffold: bbox min etc. carried over untouched, as before
 
     # --- Molecules ---
-    molecules_i = obj@images[[image]]$molecules
+    # SeuratObject's `$.FOV` method uses match.arg() against the FOV's
+    # actual defined boundary/molecule names, which *throws* (rather than
+    # returning NULL) when an FOV has no molecules component at all (e.g. a
+    # Visium/centroids-only FOV) -- so a plain `$molecules` access isn't
+    # safe here. tryCatch() restores the originally-intended "no molecules
+    # -> NULL" behavior that the `is.null(molecules_i)` check right below
+    # already relies on.
+    molecules_i = tryCatch(obj@images[[image]]$molecules,
+                           error = function(e) NULL)
     if (image == 1) final_molecules = molecules_i  # preserves any container entries outside all_molecules, as before
 
     if (!is.null(molecules_i)) {
@@ -117,7 +132,9 @@ combine_fovs = function(obj,
   }
 
   message('--- Building combined FOV ---')
-  combined_fov = CreateFOV(
+  # CreateFOV() is exported by SeuratObject, not Seurat -- Seurat::CreateFOV
+  # errors with "'CreateFOV' is not an exported object from 'namespace:Seurat'".
+  combined_fov = SeuratObject::CreateFOV(
     coords    = final_centroids,
     molecules = final_molecules,
     assay     = assay,

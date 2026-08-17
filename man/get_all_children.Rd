@@ -9,11 +9,12 @@ get_all_children(go_term, verbose = FALSE)
 \arguments{
 \item{go_term}{Parent GO term}
 
-\item{verbose}{If TRUE, print a single high-level message at the top of the
-recursion. Defaults to FALSE because the function calls itself; emitting
-a message in every recursive call would flood the console. The wrapper
-below \code{get_all_children_verbose} sets verbose=TRUE on the outer call
-and FALSE on the inner calls.}
+\item{verbose}{If TRUE, print a single high-level message before recursing.
+Defaults to FALSE because the function calls itself; emitting a message
+in every recursive call would flood the console. Recursive calls always
+pass \code{verbose = FALSE} internally regardless of the outer call's
+value, so passing \code{verbose = TRUE} at the top level prints exactly
+one message, not one per descendant term.}
 }
 \value{
 Vector containing child GO terms

@@ -7,6 +7,18 @@
 #' @export
 #'
 parse_polygons <- function(df) {
+  if (!"geometry" %in% names(df)) {
+    stop("`df` must have a 'geometry' column (e.g. 'POLYGON ((x1 y1, x2 y2))').")
+  }
+  bad <- !grepl("^POLYGON \\(\\(.*\\)\\)$", df$geometry)
+  if (any(bad)) {
+    stop("`df$geometry` has ", sum(bad), " row(s) not matching the expected ",
+        "'POLYGON ((x1 y1, x2 y2))' format (checked row(s): ",
+        paste(head(which(bad), 5), collapse = ", "),
+        if (sum(bad) > 5) ", ..." else "", "). Parsing them as-is would ",
+        "silently produce garbage/NA coordinates instead of an error.")
+  }
+
   message(sprintf('--- Parsing %d polygon geometries ---', nrow(df)))
 
   # Clean geometry column

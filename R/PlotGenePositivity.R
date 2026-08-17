@@ -91,7 +91,8 @@ PlotGenePositivity <- function(obj,
   df <- .collect_positivity(obj, pos_cols, genes,
                             group.by = group.by,
                             sample_col = sample_col,
-                            drop_absent = drop_absent)
+                            drop_absent = drop_absent,
+                            suffix = suffix)
 
   # .collect_positivity() returns NULL (not a 0-row data.frame) when no
   # requested gene has a matching positivity column anywhere -- nrow(NULL)
@@ -122,7 +123,7 @@ PlotGenePositivity <- function(obj,
 #' @keywords internal
 #' @noRd
 .collect_positivity <- function(obj, pos_cols, genes,
-                                group.by, sample_col, drop_absent) {
+                                group.by, sample_col, drop_absent, suffix) {
 
   .one <- function(o, sample_name) {
     md <- o@meta.data
@@ -143,7 +144,7 @@ PlotGenePositivity <- function(obj,
 
     grp <- as.character(md[[group.by]])
     out <- do.call(rbind, lapply(use_cols, function(pc) {
-      gene <- sub(paste0(regmatches_escape(suffix_from(pc, genes)), "$"), "", pc)
+      gene <- sub(paste0(regmatches_escape(suffix), "$"), "", pc)
       v <- md[[pc]]
       # aggregate per group
       by_grp <- split(as.logical(v), grp)
@@ -198,18 +199,6 @@ PlotGenePositivity <- function(obj,
   stop("`obj` must be a Seurat object or a named list of Seurat objects.")
 }
 
-
-# Small utility to convert a suffixed column name back to a gene name by
-# stripping whichever suffix produced it — safer than a fixed regex when
-# the caller has an unusual suffix.
-#' @keywords internal
-#' @noRd
-suffix_from <- function(colname, genes) {
-  hit <- vapply(genes, function(g) startsWith(colname, g), logical(1))
-  if (!any(hit)) return("")
-  g <- genes[which(hit)[1]]
-  sub(paste0("^", regmatches_escape(g)), "", colname)
-}
 
 # Escape regex meta-characters in a literal string.
 #' @keywords internal

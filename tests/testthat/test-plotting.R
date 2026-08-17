@@ -430,3 +430,28 @@ test_that("PlotGenePositivity errors when no positivity data is available", {
     "No positivity data"
   )
 })
+
+test_that(".collect_positivity attributes prefix-colliding gene names correctly (e.g. Gene1 vs Gene10)", {
+  # Regression test: .one()'s gene-name recovery used to reverse-engineer
+  # the gene from the column name via startsWith() prefix-matching against
+  # `genes`, which picks the FIRST matching gene in `genes` order -- so with
+  # genes = c("Gene1", "Gene10"), the column "Gene10_pos" incorrectly
+  # matched "Gene1" first (since "Gene10_pos" also startsWith("Gene1")) and
+  # got mislabeled as gene "Gene1" instead of "Gene10". The fix threads the
+  # actual `suffix` parameter through directly instead of re-deriving it.
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 15, n_cells = 40, n_clusters = 2)
+  genes <- c("Gene1", "Gene10")
+  obj <- AddGenePositivity(obj, genes = genes, layer = "counts")
+
+  df <- SingleCellTools:::.collect_positivity(
+    obj, pos_cols = paste0(genes, "_pos"), genes = genes,
+    group.by = "seurat_clusters", sample_col = NULL, drop_absent = TRUE,
+    suffix = "_pos"
+  )
+  expect_setequal(unique(df$gene), genes)
+  # Every row's gene should trace back to a column that actually contains
+  # its own name as the exact prefix before "_pos" -- not silently
+  # collapsed onto "Gene1" for both.
+  expect_equal(sum(df$gene == "Gene10"), sum(df$gene == "Gene1"))
+})

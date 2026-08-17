@@ -68,7 +68,7 @@ SpatialObjectInfo <- function(obj) {
   }
 
   .n_cells <- function(img) {
-    n <- tryCatch(length(Cells(img)), error = function(e) NA_integer_)
+    n <- tryCatch(length(SeuratObject::Cells(img)), error = function(e) NA_integer_)
     if (is.na(n)) {
       n <- tryCatch(length(img$centroids@cells), error = function(e) NA_integer_)
     }
@@ -77,7 +77,11 @@ SpatialObjectInfo <- function(obj) {
 
   .boundary_sets <- function(img) {
     tryCatch({
-      b <- Boundaries(img)
+      # Boundaries() is exported by SeuratObject, not Seurat -- confirmed
+      # directly: Seurat::Boundaries(fov) errors with "'Boundaries' is not
+      # an exported object from 'namespace:Seurat'", which is exactly why
+      # this was silently swallowed to NA_character_ by the tryCatch below.
+      b <- SeuratObject::Boundaries(img)
       if (length(b) == 0L) NA_character_ else paste(b, collapse = ", ")
     }, error = function(e) NA_character_)
   }
@@ -103,7 +107,7 @@ SpatialObjectInfo <- function(obj) {
     lazy <- !is.null(o@misc$molecules_lazy)
     do.call(rbind, lapply(img_names, function(in_) {
       img <- o@images[[in_]]
-      arr <- tryCatch(GetImage(img, mode = "raw"), error = function(e) NULL)
+      arr <- tryCatch(Seurat::GetImage(img, mode = "raw"), error = function(e) NULL)
       is_pixel <- !is.null(arr) && length(dim(arr)) >= 2L
 
       if (is_pixel) {

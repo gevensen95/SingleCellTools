@@ -296,6 +296,37 @@ test_that("RunRCTD errors clearly when spacexr isn't installed (after cheap vali
   )
 })
 
+test_that("RunRCTD fails fast with an actionable error when detectCores() returns NA", {
+  # Regression test for .run_rctd_one()'s detectCores()-NA guard. This used
+  # to try to monkey-patch parallel::detectCores() via
+  # utils::assignInNamespace() for the duration of the call -- which is
+  # itself unreliable and can fail with "locked binding of 'detectCores'
+  # cannot be changed" (confirmed on an ordinary, unrestricted R session).
+  # It now fails fast with a clear message instead of attempting that patch.
+  #
+  # spacexr::Reference()/SpatialRNA() are stubbed out so this exercises only
+  # RunRCTD()'s own guard, not a real spacexr computation -- matching this
+  # file's existing philosophy of not attempting real end-to-end RCTD runs
+  # (see file header).
+  .skip_if_missing("Seurat", "SeuratObject", "spacexr")
+  testthat::local_mocked_bindings(detectCores = function(...) NA_integer_,
+                                  .package = "parallel")
+  testthat::local_mocked_bindings(
+    Reference  = function(...) structure(list(), class = "Reference"),
+    SpatialRNA = function(...) structure(list(), class = "SpatialRNA"),
+    .package = "spacexr"
+  )
+
+  obj <- .make_visium_seurat(seed = 1, n_genes = 10, spots_per_image = 5)
+  ref <- .make_small_seurat(seed = 1, n_genes = 10, n_cells = 20)
+  ref$cell_type <- rep(c("A", "B"), length.out = ncol(ref))
+
+  expect_error(
+    RunRCTD(obj, reference = ref, celltype_col = "cell_type"),
+    "detectCores"
+  )
+})
+
 
 # ============================================================================
 # SpatialCompositionPlot() -- validation only. Requires the scatterpie
@@ -342,6 +373,29 @@ test_that("SpatialCompositionPlot errors when obj has no images", {
   obj <- .make_small_seurat(seed = 1, n_cells = 20)
   obj$w_typeA <- stats::runif(ncol(obj))
   expect_error(SpatialCompositionPlot(obj, weight_cols = "w_typeA"), "images")
+})
+
+test_that("SpatialCompositionPlot does not leak its subsampling seed into the caller's RNG stream", {
+  # Regression test: the n_spots_max subsampling block used to call
+  # set.seed(seed) without saving/restoring the caller's prior
+  # .Random.seed, so any downstream random draws in the same session
+  # became deterministic-per-`seed` -- a call to this function would
+  # silently reset the caller's own RNG stream.
+  .skip_if_missing("Seurat", "SeuratObject", "scatterpie")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 20)
+  obj$rctd_TypeA <- stats::runif(ncol(obj))
+  obj$rctd_TypeB <- 1 - obj$rctd_TypeA
+
+  set.seed(999)
+  x_ref <- runif(5)
+
+  set.seed(999)
+  invisible(suppressWarnings(SpatialCompositionPlot(
+    obj, weight_cols = c("rctd_TypeA", "rctd_TypeB"), n_spots_max = 5, seed = 42
+  )))
+  x_after <- runif(5)
+
+  expect_equal(x_after, x_ref)
 })
 
 

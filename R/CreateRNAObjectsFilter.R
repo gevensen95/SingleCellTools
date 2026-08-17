@@ -13,6 +13,11 @@
 #'  barcodes.tsv or .h5 files.
 #' @param cells Features must be expressed in at least this many cells
 #' @param features Cells must have at least this many features
+#' @param mt_pattern Pattern for calculating percent mitochondrial reads
+#'   (\code{percent.mt}), which this function's own quantile/threshold
+#'   filtering thresholds on directly. Default \code{"^mt-"} (mouse gene
+#'   symbol convention, e.g. \code{"mt-Nd1"}); pass \code{"^MT-"} for human
+#'   data.
 #' @param rb_pattern Pattern for calculating percent ribosomal-protein reads
 #'   (\code{percent.rb}), computed alongside \code{percent.mt} for reference
 #'   (informational only -- not used by this function's own filtering
@@ -41,6 +46,7 @@
 
 CreateRNAObjectsFilter <-
   function(data_dirs, cells = 3, features = 200,
+           mt_pattern = '^mt-',
            rb_pattern = '^(Rp[sl]|RP[SL])',
            hb_pattern = '^(Hb[^p]|HB[^P])',
            treatment = NULL,
@@ -95,18 +101,35 @@ CreateRNAObjectsFilter <-
                                    min.cells = cells,
                                    min.features = features,
                                    project = basename(dir))
-      } else if (sum(str_detect(list.files(dir), '.h5'))>0) {
-        seurat_data <- Seurat::Read10X_h5(
-          paste(dir,
-                list.files(dir)[sapply(list.files(dir),
-                                       function(x) all(c(grepl("filtered", x),
-                                                         grepl(".h5", x))))], sep = '/'))
+      } else if (length(list.files(dir, pattern = '\\.h5$')) > 0) {
+        # Anchored on ".h5" (excludes AnnData ".h5ad" files, which end in
+        # "ad" not "h5" -- the old unanchored grepl(".h5", x) treated
+        # "sample.h5ad" as a match). Prefer a file with "filtered" in its
+        # name if one exists (CellRanger's filtered_feature_bc_matrix.h5
+        # convention); otherwise fall back to whatever single .h5 file is
+        # present. Same "exactly one candidate, else error" discipline as
+        # CreateRNAObjects.R's .read_10x_triplet() -- silently picking one
+        # of several risks reading the wrong sample's data.
+        h5_files      <- list.files(dir, pattern = '\\.h5$')
+        filtered_h5   <- grep('filtered', h5_files, value = TRUE, ignore.case = TRUE)
+        h5_candidates <- if (length(filtered_h5) > 0) filtered_h5 else h5_files
+        if (length(h5_candidates) > 1) {
+          stop("Found more than one candidate .h5 file in '", dir, "': ",
+              paste(h5_candidates, collapse = ", "),
+              ". Expected exactly one -- please split these into separate ",
+              "sample directories.")
+        }
+        seurat_data <- Seurat::Read10X_h5(file.path(dir, h5_candidates))
 
         # Create Seurat object
         Seurat::CreateSeuratObject(counts = seurat_data,
                                    min.cells = cells,
                                    min.features = features,
                                    project = dirname(dir))
+      } else {
+        stop("Could not find a barcodes/features/matrix triplet or a .h5 ",
+            "file in '", dir, "' (or its filtered_feature_bc_matrix ",
+            "subdirectories).")
       }
 
     })
@@ -114,6 +137,22 @@ CreateRNAObjectsFilter <-
     if (is.null(object_names) == TRUE) {
       names(seurat_objects) <- basename(data_dirs)
     } else {names(seurat_objects) <- object_names}
+
+    # Add a Treatment metadata column (e.g., Age, chemical, etc.), matching
+    # each data_dirs[i] to treatment[i] positionally.
+    if (!is.null(treatment)) {
+      if (length(treatment) != length(data_dirs)) {
+        stop(sprintf(
+          "`treatment` has length %d but there are %d `data_dirs` -- these must match one-to-one, or samples would silently get wrong/NA treatment labels via recycling.",
+          length(treatment), length(data_dirs)))
+      }
+      message('--- Adding Treatment metadata column ---')
+      seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {
+        seurat_obj <- seurat_objects[[i]]
+        seurat_obj[["Treatment"]] <- treatment[i]
+        return(seurat_obj)
+      }), names(seurat_objects))
+    }
 
     message('--- Calculating percent mitochondrial / ribosomal / hemoglobin reads ---')
     # Add percent mitochondrial DNA to each Seurat object. percent.rb/percent.hb
@@ -123,7 +162,7 @@ CreateRNAObjectsFilter <-
     # (which already treat percent.rb/percent.hb as standard metrics) can
     # report on them.
     seurat_objects <- lapply(seurat_objects, function(obj) {
-      obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, pattern = "^mt-")
+      obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, pattern = mt_pattern)
       obj[["percent.rb"]] <- Seurat::PercentageFeatureSet(obj, pattern = rb_pattern)
       obj[["percent.hb"]] <- Seurat::PercentageFeatureSet(obj, pattern = hb_pattern)
       return(obj)
@@ -133,13 +172,16 @@ CreateRNAObjectsFilter <-
     saveRDS(seurat_objects, 'seurat_objects_unfiltered.rds')
 
     message('--- Generating unfiltered QC plots ---')
-    # Merge Seurat objects
-    obj <- merge(seurat_objects[[1]], seurat_objects[-1])
+    # Row-bind just the metadata rather than merge()-ing the objects --
+    # merge() would also combine the count matrices, which these QC plots
+    # never touch (matching the fix already applied to CreateRNAObjects.R).
+    meta <- dplyr::bind_rows(lapply(seurat_objects, function(x) x@meta.data))
+    orig.ident <- nFeature_RNA <- percent.mt <- NULL  # silence R CMD check NSE notes
 
     # Create plots
-    gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
+    gene.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, nFeature_RNA)) +
       ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
-    mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
+    mt.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, percent.mt)) +
       ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
     print(gene.plot + mt.plot)
 
@@ -176,10 +218,10 @@ CreateRNAObjectsFilter <-
       }
 
       message('--- Generating filtered QC plots ---')
-      obj <- merge(seurat_objects[[1]], seurat_objects[-1])
-      gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
+      meta <- dplyr::bind_rows(lapply(seurat_objects, function(x) x@meta.data))
+      gene.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, nFeature_RNA)) +
         ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered') + Ol_Reliable()
-      mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
+      mt.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, percent.mt)) +
         ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered') + Ol_Reliable()
       print(gene.plot + mt.plot)
 
@@ -211,10 +253,10 @@ CreateRNAObjectsFilter <-
       names(subsetted_objs) <- names(seurat_objects)
 
       message('--- Generating filtered QC plots ---')
-      obj <- merge(subsetted_objs[[1]], subsetted_objs[-1])
-      gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
+      meta <- dplyr::bind_rows(lapply(subsetted_objs, function(x) x@meta.data))
+      gene.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, nFeature_RNA)) +
         ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered') + Ol_Reliable()
-      mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
+      mt.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, percent.mt)) +
         ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered') + Ol_Reliable()
       print(gene.plot + mt.plot)
 

@@ -41,7 +41,9 @@ get_polygon_coords <- function(obj, image, meta_cols = NULL) {
   }
 
   img       <- obj@images[[image]]
-  available <- Seurat::Boundaries(img)
+  # Boundaries() is exported by SeuratObject, not Seurat (confirmed:
+  # Seurat::Boundaries() errors with "not an exported object").
+  available <- SeuratObject::Boundaries(img)
   if (!"segmentation" %in% available) {
     stop("Image '", image, "' has no 'segmentation' boundary set ",
         "(available: ", paste(available, collapse = ", "), "). ",

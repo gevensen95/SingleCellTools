@@ -17,7 +17,6 @@ CreateATACObjectsFilter(
   blacklist_ratio_max = 0.025,
   nucleosome_signal_max = 4,
   TSS.enrichment_min = 2,
-  peak_region_max = 3000,
   peakwidths_max = 10000,
   peakwidths_min = 20,
   passed_filters_value = 500,

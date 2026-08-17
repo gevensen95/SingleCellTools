@@ -14,6 +14,11 @@
 #'  barcodes.tsv or .h5 files.
 #' @param cells Features must be expressed in at least this many cells
 #' @param features Cells must have at least this many features
+#' @param mt_pattern Pattern for calculating percent mitochondrial reads
+#'   (\code{percent.mt}), which this function's own quantile/threshold
+#'   filtering thresholds on directly. Default \code{"^mt-"} (mouse gene
+#'   symbol convention, e.g. \code{"mt-Nd1"}); pass \code{"^MT-"} for human
+#'   data.
 #' @param rb_pattern Pattern for calculating percent ribosomal-protein reads
 #'   (\code{percent.rb}), computed alongside \code{percent.mt} for reference
 #'   (informational only -- not used by this function's own filtering
@@ -70,6 +75,7 @@
 #' @export
 CreateAndIntegrateRNA <-
   function(data_dirs, cells = 3, features = 200,
+           mt_pattern = '^mt-',
            rb_pattern = '^(Rp[sl]|RP[SL])',
            hb_pattern = '^(Hb[^p]|HB[^P])',
            treatment = NULL,
@@ -77,6 +83,13 @@ CreateAndIntegrateRNA <-
            feature_min = NA, feature_max = NA,
            percent_mt_max = NA, interactive = FALSE,
            object_names = NULL,
+           # Relies on R's lazy default-argument evaluation: this default
+           # isn't resolved until cell_IDs is first used (at the real merge
+           # below, well after `seurat_objects` has been built/filtered in
+           # this function's own frame), so it correctly picks up the final
+           # sample names -- but only because nothing forces `cell_IDs`
+           # earlier in the body. Pass an explicit vector if that ordering
+           # ever changes.
            cell_IDs = names(seurat_objects), to_regress = 'percent.mt',
            cluster_resolution = 0.3, max_dims = 15, use_SCT = TRUE,
            sct_assay = 'RNA',
@@ -154,18 +167,35 @@ CreateAndIntegrateRNA <-
                                    min.cells = cells,
                                    min.features = features,
                                    project = basename(dir))
-      } else if (sum(str_detect(list.files(dir), '.h5'))>0) {
-        seurat_data <- Seurat::Read10X_h5(
-          paste(dir,
-                list.files(dir)[sapply(list.files(dir),
-                                       function(x) all(c(grepl("filtered", x),
-                                                         grepl(".h5", x))))], sep = '/'))
+      } else if (length(list.files(dir, pattern = '\\.h5$')) > 0) {
+        # Anchored on ".h5" (excludes AnnData ".h5ad" files, which end in
+        # "ad" not "h5" -- the old unanchored grepl(".h5", x) treated
+        # "sample.h5ad" as a match). Prefer a file with "filtered" in its
+        # name if one exists (CellRanger's filtered_feature_bc_matrix.h5
+        # convention); otherwise fall back to whatever single .h5 file is
+        # present. Same "exactly one candidate, else error" discipline as
+        # CreateRNAObjects.R's .read_10x_triplet() -- silently picking one
+        # of several risks reading the wrong sample's data.
+        h5_files      <- list.files(dir, pattern = '\\.h5$')
+        filtered_h5   <- grep('filtered', h5_files, value = TRUE, ignore.case = TRUE)
+        h5_candidates <- if (length(filtered_h5) > 0) filtered_h5 else h5_files
+        if (length(h5_candidates) > 1) {
+          stop("Found more than one candidate .h5 file in '", dir, "': ",
+              paste(h5_candidates, collapse = ", "),
+              ". Expected exactly one -- please split these into separate ",
+              "sample directories.")
+        }
+        seurat_data <- Seurat::Read10X_h5(file.path(dir, h5_candidates))
 
         # Create Seurat object
         Seurat::CreateSeuratObject(counts = seurat_data,
                            min.cells = cells,
                            min.features = features,
                            project = dirname(dir))
+      } else {
+        stop("Could not find a barcodes/features/matrix triplet or a .h5 ",
+            "file in '", dir, "' (or its filtered_feature_bc_matrix ",
+            "subdirectories).")
       }
 
     }
@@ -188,7 +218,7 @@ CreateAndIntegrateRNA <-
     # GenerateQCReport()/QCComparePlots()/CellSuiteSummary() (which already
     # treat percent.rb/percent.hb as standard metrics) can report on them.
     seurat_objects <- lapply(seurat_objects, function(obj) {
-      obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, pattern = "^mt-")
+      obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, pattern = mt_pattern)
       obj[["percent.rb"]] <- Seurat::PercentageFeatureSet(obj, pattern = rb_pattern)
       obj[["percent.hb"]] <- Seurat::PercentageFeatureSet(obj, pattern = hb_pattern)
       return(obj)
@@ -208,13 +238,17 @@ CreateAndIntegrateRNA <-
     saveRDS(seurat_objects, file = 'seurat_objects_unfiltered.rds')
 
     message('--- Generating unfiltered QC plots ---')
-    # Merge Seurat objects
-    obj <- merge(seurat_objects[[1]], seurat_objects[-1])
+    # Row-bind just the metadata rather than merge()-ing the objects here --
+    # this merge only ever fed two boxplots and was thrown away immediately
+    # after (the real merge happens further down, right before
+    # normalization, where the full counts are actually needed).
+    qc_meta <- dplyr::bind_rows(lapply(seurat_objects, function(x) x@meta.data))
+    orig.ident <- nFeature_RNA <- percent.mt <- NULL  # silence R CMD check NSE notes
 
     # Create plots
-    gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
+    gene.plot <- ggplot2::ggplot(qc_meta, ggplot2::aes(orig.ident, nFeature_RNA)) +
       ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
-    mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
+    mt.plot <- ggplot2::ggplot(qc_meta, ggplot2::aes(orig.ident, percent.mt)) +
       ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
     print(gene.plot + mt.plot)
     ggplot2::ggsave('unfiltered_features_percentMT.pdf', height = 5, width = 7)
@@ -251,10 +285,10 @@ CreateAndIntegrateRNA <-
         }
       }
 
-      obj <- merge(seurat_objects[[1]], seurat_objects[-1])
-      gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
+      meta <- dplyr::bind_rows(lapply(seurat_objects, function(x) x@meta.data))
+      gene.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, nFeature_RNA)) +
         ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered') + Ol_Reliable()
-      mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
+      mt.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, percent.mt)) +
         ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered') + Ol_Reliable()
       print(gene.plot + mt.plot)
 
@@ -277,13 +311,10 @@ CreateAndIntegrateRNA <-
         }
       })
 
-      # Name the subsetted list with original names for clarity
-      names(seurat_objects) <- names(seurat_objects)
-
-      obj <- merge(seurat_objects[[1]], seurat_objects[-1])
-      gene.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, nFeature_RNA)) +
+      meta <- dplyr::bind_rows(lapply(seurat_objects, function(x) x@meta.data))
+      gene.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, nFeature_RNA)) +
         ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered') + Ol_Reliable()
-      mt.plot <- ggplot2::ggplot(obj@meta.data, aes(orig.ident, percent.mt)) +
+      mt.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, percent.mt)) +
         ggplot2::geom_boxplot() + ggplot2::labs(title = 'Filtered') + Ol_Reliable()
       print(gene.plot + mt.plot)
     }
@@ -295,16 +326,20 @@ CreateAndIntegrateRNA <-
       stop('\n\n  Error: Integration method is not the default (HarmonyIntegration).\nChange new_reduction to match integration method')
     }
 
-    if(integration == 'RPCAIntegration' |
-       integration == 'CCAIntegration' |
-       integration == 'JointPCAIntegration'  & is.null(k_anchor) == TRUE) {
-      stop('\n\n  Error: Integration method is RPCAIntegration.\nSpecifiy k_anchor to an integar value (recommend 20)')
+    # `&` binds tighter than `|` in R, so the old un-parenthesized version of
+    # these checks (`A | B | C & D`) parsed as `A | B | (C & D)` -- the
+    # is.null() check only ever attached to the JointPCAIntegration clause,
+    # so RPCAIntegration/CCAIntegration unconditionally hit stop() below
+    # regardless of whether k_anchor/k_weight were actually supplied.
+    # Explicit %in% + a single & fixes both.
+    if (integration %in% c('RPCAIntegration', 'CCAIntegration', 'JointPCAIntegration') &
+        is.null(k_anchor)) {
+      stop('\n\n  Error: Integration method is RPCAIntegration/CCAIntegration/JointPCAIntegration.\nSpecifiy k_anchor to an integar value (recommend 20)')
     }
 
-    if(integration == 'RPCAIntegration' |
-       integration == 'CCAIntegration' |
-       integration == 'JointPCAIntegration'  & is.null(k_weight) == TRUE) {
-      stop('\n\n  Error: Integration method is RPCAIntegration.\nSpecifiy k_weight to an integar value (recommend 100)')
+    if (integration %in% c('RPCAIntegration', 'CCAIntegration', 'JointPCAIntegration') &
+        is.null(k_weight)) {
+      stop('\n\n  Error: Integration method is RPCAIntegration/CCAIntegration/JointPCAIntegration.\nSpecifiy k_weight to an integar value (recommend 100)')
     }
 
     message('--- Merging Seurat objects ---')
@@ -319,14 +354,16 @@ CreateAndIntegrateRNA <-
     message('--- Normalizing data ---')
     if (use_SCT){
       message('  Running SCTransform')
-       calculate_median <- function(data, column_name) {
-                        data %>%
-                          group_by(orig.ident) %>%
-                          summarise(Median = median(.data[[column_name]], na.rm = TRUE)) %>%
-                          arrange(Median)
-}
-        med_counts <- calculate_median(obj@meta.data, colnames(obj@meta.data)[stringr::str_detect(colnames(obj@meta.data),
-                                                                                                        'nCount')][1])
+      calculate_median <- function(data, column_name) {
+        data |>
+          dplyr::group_by(orig.ident) |>
+          dplyr::summarise(Median = median(.data[[column_name]], na.rm = TRUE)) |>
+          dplyr::arrange(Median)
+      }
+      med_counts <- calculate_median(
+        obj@meta.data,
+        colnames(obj@meta.data)[stringr::str_detect(colnames(obj@meta.data), 'nCount')][1]
+      )
 
       obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress,
                                  assay = sct_assay, scale_factor = med_counts$Median[1])
@@ -401,7 +438,7 @@ CreateAndIntegrateRNA <-
 
     message('--- Saving cluster DimPlot ---')
     Seurat::DimPlot(obj, label = T)
-    ggsave('dimplot_seurat_clusters.pdf', height = 5, width = 7)
+    ggplot2::ggsave('dimplot_seurat_clusters.pdf', height = 5, width = 7)
 
     if (markers == TRUE){
       message('--- Running FindAllMarkers ---')

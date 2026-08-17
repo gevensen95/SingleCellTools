@@ -231,8 +231,16 @@ GenerateQCReport <- function(obj,
       message("Log10-transforming heavy-tailed metric(s): ",
               paste(metrics_to_log, collapse = ", "))
       for (m in metrics_to_log) {
-        idx <- long_qc$metric == m & long_qc$value > 0
-        long_qc$value[idx] <- log10(long_qc$value[idx])
+        # log10(1+x), not log10(x) restricted to value > 0 -- metrics like
+        # percent.hb/percent.rb legitimately have many exact zeros; the old
+        # `value > 0` mask log10-transformed only the positive values and
+        # left zeros untouched at their original scale, mixing an
+        # untransformed 0 in with log10-of-positive values on what's now
+        # labeled a "(log10)" axis -- a broken/misleading combined scale.
+        # log10(1+0) = 0, so zeros land at a sensible point on the
+        # transformed scale too.
+        idx <- long_qc$metric == m & long_qc$value >= 0
+        long_qc$value[idx] <- log10(1 + long_qc$value[idx])
         long_qc$metric[long_qc$metric == m] <- paste0(m, " (log10)")
       }
     }
@@ -387,11 +395,17 @@ GenerateQCReport <- function(obj,
     if (any(has_d)) {
       doublet_summary <- do.call(rbind, lapply(samples[has_d], function(s) {
         tab <- table(s$md[[doublet_col]])
+        # Name-based lookup with an explicit 0 fallback -- table()[missing
+        # name] returns NA rather than 0, so a sample with e.g. no doublets
+        # at all (a "Doublet" level never observed) would otherwise report
+        # NA doublets/pct_doublet instead of the correct 0.
+        n_singlet <- if ("Singlet" %in% names(tab)) as.integer(tab["Singlet"]) else 0L
+        n_doublet <- if ("Doublet" %in% names(tab)) as.integer(tab["Doublet"]) else 0L
         data.frame(
           sample      = s$name,
-          singlet     = as.integer(tab["Singlet"]),
-          doublet     = as.integer(tab["Doublet"]),
-          pct_doublet = round(100 * as.integer(tab["Doublet"]) / sum(tab), 2),
+          singlet     = n_singlet,
+          doublet     = n_doublet,
+          pct_doublet = round(100 * n_doublet / sum(tab), 2),
           stringsAsFactors = FALSE
         )
       }))
@@ -403,7 +417,11 @@ GenerateQCReport <- function(obj,
   edge_summary <- do.call(rbind, lapply(samples, function(s) {
     if (!"is_edge" %in% colnames(s$md)) return(NULL)
     n_total <- nrow(s$md)
-    n_edge  <- sum(isTRUE(s$md$is_edge) | s$md$is_edge == TRUE, na.rm = TRUE)
+    # isTRUE() isn't vectorized (only ever returns a single TRUE/FALSE for
+    # its whole argument), so `isTRUE(is_edge) | is_edge == TRUE` collapsed
+    # to just `is_edge == TRUE` via OR-with-a-recycled-FALSE anyway -- same
+    # result, but written more directly.
+    n_edge  <- sum(s$md$is_edge == TRUE, na.rm = TRUE)
     data.frame(
       sample   = s$name,
       n_total  = n_total,

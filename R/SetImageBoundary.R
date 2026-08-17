@@ -1,19 +1,21 @@
-#' Set Boudnary of Images
+#' Set Boundary of Images
 #'
 #' This function changes the default boundary of a spatial Seurat object with multiple images.
 #'
-#' @param obj Seurat object (spatial)
-#' @param boundary Boundry (segmentation or centroids)
+#' @param seurat_obj Seurat object (spatial)
+#' @param boundary Boundary name (e.g. "segmentation" or "centroids")
 #' @return a Seurat object
 #' @export
 SetImageBoundary <- function(seurat_obj, boundary) {
-  fovs <- Images(seurat_obj)
+  fovs <- Seurat::Images(seurat_obj)
   message(sprintf('--- Setting default boundary to "%s" across %d FOVs ---',
                   boundary, length(fovs)))
 
   for (fov in fovs) {
     img <- seurat_obj@images[[fov]]
-    available <- Boundaries(img)
+    # Boundaries() is exported by SeuratObject, not Seurat (confirmed:
+    # Seurat::Boundaries() errors with "not an exported object").
+    available <- SeuratObject::Boundaries(img)
 
     if (!boundary %in% available) {
       warning(sprintf(
@@ -23,7 +25,7 @@ SetImageBoundary <- function(seurat_obj, boundary) {
       next
     }
 
-    DefaultBoundary(img) <- boundary
+    Seurat::DefaultBoundary(img) <- boundary
     seurat_obj@images[[fov]] <- img
   }
 

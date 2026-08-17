@@ -61,8 +61,21 @@ SubsetSpatial <- function(object, subset = NULL, cells = NULL, idents = NULL,
   subset_q <- rlang::enquo(subset)
 
   resolved_cells <- if (!rlang::quo_is_null(subset_q) || !is.null(idents)) {
-    SeuratObject::WhichCells(object, cells = cells, idents = idents,
-                             expression = subset_q, return.null = TRUE)
+    # WhichCells() treats a NULL `expression` (whether passed literally or
+    # as a quosure wrapping NULL) differently from `expression` simply not
+    # being supplied at all -- passing NULL explicitly makes it try to
+    # FetchData() an empty variable set and error with "None of the
+    # requested variables were found", even though the *only* filter
+    # actually wanted here is `idents`. So only forward `expression` when
+    # the caller actually gave a `subset=` to preserve (confirmed via a
+    # standalone repro against SeuratObject::WhichCells() directly).
+    if (rlang::quo_is_null(subset_q)) {
+      SeuratObject::WhichCells(object, cells = cells, idents = idents,
+                               return.null = TRUE)
+    } else {
+      SeuratObject::WhichCells(object, cells = cells, idents = idents,
+                               expression = subset_q, return.null = TRUE)
+    }
   } else if (is.null(cells)) {
     SeuratObject::Cells(object)
   } else if (is.numeric(cells)) {

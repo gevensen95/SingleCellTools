@@ -173,12 +173,28 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                                         project = basename(dir)))
     }
 
-    if (sum(stringr::str_detect(list.files(dir), '.h5')) > 0) {
-      seurat_data <- Seurat::Read10X_h5(
-        paste(dir,
-              list.files(dir)[sapply(list.files(dir),
-                                     function(x) all(c(grepl("filtered", x),
-                                                       grepl(".h5", x))))], sep = '/'))
+    # Anchored on ".h5" (excludes AnnData ".h5ad" files, which end in "ad"
+    # not "h5" -- the old unanchored grepl(".h5", x) treated "sample.h5ad"
+    # as a match since "h5" appears as a substring right after the dot).
+    # Prefer a file with "filtered" in its name if one exists (matching
+    # CellRanger's filtered_feature_bc_matrix.h5 convention); otherwise
+    # fall back to whatever single .h5 file is present. Same "exactly one
+    # candidate, else error" discipline as find_one() in
+    # .read_10x_triplet() above -- silently picking one of several risks
+    # reading the wrong sample's data, and silently finding zero would
+    # otherwise surface as an opaque error from deep inside Read10X_h5()
+    # instead of the clear message below.
+    h5_files <- list.files(dir, pattern = '\\.h5$')
+    if (length(h5_files) > 0) {
+      filtered_h5   <- grep('filtered', h5_files, value = TRUE, ignore.case = TRUE)
+      h5_candidates <- if (length(filtered_h5) > 0) filtered_h5 else h5_files
+      if (length(h5_candidates) > 1) {
+        stop("Found more than one candidate .h5 file in '", dir, "': ",
+            paste(h5_candidates, collapse = ", "),
+            ". Expected exactly one -- please split these into separate ",
+            "sample directories.")
+      }
+      seurat_data <- Seurat::Read10X_h5(file.path(dir, h5_candidates))
 
       return(Seurat::CreateSeuratObject(counts = seurat_data,
                                         min.cells = cells,
@@ -210,6 +226,11 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
 
   # Add a to_regress to metadata to specify treatment
   if (is.null(treatment)==FALSE){
+    if (length(treatment) != length(data_dirs)) {
+      stop(sprintf(
+        "`treatment` has length %d but there are %d `data_dirs` -- these must match one-to-one, or samples would silently get wrong/NA treatment labels via recycling.",
+        length(treatment), length(data_dirs)))
+    }
     message('--- Adding Treatment metadata column ---')
     seurat_objects <- setNames(lapply(seq_along(seurat_objects), function(i) {
       seurat_obj <- seurat_objects[[i]]

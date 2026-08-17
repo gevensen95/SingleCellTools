@@ -90,119 +90,134 @@ export(strip_workflow_artifacts)
 export(subset_opt)
 importFrom(RANN,nn2)
 importFrom(RColorBrewer,brewer.pal)
-importFrom(Seurat,"DefaultAssay<-")
-importFrom(Seurat,"Idents<-")
-importFrom(Seurat,AggregateExpression)
-importFrom(Seurat,Assays)
-importFrom(Seurat,AverageExpression)
-importFrom(Seurat,DefaultAssay)
-importFrom(Seurat,DotPlot)
-importFrom(Seurat,Embeddings)
-importFrom(Seurat,FetchData)
-importFrom(Seurat,FindAllMarkers)
-importFrom(Seurat,FindClusters)
-importFrom(Seurat,FindNeighbors)
-importFrom(Seurat,FindVariableFeatures)
-importFrom(Seurat,GetTissueCoordinates)
-importFrom(Seurat,Idents)
-importFrom(Seurat,IntegrateLayers)
-importFrom(Seurat,NormalizeData)
-importFrom(Seurat,Reductions)
-importFrom(Seurat,RunPCA)
-importFrom(Seurat,RunUMAP)
-importFrom(Seurat,SCTransform)
-importFrom(Seurat,ScaleData)
-importFrom(Seurat,as.Seurat)
-importFrom(Seurat,as.SingleCellExperiment)
-importFrom(SeuratObject,"DefaultAssay<-")
-importFrom(SeuratObject,"VariableFeatures<-")
-importFrom(SeuratObject,Assays)
-importFrom(SeuratObject,DefaultAssay)
-importFrom(SeuratObject,JoinLayers)
-importFrom(SeuratObject,LayerData)
-importFrom(SeuratObject,Layers)
-importFrom(SeuratObject,Reductions)
-importFrom(dplyr,arrange)
-importFrom(dplyr,bind_rows)
-importFrom(dplyr,count)
-importFrom(dplyr,filter)
-importFrom(dplyr,group_by)
-importFrom(dplyr,mutate)
-importFrom(dplyr,slice_max)
-importFrom(dplyr,summarise)
-importFrom(dplyr,ungroup)
-importFrom(ggplot2,aes)
-importFrom(ggplot2,annotate)
-importFrom(ggplot2,coord_cartesian)
-importFrom(ggplot2,coord_fixed)
-importFrom(ggplot2,coord_flip)
-importFrom(ggplot2,element_blank)
-importFrom(ggplot2,element_text)
-importFrom(ggplot2,facet_grid)
-importFrom(ggplot2,facet_wrap)
-importFrom(ggplot2,geom_boxplot)
-importFrom(ggplot2,geom_col)
-importFrom(ggplot2,geom_hline)
-importFrom(ggplot2,geom_jitter)
-importFrom(ggplot2,geom_line)
-importFrom(ggplot2,geom_point)
-importFrom(ggplot2,geom_pointrange)
-importFrom(ggplot2,geom_polygon)
-importFrom(ggplot2,geom_segment)
-importFrom(ggplot2,geom_smooth)
-importFrom(ggplot2,geom_text)
-importFrom(ggplot2,geom_tile)
-importFrom(ggplot2,geom_violin)
-importFrom(ggplot2,geom_vline)
-importFrom(ggplot2,ggplot)
-importFrom(ggplot2,labs)
-importFrom(ggplot2,margin)
-importFrom(ggplot2,position_dodge)
-importFrom(ggplot2,position_fill)
-importFrom(ggplot2,position_stack)
-importFrom(ggplot2,scale_color_gradient)
-importFrom(ggplot2,scale_color_gradientn)
-importFrom(ggplot2,scale_color_manual)
-importFrom(ggplot2,scale_fill_gradient)
-importFrom(ggplot2,scale_fill_gradient2)
-importFrom(ggplot2,scale_fill_gradientn)
-importFrom(ggplot2,scale_fill_manual)
-importFrom(ggplot2,scale_size_continuous)
-importFrom(ggplot2,scale_y_log10)
-importFrom(ggplot2,stat_density_2d)
-importFrom(ggplot2,stat_summary)
-importFrom(ggplot2,theme)
-importFrom(ggplot2,theme_bw)
-importFrom(ggplot2,theme_classic)
-importFrom(ggplot2,theme_linedraw)
-importFrom(ggplot2,theme_minimal)
-importFrom(ggplot2,xlab)
-importFrom(ggplot2,ylab)
+importFrom(Seurat,
+  "DefaultAssay<-",
+  "Idents<-",
+  AggregateExpression,
+  Assays,
+  AverageExpression,
+  DefaultAssay,
+  DotPlot,
+  Embeddings,
+  FetchData,
+  FindAllMarkers,
+  FindClusters,
+  FindNeighbors,
+  FindVariableFeatures,
+  GetTissueCoordinates,
+  Idents,
+  IntegrateLayers,
+  NormalizeData,
+  Reductions,
+  RunPCA,
+  RunUMAP,
+  SCTransform,
+  ScaleData,
+  as.Seurat,
+  as.SingleCellExperiment
+)
+importFrom(SeuratObject,
+  "DefaultAssay<-",
+  "VariableFeatures<-",
+  Assays,
+  DefaultAssay,
+  JoinLayers,
+  LayerData,
+  Layers,
+  Reductions
+)
+importFrom(dplyr,
+  arrange,
+  bind_rows,
+  count,
+  filter,
+  group_by,
+  mutate,
+  slice_max,
+  summarise,
+  ungroup
+)
+importFrom(ggplot2,
+  aes,
+  annotate,
+  coord_cartesian,
+  coord_fixed,
+  coord_flip,
+  element_blank,
+  element_text,
+  facet_grid,
+  facet_wrap,
+  geom_boxplot,
+  geom_col,
+  geom_hline,
+  geom_jitter,
+  geom_line,
+  geom_point,
+  geom_pointrange,
+  geom_polygon,
+  geom_segment,
+  geom_smooth,
+  geom_text,
+  geom_tile,
+  geom_violin,
+  geom_vline,
+  ggplot,
+  labs,
+  margin,
+  position_dodge,
+  position_fill,
+  position_stack,
+  scale_color_gradient,
+  scale_color_gradientn,
+  scale_color_manual,
+  scale_fill_gradient,
+  scale_fill_gradient2,
+  scale_fill_gradientn,
+  scale_fill_manual,
+  scale_size_continuous,
+  scale_y_log10,
+  stat_density_2d,
+  stat_summary,
+  theme,
+  theme_bw,
+  theme_classic,
+  theme_linedraw,
+  theme_minimal,
+  xlab,
+  ylab
+)
 importFrom(magrittr,"%>%")
 importFrom(mclust,mclustBIC)
 importFrom(methods,as)
 importFrom(parallel,detectCores)
-importFrom(stats,chisq.test)
-importFrom(stats,complete.cases)
-importFrom(stats,cutree)
-importFrom(stats,dist)
-importFrom(stats,fisher.test)
-importFrom(stats,hclust)
-importFrom(stats,kmeans)
-importFrom(stats,median)
-importFrom(stats,p.adjust)
-importFrom(stats,quantile)
-importFrom(stats,sd)
-importFrom(stats,t.test)
-importFrom(stats,wilcox.test)
+importFrom(stats,
+  chisq.test,
+  complete.cases,
+  cutree,
+  dist,
+  fisher.test,
+  hclust,
+  kmeans,
+  median,
+  p.adjust,
+  quantile,
+  sd,
+  t.test,
+  wilcox.test
+)
 importFrom(stringr,str_detect)
-importFrom(tibble,as_tibble)
-importFrom(tibble,column_to_rownames)
-importFrom(tibble,rownames_to_column)
-importFrom(tidyr,drop_na)
-importFrom(tidyr,pivot_wider)
-importFrom(utils,assignInNamespace)
-importFrom(utils,combn)
-importFrom(utils,data)
-importFrom(utils,head)
-importFrom(utils,read.csv)
+importFrom(tibble,
+  as_tibble,
+  column_to_rownames,
+  rownames_to_column
+)
+importFrom(tidyr,
+  drop_na,
+  pivot_wider
+)
+importFrom(utils,
+  combn,
+  data,
+  head,
+  read.csv
+)

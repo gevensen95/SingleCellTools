@@ -98,7 +98,6 @@
 #' @importFrom Seurat DefaultAssay GetTissueCoordinates
 #' @importFrom SeuratObject LayerData
 #' @importFrom parallel detectCores
-#' @importFrom utils assignInNamespace
 #' @export
 RunRCTD <- function(obj,
                     reference,
@@ -238,20 +237,30 @@ RunRCTD <- function(obj,
   # several places (e.g. inside run.RCTD()'s fitBulk/chooseSigma step) with
   # no NA guard, as in `if (parallel::detectCores() > max_cores) ...`. On
   # minimal HPC/container shells missing core-counting tools (`wc`, `nproc`),
-  # detectCores() returns NA and that crashes with "missing value where
-  # TRUE/FALSE needed" -- deep inside spacexr, not anything under our
-  # control. If that's the environment we're in, temporarily patch
-  # detectCores() to report `n_cores` for the duration of the RCTD call, and
-  # restore it afterward regardless of how the call finishes.
+  # detectCores() returns NA and that crashes deep inside spacexr with
+  # "missing value where TRUE/FALSE needed".
+  #
+  # This used to work around that by monkey-patching parallel::detectCores()
+  # via utils::assignInNamespace() for the duration of the call. That patch
+  # is NOT reliable: assignInNamespace() can itself fail with "locked
+  # binding of 'detectCores' cannot be changed" -- confirmed on an ordinary,
+  # unrestricted R session (not specific to minimal/HPC containers) -- so
+  # silently attempting it just traded one confusing deep-in-spacexr crash
+  # for a different confusing crash one line earlier. Fail fast with an
+  # actionable message instead of attempting an unreliable patch.
   if (isTRUE(is.na(suppressWarnings(parallel::detectCores())))) {
-    message(sprintf(
-      "  parallel::detectCores() returned NA in this environment (likely missing 'wc'/'nproc' on a minimal shell) -- reporting %d core(s) to spacexr for the duration of this call.",
-      n_cores))
-    ns <- asNamespace("parallel")
-    orig_detectCores <- get("detectCores", envir = ns)
-    utils::assignInNamespace("detectCores", function(...) n_cores, ns = "parallel")
-    on.exit(utils::assignInNamespace("detectCores", orig_detectCores, ns = "parallel"),
-           add = TRUE)
+    stop(
+      "parallel::detectCores() returned NA in this environment", tag,
+      " (this usually means the 'wc'/'nproc' tools it shells out to ",
+      "aren't available, e.g. on a minimal/HPC/container shell). ",
+      "spacexr's internal RCTD fitting code also calls ",
+      "parallel::detectCores() directly and will crash on this same NA, ",
+      "so RunRCTD() cannot proceed safely here. There is no reliable way ",
+      "to work around this from R: patching parallel::detectCores() via ",
+      "assignInNamespace() is unreliable and can itself fail with a ",
+      "locked-binding error. Run RunRCTD() in an environment where ",
+      "parallel::detectCores() returns a real number (e.g. one where ",
+      "'nproc' or '/proc/cpuinfo' is available).")
   }
 
   message(sprintf("--- Running RCTD%s (mode = %s, cores = %d) ---",

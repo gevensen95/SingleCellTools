@@ -221,19 +221,27 @@ PseudobulkDE <- function(obj,
   obj <- subset(obj, cells = rownames(md)[keep_cond])
   md  <- obj@meta.data
 
-  # Aggregate to pseudobulk. AggregateExpression can return a plain matrix,
-  # a dgCMatrix, or an Assay / Assay5 depending on Seurat version — coerce
-  # to a base integer matrix so downstream operations work uniformly.
-  agg_raw <- Seurat::AggregateExpression(
+  # Aggregate to pseudobulk. We ask for a Seurat object back
+  # (return.seurat = TRUE) rather than a plain matrix, because the returned
+  # object's meta.data carries the raw sample_col/condition_col values
+  # directly (this is the same pattern Seurat's own pseudobulk-DESeq2
+  # vignette uses, e.g. `pseudo_obj$stim`). Reconstructing (sample,
+  # condition) by parsing the aggregated matrix's colnames instead is
+  # fragile: AggregateExpression() joins group.by values with "_", but the
+  # exact separator/sanitization it applies internally (e.g. to sample IDs
+  # that already contain "_", or condition labels with characters that
+  # aren't syntactically-valid-name-safe, like "(" ")") is an implementation
+  # detail we shouldn't have to reverse-engineer -- and got wrong before
+  # (colnames like "Donor_trt.hi." no longer contain "trt(hi)" or split
+  # cleanly on "_" into the original two fields).
+  agg_obj <- Seurat::AggregateExpression(
     obj,
     assays        = assay,
     group.by      = c(sample_col, condition_col),
-    return.seurat = FALSE,
+    return.seurat = TRUE,
     slot          = "counts"
-  )[[assay]]
-  if (inherits(agg_raw, c("Assay", "Assay5"))) {
-    agg_raw <- SeuratObject::LayerData(agg_raw, layer = "counts")
-  }
+  )
+  agg_raw <- SeuratObject::LayerData(agg_obj, assay = assay, layer = "counts")
   # Guard rather than unconditional as.matrix(): AggregateExpression() output
   # here is already small (samples/conditions x genes), so this isn't a real
   # memory concern, but skip the coercion/copy when it's already a base
@@ -241,20 +249,39 @@ PseudobulkDE <- function(obj,
   agg <- if (is.matrix(agg_raw)) agg_raw else as.matrix(agg_raw)
   storage.mode(agg) <- "integer"
 
-  # Reconstruct (sample, condition) from column names. AggregateExpression
-  # joins group.by values with "_"; if sample IDs contain "_" themselves,
-  # anchor on the two known condition labels at the end.
-  condition_pat <- paste0("_(", ident_1, "|", ident_2, ")$")
-  if (all(grepl(condition_pat, colnames(agg)))) {
-    sample_ids    <- sub(condition_pat, "", colnames(agg))
-    condition_ids <- sub("^.*_", "", colnames(agg))
-  } else {
-    parts <- strsplit(colnames(agg), "_", fixed = TRUE)
-    sample_ids    <- vapply(parts, `[`, character(1), 1)
-    condition_ids <- vapply(parts, `[`, character(1), 2)
-  }
+  sample_ids    <- as.character(agg_obj@meta.data[[sample_col]])
+  condition_ids <- as.character(agg_obj@meta.data[[condition_col]])
+
+  # AggregateExpression() silently replaces "_" with "-" *within* each
+  # group.by value before joining them (confirmed empirically: a per-cell
+  # sample value of "Donor_1" comes back as "Donor-1" in agg_obj@meta.data,
+  # not just in the aggregated colnames) -- presumably so its own internal
+  # "_"-joined colnames stay unambiguous. Other characters (e.g. "(" ")")
+  # are left alone. That means sample_ids/condition_ids above are NOT
+  # guaranteed to equal the original per-cell md[[sample_col]] /
+  # md[[condition_col]] values verbatim whenever they contain "_" -- so any
+  # matching against `md` below has to canonicalize both sides the same way
+  # first. (Collision risk: a dataset with both a real "Donor-1" and a real
+  # "Donor_1" sample would canonicalize to the same key -- vanishingly
+  # unlikely in practice, and no worse than AggregateExpression's own
+  # colnames already conflating them.)
+  .canon_id <- function(x) gsub("_", "-", x, fixed = TRUE)
+
+  # Recover each sample's original, uncanonicalized label so downstream
+  # outputs (coldata$sample, and the colnames of `agg`/`dds`/normalized
+  # counts) show the value the caller actually used rather than
+  # AggregateExpression's internal "_"->"-" substituted form -- e.g. a real
+  # sample "Donor_1" should come back out as "Donor_1", not "Donor-1".
+  # Built once from the per-cell metadata, keyed by canonical form -> first
+  # matching raw value (same collision caveat as above).
+  raw_sample_by_canon <- as.character(md[[sample_col]])
+  names(raw_sample_by_canon) <- .canon_id(raw_sample_by_canon)
+  raw_sample_by_canon <- raw_sample_by_canon[!duplicated(names(raw_sample_by_canon))]
+  sample_ids_raw <- unname(raw_sample_by_canon[sample_ids])
+  colnames(agg) <- sample_ids_raw
+
   coldata <- data.frame(
-    sample    = sample_ids,
+    sample    = sample_ids_raw,
     condition = factor(condition_ids, levels = c(ident_2, ident_1)),
     row.names = colnames(agg),
     stringsAsFactors = FALSE
@@ -271,16 +298,26 @@ PseudobulkDE <- function(obj,
     per_sample <- unique(md[, c(sample_col, extra_cols), drop = FALSE])
     per_sample <- per_sample[!duplicated(per_sample[[sample_col]]), ,
                              drop = FALSE]
-    ix <- match(sample_ids, per_sample[[sample_col]])
+    ix <- match(sample_ids, .canon_id(as.character(per_sample[[sample_col]])))
     for (ec in extra_cols) {
       if (!(ec %in% colnames(coldata))) coldata[[ec]] <- per_sample[[ec]][ix]
     }
   }
 
-  # Drop pseudobulk samples below the cell-count threshold
-  cells_per_pb <- table(paste(md[[sample_col]], md[[condition_col]],
-                              sep = "_"))
-  cells_per_col <- cells_per_pb[colnames(agg)]
+  # Drop pseudobulk samples below the cell-count threshold. Key on the
+  # (sample, condition) pair itself -- joined with "\x1f" (ASCII "unit
+  # separator", vanishingly unlikely to appear in real sample/condition
+  # values) -- rather than on colnames(agg), since those go through
+  # AggregateExpression()'s own internal joining/sanitization and may not
+  # equal `paste(sample, condition, sep = "_")`. Canonicalize the md-side
+  # values the same way AggregateExpression canonicalizes its own (see
+  # .canon_id above) so the two sides actually line up.
+  key_sep      <- "\x1f"
+  cells_per_pb <- table(paste(.canon_id(as.character(md[[sample_col]])),
+                              .canon_id(as.character(md[[condition_col]])),
+                              sep = key_sep))
+  agg_keys      <- paste(sample_ids, condition_ids, sep = key_sep)
+  cells_per_col <- cells_per_pb[agg_keys]
   keep_cols <- !is.na(cells_per_col) & cells_per_col >= min_cells_per_sample
   if (isTRUE(verbose) && sum(keep_cols) < ncol(agg)) {
     message(sprintf("  Dropping %d pseudobulk sample(s) with < %d cells",

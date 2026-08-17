@@ -23,6 +23,10 @@ combine_fovs(
 \item{offset}{Number of pixels for offset}
 
 \item{fov_name}{Name of combined FOV}
+
+\item{append}{If \code{FALSE}, the original per-FOV images are removed
+from \code{obj@images} once the combined FOV is built. Default
+\code{TRUE} (original FOVs are kept alongside the new combined one).}
 }
 \value{
 a Seurat object

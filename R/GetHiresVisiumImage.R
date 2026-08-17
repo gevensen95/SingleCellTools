@@ -41,14 +41,42 @@ GetHiresVisiumImage <- function(obj, attach = FALSE) {
     return(png::readPNG(hires_path))
   }
 
-  message("--- Rebuilding obj@images$image at full resolution from ", hires_path, " ---")
+  # Rebuild in place, preserving the currently-attached pixel-backed image's
+  # own name/@assay/@key -- these may no longer be "image"/"Spatial"/
+  # "slice1" (CreateVisiumObjects()'s original defaults) if
+  # RenameSpatialImages() has run since construction. Same reasoning
+  # DropSpatialImage(mode = "downgrade") already applies per-image; hard-
+  # coding the old defaults here would silently attach a stray new
+  # obj@images$image entry instead of updating the real, renamed one.
+  img_names <- names(obj@images)
+  is_pixel <- vapply(img_names, function(nm) {
+    arr <- tryCatch(Seurat::GetImage(obj@images[[nm]], mode = "raw"),
+                    error = function(e) NULL)
+    !is.null(arr) && length(dim(arr)) >= 2L
+  }, logical(1))
+  pixel_names <- img_names[is_pixel]
+  if (length(pixel_names) != 1L) {
+    stop("Expected exactly one pixel-backed image in obj@images to rebuild ",
+         "at full resolution (to match obj@misc$hires_image_path), found ",
+         length(pixel_names), ". ",
+         if (length(pixel_names) == 0L) {
+           "No pixel-backed image is currently attached."
+         } else {
+           paste0("Ambiguous which one to rebuild: ",
+                  paste(pixel_names, collapse = ", "), ".")
+         })
+  }
+  img_name <- pixel_names
+  old <- obj@images[[img_name]]
+
+  message("--- Rebuilding obj@images$", img_name, " at full resolution from ", hires_path, " ---")
   vis.image <- Seurat::Read10X_Image(
     image.dir  = dirname(hires_path),
     image.name = basename(hires_path),
     filter.matrix = TRUE
   )
-  vis.image@assay <- 'Spatial'
-  vis.image@key   <- 'slice1'
-  obj@images$image <- vis.image
+  vis.image@assay <- old@assay
+  vis.image@key   <- old@key
+  obj@images[[img_name]] <- vis.image
   obj
 }

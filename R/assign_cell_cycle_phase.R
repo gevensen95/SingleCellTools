@@ -6,7 +6,8 @@
 #' @param s_genes S Phase Genes (must be species specific)
 #' @param g2m_genes G2M Phase Genes (must be species specific)
 #' @param threshold_quantile Threshold for G1 Phase, 0.5 is the recommended threshold
-#' @return Vector containing child GO terms
+#' @return The input Seurat object with a new \code{$Phase} metadata column
+#'   (\code{"G1"}, \code{"S"}, or \code{"G2M"} per cell).
 #' @export
 #'
 assign_cell_cycle_phase <- function(seurat_obj, s_genes, g2m_genes,

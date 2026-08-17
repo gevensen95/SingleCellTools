@@ -1,16 +1,17 @@
 # Tests for get_all_coords(), get_cells_in_polygon(), AnnotateRegions(),
-# NeighborhoodEnrichment(), and RunBanksyWrapper() against a synthetic
-# two-FOV imaging-based (Xenium/CosMx-style) Seurat object. See
-# helper-spatial.R for the fixture.
+# NeighborhoodEnrichment(), RunBanksyWrapper(), combine_fovs(), and
+# subset_opt() against a synthetic two-FOV imaging-based (Xenium/CosMx-style)
+# Seurat object. See helper-spatial.R for the fixture.
 #
-# subset_opt()/CleanMolSlot() are NOT covered here: CleanMolSlot() reads
-# obj@images[[img]]$molecules, which requires a full molecule-level FOV
-# (SeuratObject::CreateMolecules()) rather than the centroids-only FOVs
-# built here, and constructing a realistic synthetic molecules table was
-# judged not worth the added fixture complexity for this pass.
+# subset_opt()'s cleanMolecules = TRUE path (CleanMolSlot()) is NOT covered:
+# CleanMolSlot() reads obj@images[[img]]$molecules, which requires a full
+# molecule-level FOV (SeuratObject::CreateMolecules()) rather than the
+# centroids-only FOVs built here, and constructing a realistic synthetic
+# molecules table was judged not worth the added fixture complexity for this
+# pass. subset_opt() itself is covered below with cleanMolecules = FALSE.
 #
 # CreateATACObjects(Filter), CreateVisiumObjects, LoadXenium2, MakeParseObj,
-# CreateAndIntegrateRNA, detect_fov_edges, detect_tissue_holes, combine_fovs,
+# CreateAndIntegrateRNA, detect_fov_edges, detect_tissue_holes,
 # SetImageBoundary, and BuildMultipleNicheAssays are not covered either --
 # none of them have custom input-validation logic worth unit-testing in
 # isolation (most have zero stop() calls; Signac/Seurat's own readers do the
@@ -66,6 +67,26 @@ test_that("get_cells_in_polygon validates its inputs", {
     get_cells_in_polygon(obj, data.frame(a = 1, b = 2), "fov1"),
     "'x' and 'y'"
   )
+})
+
+test_that("get_cells_in_polygon recovers cell identity on older-style Visium coordinates (imagecol/imagerow, no 'cell' column)", {
+  # Regression test: GetTissueCoordinates() only returns a 'cell' column for
+  # FOV/imaging-style images and current (v5) Visium images -- older-style
+  # Visium output (imagecol/imagerow) carries cell identity in rownames
+  # instead, with no 'cell' column at all. Without the rownames fallback,
+  # every returned cell silently lost its barcode/name entirely.
+  .skip_if_missing("Seurat", "SeuratObject", "sf")
+  obj <- .make_visium_seurat(seed = 1, n_genes = 5, spots_per_image = 20,
+                             h = 50, w = 60, cluster_by_position = TRUE)
+  # cluster_by_position = TRUE puts imagecol < w/2 spots in cluster "0" --
+  # a box covering the left half of the image should recover those spots,
+  # named by their real barcodes.
+  poly <- data.frame(x = c(0, 30, 30, 0), y = c(0, 0, 50, 50))
+  inside <- get_cells_in_polygon(obj, poly, image_name = "slice1")
+  expect_true(length(inside) > 0)
+  expect_false(any(is.na(names(inside))))
+  expect_true(all(names(inside) %in% colnames(obj)))
+  expect_true(all(obj$seurat_clusters[names(inside)] == "0"))
 })
 
 
@@ -143,6 +164,26 @@ test_that("NeighborhoodEnrichment validates inputs", {
     NeighborhoodEnrichment(obj, group.by = "celltype", assign_niches = TRUE, n_niches = 1),
     "n_niches"
   )
+})
+
+test_that("NeighborhoodEnrichment does not leak its internal seed into the caller's RNG stream", {
+  # Regression test: set.seed(seed) used to run (twice -- once for the
+  # permutation null, again before niche clustering) without saving/
+  # restoring the caller's prior .Random.seed.
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_spatial_obj(seed = 1, n_per_fov = 30)
+
+  set.seed(999)
+  x_ref <- runif(5)
+
+  set.seed(999)
+  invisible(suppressMessages(NeighborhoodEnrichment(
+    obj, group.by = "celltype", k = 5, n_perm = 5,
+    assign_niches = FALSE, seed = 42
+  )))
+  x_after <- runif(5)
+
+  expect_equal(x_after, x_ref)
 })
 
 
@@ -570,6 +611,23 @@ test_that("SpatialConcordance validates k and n_perm", {
   expect_error(SpatialConcordance(obj, group.by = "seurat_clusters", n_perm = 0), "n_perm")
 })
 
+test_that("SpatialConcordance does not leak its permutation seed into the caller's RNG stream", {
+  # Regression test: set.seed(seed) used to run without saving/restoring
+  # the caller's prior .Random.seed.
+  .skip_if_missing("Seurat", "SeuratObject", "RANN")
+  obj <- .make_visium_seurat(seed = 1, spots_per_image = 20)
+
+  set.seed(999)
+  x_ref <- runif(5)
+
+  set.seed(999)
+  invisible(SpatialConcordance(obj, group.by = "seurat_clusters", k = 5,
+                               n_perm = 5, seed = 42))
+  x_after <- runif(5)
+
+  expect_equal(x_after, x_ref)
+})
+
 test_that("SpatialConcordance detects real spatial structure (z > 0) and finds none in random labels", {
   .skip_if_missing("Seurat", "SeuratObject", "RANN")
   set.seed(42)
@@ -796,5 +854,119 @@ test_that("SubsetSpatial works on FOV-based (Xenium/CosMx-style) objects too", {
   expect_true(all(res$celltype == "TypeA"))
   for (img in names(res@images)) {
     expect_true(all(SeuratObject::Cells(res@images[[img]]) %in% colnames(res)))
+  }
+})
+
+
+# ============================================================================
+# combine_fovs() -- grid-stitches per-FOV centroids into one combined FOV.
+# Regression test for the n_cols == 1 row-wrap bug: `(image + 1) %% n_cols
+# == 1` (the previous condition) is never TRUE when n_cols == 1, so a
+# single-column layout never wrapped rows and instead laid every FOV out
+# side-by-side in one row. Fixed to `image %% n_cols == 0`.
+# ============================================================================
+
+# Every FOV has 2 cells at the same (0, 0)/(1, 1) coordinates, so every
+# FOV has the same, known max-x/max-y (1, 1) -- making the resulting grid
+# offsets exactly predictable for the assertions below.
+.make_combine_fovs_obj <- function(n_fovs = 3, cells_per_fov = 2) {
+  fov_names <- paste0("fov", seq_len(n_fovs))
+  all_ids <- unlist(lapply(fov_names, function(f) paste0(f, "_c", seq_len(cells_per_fov))))
+
+  genes <- paste0("Gene", 1:5)
+  counts <- matrix(1, nrow = length(genes), ncol = length(all_ids),
+                   dimnames = list(genes, all_ids))
+  storage.mode(counts) <- "double"
+  obj <- SeuratObject::CreateSeuratObject(counts = counts, assay = "RNA")
+
+  for (f in fov_names) {
+    ids <- paste0(f, "_c", seq_len(cells_per_fov))
+    coords <- data.frame(x = c(0, 1), y = c(0, 1), cell = ids,
+                         stringsAsFactors = FALSE)
+    cents <- SeuratObject::CreateCentroids(coords)
+    fov_obj <- SeuratObject::CreateFOV(
+      coords = list(centroids = cents), type = "centroids", assay = "RNA",
+      key = paste0(f, "_")
+    )
+    obj[[f]] <- fov_obj
+  }
+  obj
+}
+
+test_that("combine_fovs wraps to a new row for every FOV when n_cols = 1", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_combine_fovs_obj(n_fovs = 3, cells_per_fov = 2)
+  out <- suppressMessages(combine_fovs(obj, assay = "RNA", n_cols = 1, offset = 10))
+
+  combined_centroids <- out@images[["combined"]]$centroids
+  coords <- as.data.frame(combined_centroids@coords)
+  rownames(coords) <- combined_centroids@cells
+
+  min_xy <- function(fov) {
+    sub <- coords[grepl(paste0("^", fov, "_"), rownames(coords)), ]
+    c(x = min(sub$x), y = min(sub$y))
+  }
+  fov_mins <- t(vapply(paste0("fov", 1:3), min_xy, numeric(2)))
+
+  # With n_cols = 1, every FOV should start its own row: x stays 0 for all
+  # three, and y strictly increases from one FOV to the next. Before the
+  # fix, this instead came out as y constant (0) and x increasing (every
+  # FOV laid out in a single row).
+  expect_equal(unname(fov_mins[, "x"]), c(0, 0, 0))
+  expect_true(all(diff(unname(fov_mins[, "y"])) > 0))
+})
+
+test_that("combine_fovs wraps within a row for n_cols > 1", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_combine_fovs_obj(n_fovs = 4, cells_per_fov = 2)
+  out <- suppressMessages(combine_fovs(obj, assay = "RNA", n_cols = 2, offset = 10))
+
+  combined_centroids <- out@images[["combined"]]$centroids
+  coords <- as.data.frame(combined_centroids@coords)
+  rownames(coords) <- combined_centroids@cells
+
+  min_xy <- function(fov) {
+    sub <- coords[grepl(paste0("^", fov, "_"), rownames(coords)), ]
+    c(x = min(sub$x), y = min(sub$y))
+  }
+  fov_mins <- t(vapply(paste0("fov", 1:4), min_xy, numeric(2)))
+
+  # FOV1/FOV2 share row 1 (y = 0, x increasing); FOV3/FOV4 share row 2 (a
+  # new, larger y; x resets to 0 for FOV3 then increases again for FOV4).
+  expect_equal(unname(fov_mins["fov1", "y"]), unname(fov_mins["fov2", "y"]))
+  expect_equal(unname(fov_mins["fov3", "y"]), unname(fov_mins["fov4", "y"]))
+  expect_true(unname(fov_mins["fov3", "y"]) > unname(fov_mins["fov1", "y"]))
+  expect_equal(unname(fov_mins["fov1", "x"]), 0)
+  expect_equal(unname(fov_mins["fov3", "x"]), 0)
+  expect_true(unname(fov_mins["fov2", "x"]) > unname(fov_mins["fov1", "x"]))
+})
+
+
+# ============================================================================
+# subset_opt() -- Visium/FOV-aware wrapper around subset(). cleanMolecules
+# is set to FALSE throughout (see file header) since CleanMolSlot() needs a
+# full molecule-level FOV this suite's fixtures don't build.
+#
+# Regression coverage: subset_opt() used to call several Seurat/SeuratObject
+# functions (Cells(), Images(), WhichCells(), UpdateSlots(),
+# UpdateSeuratObject()) and rlang::enquo()/magrittr's %<>% pipe completely
+# unqualified/unimported -- it only worked because zzz.R's .onAttach()
+# happens to attach all of those packages under `library(SingleCellTools)`,
+# not because the calls were actually resolvable within the package
+# namespace. Running these tests (which load the package via
+# devtools::load_all()/testthat, not necessarily a full library() attach)
+# is itself a meaningful check that the fix holds.
+# ============================================================================
+
+test_that("subset_opt subsets a Seurat object and every FOV down to the requested cells", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_spatial_obj(seed = 1, n_per_fov = 20)
+  keep_cells <- rownames(obj@meta.data)[obj$celltype == "TypeA"]
+  out <- suppressMessages(subset_opt(obj, cells = keep_cells, cleanMolecules = FALSE))
+
+  expect_setequal(colnames(out), keep_cells)
+  expect_true(all(out$celltype == "TypeA"))
+  for (img in names(out@images)) {
+    expect_true(all(SeuratObject::Cells(out@images[[img]]) %in% keep_cells))
   }
 })
