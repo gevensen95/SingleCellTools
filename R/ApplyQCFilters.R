@@ -153,8 +153,12 @@ ApplyQCFilters <- function(obj,
                      (cutoffs_df$metric_key == met |
                       cutoffs_df$metric     == met))
         if (length(idx) == 0) {
-          # Not present — append a fresh row
-          cutoffs_df <- rbind(
+          # Not present — append a fresh row. dplyr::bind_rows() (not base
+          # rbind()) because a real GenerateQCReport() cutoffs CSV carries
+          # extra columns (median, mad, pct_pass, ...) this 5-column row
+          # doesn't have -- rbind() would error on the column mismatch;
+          # bind_rows() fills the gaps with NA instead.
+          cutoffs_df <- dplyr::bind_rows(
             cutoffs_df,
             data.frame(sample = samp, metric = met,
                        suggest_lo = pair[1], suggest_hi = pair[2],

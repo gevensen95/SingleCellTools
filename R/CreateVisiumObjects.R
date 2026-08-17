@@ -86,6 +86,14 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
   if (!file_type %in% c('h5', 'directory')) {
     stop("Choose file_type: must be one of 'h5' or 'directory' (got: '", file_type, "').")
   }
+  if (!is.null(treatment) && length(treatment) != length(data_dirs)) {
+    stop('`treatment` has length ', length(treatment), ' but there are ', length(data_dirs),
+        ' `data_dirs` -- these must match one-to-one, or samples would silently get wrong/NA treatment labels.')
+  }
+  if (!is.null(object_names) && length(object_names) != length(data_dirs)) {
+    stop('`object_names` must be the same length as `data_dirs` (', length(data_dirs),
+        '), got ', length(object_names), '.')
+  }
 
   if (workers > 1) {
     if (!requireNamespace("future.apply", quietly = TRUE)) {
@@ -143,14 +151,38 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
     }
     eff_dir <- .resolve_visium_sample_dir(dir)
     if (file_type == 'h5') {
-      seurat_data <- Seurat::Read10X_h5(
-        paste(eff_dir, list.files(eff_dir)[sapply(list.files(eff_dir),
-                                         function(x) all(c(grepl("filtered", x),
-                                                           grepl(".h5", x))))], sep = '/'))
+      # Anchored on ".h5" (excludes AnnData ".h5ad" files) with an explicit
+      # "exactly one candidate, else error" check -- same discipline used
+      # elsewhere in the package (e.g. CreateRNAObjects.R's
+      # .read_10x_triplet()) instead of silently reading zero/many files.
+      h5_files      <- list.files(eff_dir, pattern = '\\.h5$')
+      filtered_h5   <- grep('filtered', h5_files, value = TRUE, ignore.case = TRUE)
+      h5_candidates <- if (length(filtered_h5) > 0) filtered_h5 else h5_files
+      if (length(h5_candidates) != 1) {
+        stop("Expected exactly one filtered .h5 file in '", eff_dir, "', found ",
+            length(h5_candidates),
+            if (length(h5_candidates) > 0) paste0(": ", paste(h5_candidates, collapse = ", ")) else "",
+            ".")
+      }
+      seurat_data <- Seurat::Read10X_h5(file.path(eff_dir, h5_candidates))
     } else {
-      seurat_data <- Seurat::Read10X(
-        list.dirs(eff_dir)[str_detect(list.dirs(eff_dir), 'filtered')]
-      )
+      # recursive = FALSE -- only eff_dir's direct children, not every
+      # nested subdirectory (list.dirs()'s default), which could otherwise
+      # match an unrelated nested folder that happens to contain "filtered"
+      # in its path. Namespaced stringr::str_detect() (this was bare
+      # str_detect() before, inconsistent with the namespaced call used
+      # below for the spatial dir), plus an explicit exactly-one-match
+      # check instead of silently handing Read10X() a zero- or
+      # multi-length vector.
+      candidate_dirs <- list.dirs(eff_dir, recursive = FALSE)
+      filtered_dirs  <- candidate_dirs[stringr::str_detect(candidate_dirs, 'filtered')]
+      if (length(filtered_dirs) != 1) {
+        stop("Expected exactly one 'filtered' subdirectory directly under '", eff_dir,
+            "', found ", length(filtered_dirs),
+            if (length(filtered_dirs) > 0) paste0(": ", paste(filtered_dirs, collapse = ", ")) else "",
+            ".")
+      }
+      seurat_data <- Seurat::Read10X(filtered_dirs)
     }
 
     seurat_object <- CreateSeuratObject(counts = seurat_data, assay = "Spatial",
@@ -229,11 +261,11 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
   # large/many-sample lists. Same fix already applied in CreateRNAObjects().
   meta <- dplyr::bind_rows(lapply(seurat_objects, function(x) x@meta.data))
   orig.ident <- nFeature_Spatial <- nCount_Spatial <- percent.mt <- NULL  # silence R CMD check NSE notes
-  gene.plot <- ggplot2::ggplot(meta, aes(orig.ident, nFeature_Spatial)) +
+  gene.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, nFeature_Spatial)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
-  count.plot <- ggplot2::ggplot(meta, aes(orig.ident, nCount_Spatial)) +
+  count.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, nCount_Spatial)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
-  mt.plot <- ggplot2::ggplot(meta, aes(orig.ident, percent.mt)) +
+  mt.plot <- ggplot2::ggplot(meta, ggplot2::aes(orig.ident, percent.mt)) +
     ggplot2::geom_boxplot() + ggplot2::labs(title = 'Unfiltered') + Ol_Reliable()
   print(gene.plot + count.plot + mt.plot)
 

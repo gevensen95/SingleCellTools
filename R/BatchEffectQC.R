@@ -110,6 +110,18 @@ BatchEffectQC <- function(obj,
   batch_asw <- NA_real_
   celltype_asw <- NA_real_
   if (requireNamespace("cluster", quietly = TRUE)) {
+    # Seed only the subsample draw, then restore whatever RNG state the
+    # caller had -- set.seed() otherwise permanently mutates the global RNG
+    # stream, silently making any of the *caller's* subsequent random draws
+    # deterministic too.
+    old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) get(".Random.seed", envir = .GlobalEnv) else NULL
+    on.exit({
+      if (is.null(old_seed)) {
+        if (exists(".Random.seed", envir = .GlobalEnv)) rm(".Random.seed", envir = .GlobalEnv)
+      } else {
+        assign(".Random.seed", old_seed, envir = .GlobalEnv)
+      }
+    }, add = TRUE)
     set.seed(seed)
     idx <- if (nrow(emb) > n_cells_max) {
       sample.int(nrow(emb), n_cells_max)
@@ -119,8 +131,12 @@ BatchEffectQC <- function(obj,
     sub_emb   <- emb[idx, , drop = FALSE]
     sub_batch <- as.integer(factor(batch[idx]))
     d <- stats::dist(sub_emb)
-    sil_b <- cluster::silhouette(sub_batch, d)
-    batch_asw <- mean(sil_b[, "sil_width"])
+    # Silhouette needs >= 2 groups -- guards the same degenerate case as the
+    # celltype check just below, which already has this guard.
+    if (length(unique(sub_batch)) >= 2L) {
+      sil_b <- cluster::silhouette(sub_batch, d)
+      batch_asw <- mean(sil_b[, "sil_width"])
+    }
 
     if (!is.null(celltype)) {
       sub_ct <- as.integer(factor(celltype[idx]))

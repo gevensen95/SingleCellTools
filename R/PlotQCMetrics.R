@@ -107,9 +107,17 @@ PlotQCMetrics <- function(obj, group.by = "orig.ident", qc_cols = NULL, ncol = N
 
   .categorical_panel <- function(col) {
     pct <- Freq <- NULL  # silence R CMD check NSE notes
+    # useNA = "ifany" -- meta[[col]] can legitimately be NA for some rows
+    # (e.g. a mixed list of objects where only some went through doublet
+    # calling; dplyr::bind_rows() fills the missing column with NA rather
+    # than erroring, per this function's own docs). table()'s default
+    # useNA = "no" would silently drop those rows from both the counts and
+    # each group's sum(Freq) denominator below, understating group size
+    # with no indication anything was excluded.
     counts_df <- as.data.frame(table(
       group_ = meta[[group.by]],
-      level_ = meta[[col]]
+      level_ = meta[[col]],
+      useNA  = "ifany"
     ))
     names(counts_df) <- c(group.by, col, "Freq")
     counts_df <- counts_df |>

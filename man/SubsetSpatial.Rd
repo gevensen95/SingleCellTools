@@ -4,8 +4,14 @@
 \alias{SubsetSpatial}
 \title{Subset a spatial Seurat object without corrupting \code{@images}}
 \usage{
-SubsetSpatial(object, subset = NULL, cells = NULL, idents = NULL,
-  features = NULL, ...)
+SubsetSpatial(
+  object,
+  subset = NULL,
+  cells = NULL,
+  idents = NULL,
+  features = NULL,
+  ...
+)
 }
 \arguments{
 \item{object}{A Seurat object.}

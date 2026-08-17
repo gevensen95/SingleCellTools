@@ -60,6 +60,16 @@ calldoublet <- function(obj,
                        percent.stdv[2:length(percent.stdv)]) > 0.1),
               decreasing = TRUE)[1] + 1
   min.pc <- min(co1, co2)
+  if (is.na(min.pc)) {
+    stop(
+      "calldoublet(): could not determine a number of significant PCs -- ",
+      if (is.na(co1)) "no PC reached >90% cumulative variance with <5% individual contribution" else "",
+      if (is.na(co1) && is.na(co2)) " and " else "",
+      if (is.na(co2)) "no consecutive PC-to-PC stdev drop exceeded 0.1" else "",
+      ". This usually means too few informative PCs were computed for this ",
+      "sample (check cell count vs. RunPCA()'s npcs) -- inspect obj[['pca']]@stdev directly."
+    )
+  }
 
   # ---- Finish pre-processing ----------------------------------------------
   # NB: irlba and RSpectra are pulled in via the package Imports so that the
@@ -98,8 +108,12 @@ calldoublet <- function(obj,
 
   cat("Doublet estimation with DoubletFinder() ...\n")
   cat("Normalization: ", normalization, "\n")
-  cat("Doublet: ", as.vector(table(metadata[, length(colnames(metadata))]))[1], "\n")
-  cat("Singlet: ", as.vector(table(metadata[, length(colnames(metadata))]))[2], "\n")
+  # Named lookup rather than positional [1]/[2] -- table()'s alphabetical
+  # default ordering happens to put "Doublet" before "Singlet" today, but
+  # relying on that silently mislabels these counts if it ever doesn't.
+  doublet_tab <- table(metadata[, length(colnames(metadata))])
+  cat("Doublet: ", if ("Doublet" %in% names(doublet_tab)) doublet_tab[["Doublet"]] else 0, "\n")
+  cat("Singlet: ", if ("Singlet" %in% names(doublet_tab)) doublet_tab[["Singlet"]] else 0, "\n")
 
   # ---- Cleanup: strip everything we created during the workflow -----------
   # For SCT, drop the entire SCT assay — all of its derived layers go with it.

@@ -146,6 +146,18 @@ QCComparePlots <- function(pre,
 
   d1 <- .collect(pre,  "pre")
   d2 <- .collect(post, "post")
+  # `pre`/`post` are documented as needing the same sample set -- if they
+  # don't (e.g. a sample dropped entirely, or one added between calls), the
+  # per-sample pct_kept annotation in .qc_counts() below silently divides by
+  # a 0-vs-0 (pre = 0) or produces a nonsensical >>100% figure rather than
+  # erroring, so catch the mismatch here instead.
+  mismatched <- union(setdiff(unique(d1$sample), unique(d2$sample)),
+                      setdiff(unique(d2$sample), unique(d1$sample)))
+  if (length(mismatched)) {
+    stop("`pre` and `post` have mismatched sample names -- present in only ",
+         "one of the two: ", paste(mismatched, collapse = ", "),
+         ". They must cover the same samples.")
+  }
   # rbind with column intersection so mismatched extra metadata cols don't
   # prevent stacking.
   common <- intersect(colnames(d1), colnames(d2))
@@ -202,8 +214,13 @@ QCComparePlots <- function(pre,
   }
 
   if (isTRUE(show_counts) && nrow(counts)) {
+    # A consistent multiplicative headroom in both branches (exponentiation
+    # like max^1.02 gives a reasonable-looking bump only for the specific
+    # large-count ranges nCount_RNA/nFeature_RNA happen to occupy -- for a
+    # user-supplied metric with small values, e.g. a ratio around 1-5, it
+    # collapses to almost no offset at all).
     y_pos <- if (metric %in% log_y) {
-      max(df$.y, na.rm = TRUE) ^ 1.02
+      max(df$.y, na.rm = TRUE) * 1.1
     } else {
       max(df$.y, na.rm = TRUE) * 1.05
     }

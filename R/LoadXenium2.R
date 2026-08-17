@@ -73,6 +73,16 @@ LoadXenium2 <- function(data_dir, sample_name,
     stop("Package 'arrow' is required to read transcripts.parquet ",
          "(outs = 'microns'). install.packages('arrow')")
   }
+  # CreateSeuratObject()/the ControlCodeword/ControlProbe assays below all
+  # read from data$matrix unconditionally -- without this check, requesting
+  # outs = "microns" alone (a reasonable reading of the docs, which describe
+  # "matrix" and "microns" as independently requestable) would silently hand
+  # CreateSeuratObject() counts = NULL and fail with a confusing error deep
+  # inside Seurat instead of naming the actual problem here.
+  if (!"matrix" %in% outs) {
+    stop("`outs` must include \"matrix\" -- the counts matrix is required ",
+         "to build the Seurat object (got outs = ", paste(outs, collapse = ", "), ").")
+  }
 
   message(sprintf('--- Loading Xenium sample "%s" from %s ---', sample_name, data_dir))
   message(sprintf('  Outputs requested: %s', paste(outs, collapse = ', ')))
@@ -108,6 +118,11 @@ LoadXenium2 <- function(data_dir, sample_name,
       } else {
         cell_boundaries_df <- read.csv(file.path(data_dir,
                                                  "cell_boundaries.csv.gz"), stringsAsFactors = FALSE)
+      }
+      if (ncol(cell_boundaries_df) != 3) {
+        stop("Expected cell_boundaries.csv.gz to have exactly 3 columns ",
+             "(cell, x, y), got ", ncol(cell_boundaries_df),
+             ". The 10x export format may have changed.")
       }
       names(cell_boundaries_df) <- c("cell", "x", "y")
       cell_boundaries_df

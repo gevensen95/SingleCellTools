@@ -57,7 +57,7 @@ CreateATACObjectsFilter <-
            peak_region_fragments_min = 3000, peak_region_fragments_max = 100000,
            pct_reads_in_peaks_min = 40, blacklist_ratio_max = 0.025,
            nucleosome_signal_max = 4, TSS.enrichment_min = 2,
-           peak_region_max = 3000, peakwidths_max = 10000,
+           peakwidths_max = 10000,
            peakwidths_min = 20, passed_filters_value = 500,
            workers = length(data_dirs)) {
     workers <- .resolve_workers(workers, n_samples = length(data_dirs),
@@ -119,10 +119,14 @@ CreateATACObjectsFilter <-
     })
 
     message('--- Building combined peak set ---')
-    # Create combined peak set
-    suppressWarnings(for (i in 2:length(peak_data_list)) {
-      combined.peaks <- GenomicRanges::reduce(c(peak_data_list[[1]], peak_data_list[[i]]))
-    })
+    # Create combined peak set. reduce() over the concatenation of every
+    # sample's peaks at once -- NOT a for loop reassigning combined.peaks
+    # from just peak_data_list[[1]] and peak_data_list[[i]] each iteration,
+    # which discarded every previous iteration's result and silently kept
+    # only sample 1 + the last sample's peaks for any run with >2 samples
+    # (and errored outright with exactly 1 sample, since 2:length(x) counts
+    # backward to 2:1 when length(x) == 1).
+    combined.peaks <- GenomicRanges::reduce(do.call(c, peak_data_list))
     peakwidths <- width(combined.peaks)
     combined.peaks <- combined.peaks[peakwidths < peakwidths_max &
                                        peakwidths > peakwidths_min]
@@ -209,18 +213,24 @@ CreateATACObjectsFilter <-
     names(seurat_objects) <- if (!is.null(object_names)) object_names else basename(data_dirs)
 
     message('--- Generating unfiltered ATAC QC plots ---')
-    obj <- merge(seurat_objects[[1]], seurat_objects[-1])
+    # Row-bind just the metadata rather than merge()-ing the objects --
+    # these QC plots never touch the fragment/counts data merge() would also
+    # combine, and merging ChromatinAssay objects has its own fragment-path
+    # gotchas that this sidesteps entirely.
+    qc_meta <- dplyr::bind_rows(lapply(seurat_objects, function(x) x@meta.data))
+    orig.ident <- pct_reads_in_peaks <- peak_region_fragments <- NULL
+    TSS.enrichment <- blacklist_ratio <- nucleosome_signal <- NULL  # silence R CMD check NSE notes
 
-    pct_reads_in_peaks.plot <- ggplot(obj@meta.data,
-                                      aes(orig.ident, pct_reads_in_peaks)) + geom_boxplot() + Ol_Reliable()
-    peak_region_fragments.plot <- ggplot(obj@meta.data,
-                                         aes(orig.ident, peak_region_fragments)) + geom_boxplot() + Ol_Reliable()
-    TSS.enrichment.plot <- ggplot(obj@meta.data,
-                                  aes(orig.ident, TSS.enrichment)) + geom_boxplot() + Ol_Reliable()
-    blacklist_ratio.plot <- ggplot(obj@meta.data,
-                                   aes(orig.ident, blacklist_ratio)) + geom_boxplot() + Ol_Reliable()
-    nucleosome_signal.plot <- ggplot(obj@meta.data,
-                                     aes(orig.ident, nucleosome_signal)) + geom_boxplot() + Ol_Reliable()
+    pct_reads_in_peaks.plot <- ggplot2::ggplot(qc_meta,
+                                      ggplot2::aes(orig.ident, pct_reads_in_peaks)) + ggplot2::geom_boxplot() + Ol_Reliable()
+    peak_region_fragments.plot <- ggplot2::ggplot(qc_meta,
+                                         ggplot2::aes(orig.ident, peak_region_fragments)) + ggplot2::geom_boxplot() + Ol_Reliable()
+    TSS.enrichment.plot <- ggplot2::ggplot(qc_meta,
+                                  ggplot2::aes(orig.ident, TSS.enrichment)) + ggplot2::geom_boxplot() + Ol_Reliable()
+    blacklist_ratio.plot <- ggplot2::ggplot(qc_meta,
+                                   ggplot2::aes(orig.ident, blacklist_ratio)) + ggplot2::geom_boxplot() + Ol_Reliable()
+    nucleosome_signal.plot <- ggplot2::ggplot(qc_meta,
+                                     ggplot2::aes(orig.ident, nucleosome_signal)) + ggplot2::geom_boxplot() + Ol_Reliable()
 
     print(pct_reads_in_peaks.plot + peak_region_fragments.plot +
             TSS.enrichment.plot +
@@ -251,18 +261,18 @@ CreateATACObjectsFilter <-
       })
 
       message('--- Generating filtered ATAC QC plots ---')
-      obj <- merge(subsetted_objs[[1]], subsetted_objs[-1])
+      qc_meta <- dplyr::bind_rows(lapply(subsetted_objs, function(x) x@meta.data))
 
-      pct_reads_in_peaks.plot <- ggplot(obj@meta.data,
-                                        aes(orig.ident, pct_reads_in_peaks)) + geom_boxplot() + Ol_Reliable()
-      peak_region_fragments.plot <- ggplot(obj@meta.data,
-                                           aes(orig.ident, peak_region_fragments)) + geom_boxplot() + Ol_Reliable()
-      TSS.enrichment.plot <- ggplot(obj@meta.data,
-                                    aes(orig.ident, TSS.enrichment)) + geom_boxplot() + Ol_Reliable()
-      blacklist_ratio.plot <- ggplot(obj@meta.data,
-                                     aes(orig.ident, blacklist_ratio)) + geom_boxplot() + Ol_Reliable()
-      nucleosome_signal.plot <- ggplot(obj@meta.data,
-                                       aes(orig.ident, nucleosome_signal)) + geom_boxplot() + Ol_Reliable()
+      pct_reads_in_peaks.plot <- ggplot2::ggplot(qc_meta,
+                                        ggplot2::aes(orig.ident, pct_reads_in_peaks)) + ggplot2::geom_boxplot() + Ol_Reliable()
+      peak_region_fragments.plot <- ggplot2::ggplot(qc_meta,
+                                           ggplot2::aes(orig.ident, peak_region_fragments)) + ggplot2::geom_boxplot() + Ol_Reliable()
+      TSS.enrichment.plot <- ggplot2::ggplot(qc_meta,
+                                    ggplot2::aes(orig.ident, TSS.enrichment)) + ggplot2::geom_boxplot() + Ol_Reliable()
+      blacklist_ratio.plot <- ggplot2::ggplot(qc_meta,
+                                     ggplot2::aes(orig.ident, blacklist_ratio)) + ggplot2::geom_boxplot() + Ol_Reliable()
+      nucleosome_signal.plot <- ggplot2::ggplot(qc_meta,
+                                       ggplot2::aes(orig.ident, nucleosome_signal)) + ggplot2::geom_boxplot() + Ol_Reliable()
 
       print(pct_reads_in_peaks.plot + peak_region_fragments.plot +
               TSS.enrichment.plot +
@@ -315,16 +325,22 @@ CreateATACObjectsFilter <-
 
 
       message('--- Generating filtered ATAC QC plots ---')
-      pct_reads_in_peaks.plot <- ggplot(obj@meta.data,
-                                        aes(orig.ident, pct_reads_in_peaks)) + geom_boxplot() + Ol_Reliable()
-      peak_region_fragments.plot <- ggplot(obj@meta.data,
-                                           aes(orig.ident, peak_region_fragments)) + geom_boxplot() + Ol_Reliable()
-      TSS.enrichment.plot <- ggplot(obj@meta.data,
-                                    aes(orig.ident, TSS.enrichment)) + geom_boxplot() + Ol_Reliable()
-      blacklist_ratio.plot <- ggplot(obj@meta.data,
-                                     aes(orig.ident, blacklist_ratio)) + geom_boxplot() + Ol_Reliable()
-      nucleosome_signal.plot <- ggplot(obj@meta.data,
-                                       aes(orig.ident, nucleosome_signal)) + geom_boxplot() + Ol_Reliable()
+      # `obj` (from the unfiltered merge above) was never being reassigned
+      # after the interactive threshold loop -- these plots were silently
+      # showing the pre-filter distribution under a "filtered" label, which
+      # defeats the point of reviewing them interactively. Re-derive from
+      # the just-filtered seurat_objects instead.
+      qc_meta <- dplyr::bind_rows(lapply(seurat_objects, function(x) x@meta.data))
+      pct_reads_in_peaks.plot <- ggplot2::ggplot(qc_meta,
+                                        ggplot2::aes(orig.ident, pct_reads_in_peaks)) + ggplot2::geom_boxplot() + Ol_Reliable()
+      peak_region_fragments.plot <- ggplot2::ggplot(qc_meta,
+                                           ggplot2::aes(orig.ident, peak_region_fragments)) + ggplot2::geom_boxplot() + Ol_Reliable()
+      TSS.enrichment.plot <- ggplot2::ggplot(qc_meta,
+                                    ggplot2::aes(orig.ident, TSS.enrichment)) + ggplot2::geom_boxplot() + Ol_Reliable()
+      blacklist_ratio.plot <- ggplot2::ggplot(qc_meta,
+                                     ggplot2::aes(orig.ident, blacklist_ratio)) + ggplot2::geom_boxplot() + Ol_Reliable()
+      nucleosome_signal.plot <- ggplot2::ggplot(qc_meta,
+                                       ggplot2::aes(orig.ident, nucleosome_signal)) + ggplot2::geom_boxplot() + Ol_Reliable()
 
       print(pct_reads_in_peaks.plot + peak_region_fragments.plot +
               TSS.enrichment.plot +

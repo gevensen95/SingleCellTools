@@ -61,6 +61,9 @@ CreateATACObjects <-
     if(add_treatment == FALSE & is.null(treatment) == FALSE) {
       stop('\n\n  Error: Treatment vector was added, but add_treatment set to FALSE.\nSet add_treatment to TRUE before proceeding.')
     }
+    if (isTRUE(add_treatment) && is.null(treatment)) {
+      warning('add_treatment = TRUE but `treatment` is NULL -- no Treatment column will be added.')
+    }
     if (!is.null(object_names) && length(object_names) != length(data_dirs)) {
       stop('`object_names` must be the same length as `data_dirs` (', length(data_dirs),
           '), got ', length(object_names), '.')
@@ -102,10 +105,14 @@ CreateATACObjects <-
     })
 
     message('--- Building combined peak set ---')
-    # Create combined peak set
-    suppressWarnings(for (i in 2:length(peak_data_list)) {
-      combined.peaks <- GenomicRanges::reduce(c(peak_data_list[[1]], peak_data_list[[i]]))
-    })
+    # Create combined peak set. reduce() over the concatenation of every
+    # sample's peaks at once -- NOT a for loop reassigning combined.peaks
+    # from just peak_data_list[[1]] and peak_data_list[[i]] each iteration,
+    # which discarded every previous iteration's result and silently kept
+    # only sample 1 + the last sample's peaks for any run with >2 samples
+    # (and errored outright with exactly 1 sample, since 2:length(x) counts
+    # backward to 2:1 when length(x) == 1).
+    combined.peaks <- GenomicRanges::reduce(do.call(c, peak_data_list))
     peakwidths <- width(combined.peaks)
     combined.peaks <- combined.peaks[peakwidths < peakwidths_max &
                                        peakwidths > peakwidths_min]
@@ -192,18 +199,25 @@ CreateATACObjects <-
     names(seurat_objects) <- if (!is.null(object_names)) object_names else basename(data_dirs)
 
     message('--- Generating ATAC QC plots ---')
-    obj <- merge(seurat_objects[[1]], seurat_objects[-1])
+    # Row-bind just the metadata rather than merge()-ing the objects --
+    # these QC plots never touch the fragment/counts data merge() would also
+    # combine, and merging ChromatinAssay objects has its own fragment-path
+    # gotchas that this sidesteps entirely (matching the fix already applied
+    # to CreateRNAObjects.R).
+    meta <- dplyr::bind_rows(lapply(seurat_objects, function(x) x@meta.data))
+    orig.ident <- pct_reads_in_peaks <- peak_region_fragments <- NULL
+    TSS.enrichment <- blacklist_ratio <- nucleosome_signal <- NULL  # silence R CMD check NSE notes
 
-    pct_reads_in_peaks.plot <- ggplot(obj@meta.data,
-                                      aes(orig.ident, pct_reads_in_peaks)) + geom_boxplot() + Ol_Reliable()
-    peak_region_fragments.plot <- ggplot(obj@meta.data,
-                                         aes(orig.ident, peak_region_fragments)) + geom_boxplot() + Ol_Reliable()
-    TSS.enrichment.plot <- ggplot(obj@meta.data,
-                                  aes(orig.ident, TSS.enrichment)) + geom_boxplot() + Ol_Reliable()
-    blacklist_ratio.plot <- ggplot(obj@meta.data,
-                                   aes(orig.ident, blacklist_ratio)) + geom_boxplot() + Ol_Reliable()
-    nucleosome_signal.plot <- ggplot(obj@meta.data,
-                                     aes(orig.ident, nucleosome_signal)) + geom_boxplot() + Ol_Reliable()
+    pct_reads_in_peaks.plot <- ggplot2::ggplot(meta,
+                                      ggplot2::aes(orig.ident, pct_reads_in_peaks)) + ggplot2::geom_boxplot() + Ol_Reliable()
+    peak_region_fragments.plot <- ggplot2::ggplot(meta,
+                                         ggplot2::aes(orig.ident, peak_region_fragments)) + ggplot2::geom_boxplot() + Ol_Reliable()
+    TSS.enrichment.plot <- ggplot2::ggplot(meta,
+                                  ggplot2::aes(orig.ident, TSS.enrichment)) + ggplot2::geom_boxplot() + Ol_Reliable()
+    blacklist_ratio.plot <- ggplot2::ggplot(meta,
+                                   ggplot2::aes(orig.ident, blacklist_ratio)) + ggplot2::geom_boxplot() + Ol_Reliable()
+    nucleosome_signal.plot <- ggplot2::ggplot(meta,
+                                     ggplot2::aes(orig.ident, nucleosome_signal)) + ggplot2::geom_boxplot() + Ol_Reliable()
 
     print(pct_reads_in_peaks.plot + peak_region_fragments.plot +
             TSS.enrichment.plot +
