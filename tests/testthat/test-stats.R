@@ -262,3 +262,69 @@ test_that("PseudobulkDE errors when a condition has too few pseudobulk samples",
     "need >="
   )
 })
+
+test_that("PseudobulkDE correctly splits sample/condition when a condition label contains regex metacharacters", {
+  # Regression test: condition_pat used to interpolate ident_1/ident_2
+  # directly into a regex ("_(", ident_1, "|", ident_2, ")$") with no
+  # escaping. Sample IDs here deliberately contain "_" themselves (so the
+  # naive strsplit("_", fixed = TRUE) fallback would mis-split them on the
+  # wrong underscore), and one condition label contains "(...)" -- with the
+  # unescaped pattern, "(hi)" parses as a regex group rather than literal
+  # text, so it never matches AggregateExpression()'s actual
+  # "Donor_1_trt(hi)"-style column names and silently falls through to that
+  # broken fallback, corrupting both the recovered sample and condition
+  # labels.
+  .skip_if_missing("Seurat", "SeuratObject", "DESeq2")
+  set.seed(1)
+  # n_genes/n_per_sample deliberately match-or-exceed the scale used by
+  # .make_pseudobulk_obj() (n_genes = 40) rather than some arbitrary small
+  # number -- this test only has 2 samples per condition (the DESeq2
+  # minimum), and DESeq2's default parametric dispersion fit (locfit) needs
+  # enough genes/counts to trace a stable mean-dispersion trend curve at
+  # that low replicate count. Too few genes here previously made locfit
+  # fail with "newsplit: out of vertex space" (a numerical fitting failure
+  # of this fixture, unrelated to the sample/condition-splitting logic
+  # this test actually verifies).
+  n_genes      <- 100
+  n_per_sample <- 30
+  samples  <- paste0("Donor_", 1:4)
+  cond_map <- setNames(c("trt(hi)", "trt(hi)", "ctrl", "ctrl"), samples)
+
+  n_total     <- length(samples) * n_per_sample
+  all_ids     <- character(n_total)
+  sample_v    <- character(n_total)
+  condition_v <- character(n_total)
+  counts <- matrix(0, nrow = n_genes, ncol = n_total,
+                   dimnames = list(paste0("Gene", seq_len(n_genes)), NULL))
+
+  for (i in seq_along(samples)) {
+    sp   <- samples[i]
+    cols <- ((i - 1) * n_per_sample + 1):(i * n_per_sample)
+    ids  <- paste0(sp, "_c", seq_len(n_per_sample))
+
+    all_ids[cols]     <- ids
+    sample_v[cols]    <- sp
+    condition_v[cols] <- cond_map[[sp]]
+
+    lambda <- if (cond_map[[sp]] == "trt(hi)") 6 else 3
+    counts[, cols] <- stats::rpois(n_genes * n_per_sample, lambda = lambda)
+  }
+  colnames(counts) <- all_ids
+  storage.mode(counts) <- "double"
+
+  meta <- data.frame(sample = sample_v, condition = condition_v,
+                     row.names = all_ids, stringsAsFactors = FALSE)
+  obj <- SeuratObject::CreateSeuratObject(counts = counts, meta.data = meta)
+  SeuratObject::LayerData(obj, assay = "RNA", layer = "data") <- log1p(counts)
+
+  res <- suppressMessages(PseudobulkDE(
+    obj, sample_col = "sample", condition_col = "condition",
+    ident_1 = "trt(hi)", ident_2 = "ctrl", verbose = FALSE
+  ))
+
+  # 4 real donors -> 4 pseudobulk samples (one normalized_counts column per
+  # donor, plus "gene"). The old bug would instead mis-split on the first
+  # underscore in "Donor_1_trt(hi)", corrupting the recovered labels.
+  expect_equal(ncol(res$normalized_counts) - 1, 4)
+  expect_setequal(setdiff(colnames(res$normalized_counts), "gene"), samples)
+})

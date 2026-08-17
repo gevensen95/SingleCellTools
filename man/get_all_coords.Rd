@@ -7,7 +7,11 @@
 get_all_coords(seurat_obj, meta_cols = NULL)
 }
 \arguments{
-\item{obj}{Seurat object (spatial)}
+\item{seurat_obj}{Seurat object (spatial)}
+
+\item{meta_cols}{Optional character vector of \code{seurat_obj@meta.data}
+columns to join onto each row, matched by cell ID. \code{NULL} (default)
+doesn't join any metadata.}
 }
 \value{
 a data frame

@@ -59,6 +59,15 @@ test_that("parse_polygons leaves the list unnamed when EntityID is absent", {
   expect_null(names(result))
 })
 
+test_that("parse_polygons errors clearly on malformed geometry instead of silently producing garbage", {
+  df <- data.frame(
+    EntityID = c("cellA", "cellB"),
+    geometry = c("POLYGON ((1 2, 3 4, 5 6))", "not a polygon at all"),
+    stringsAsFactors = FALSE
+  )
+  expect_error(parse_polygons(df), "not matching the expected")
+})
+
 
 # ============================================================================
 # .cluster_mat() -- internal hierarchical-clustering helper

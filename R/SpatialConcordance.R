@@ -104,6 +104,14 @@ SpatialConcordance <- function(obj,
     mean(rowMeans(same))
   }
 
+  old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) get(".Random.seed", envir = .GlobalEnv) else NULL
+  on.exit({
+    if (is.null(old_seed)) {
+      if (exists(".Random.seed", envir = .GlobalEnv)) rm(".Random.seed", envir = .GlobalEnv)
+    } else {
+      assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    }
+  }, add = TRUE)
   set.seed(seed)
   out <- vector("list", length(images))
   names(out) <- images

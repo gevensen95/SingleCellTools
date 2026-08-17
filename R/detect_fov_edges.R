@@ -34,8 +34,8 @@
 #' @param bbox_factor (bbox method) Threshold multiplier on the median
 #'   nearest-neighbor distance. A cell is flagged as an edge if its
 #'   distance to the bounding box is less than
-#'   \code{bbox_factor * median_nn_distance}. Default 2 — roughly "within
-#'   two cell-widths of the box edge". Bump higher to catch a thicker
+#'   \code{bbox_factor * median_nn_distance}. Default 1 — roughly "within
+#'   one cell-width of the box edge". Bump higher to catch a thicker
 #'   ring per pass; drop lower to catch only the outermost ring.
 #' @param k (angular method) Number of nearest neighbors per cell.
 #'   Default 10.

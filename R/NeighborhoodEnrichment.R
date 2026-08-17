@@ -108,6 +108,18 @@ NeighborhoodEnrichment <- function(obj,
     stop("`n_niches` must be >= 2.")
   }
 
+  # Save/restore the caller's global RNG state -- this function calls
+  # set.seed() below (once for the permutation null, and again before niche
+  # clustering) and shouldn't leak a fixed seed into the caller's session.
+  old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) get(".Random.seed", envir = .GlobalEnv) else NULL
+  on.exit({
+    if (is.null(old_seed)) {
+      if (exists(".Random.seed", envir = .GlobalEnv)) rm(".Random.seed", envir = .GlobalEnv)
+    } else {
+      assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    }
+  }, add = TRUE)
+
   # ---- Collect coords + labels per FOV (single pass) ---------------------
   per_fov <- vector("list", length(fovs))
   names(per_fov) <- fovs

@@ -37,7 +37,10 @@ CleanMolSlot <- function(obj){
 
 
     fov <- obj@images[[img]]
-    fov[["molecules"]] <- CreateMolecules(coords = test)
+    # CreateMolecules() is exported by SeuratObject, not attached by this
+    # package's NAMESPACE -- an unprefixed call only worked when a caller's
+    # session happened to already have SeuratObject attached via library().
+    fov[["molecules"]] <- SeuratObject::CreateMolecules(coords = test)
     obj@images[[img]] <- fov
   }
 
@@ -68,7 +71,7 @@ subset_opt <- function(
 
   if (Update.slots) {
     message('--- Updating object slots ---')
-    object %<>% UpdateSlots()
+    object <- SeuratObject::UpdateSlots(object)
   }
 
   message('--- Cloning object ---')
@@ -76,7 +79,7 @@ subset_opt <- function(
 
   # sanity check - use only cell ids (no indices)
   if (all(is.integer(cells))) {
-    cells <- Cells(obj_subset)[cells]
+    cells <- SeuratObject::Cells(obj_subset)[cells]
   }
 
   if (!missing(subset) || !is.null(idents)) {
@@ -85,51 +88,52 @@ subset_opt <- function(
 
   if (class(obj_subset) == "FOV") {
     message("  Object class is `FOV`")
-    cells <- Cells(obj_subset)
+    cells <- SeuratObject::Cells(obj_subset)
   } else if (!class(obj_subset) == "FOV" && !missing(subset)) {
-    subset <- enquo(arg = subset)
+    subset <- rlang::enquo(arg = subset)
     # cells to keep in the object
     cells <-
-      WhichCells(object = obj_subset,
-                 cells = cells,
-                 idents = idents,
-                 expression = subset,
-                 return.null = TRUE, ...)
+      Seurat::WhichCells(object = obj_subset,
+                         cells = cells,
+                         idents = idents,
+                         expression = subset,
+                         return.null = TRUE, ...)
   } else if (!class(obj_subset) == "FOV" && !is.null(idents)) {
     cells <-
-      WhichCells(object = obj_subset,
-                 cells = cells,
-                 idents = idents,
-                 return.null = TRUE, ...)
+      Seurat::WhichCells(object = obj_subset,
+                         cells = cells,
+                         idents = idents,
+                         return.null = TRUE, ...)
   } else if (is.null(cells)) {
-    cells <- Cells(obj_subset)
+    cells <- SeuratObject::Cells(obj_subset)
   }
 
   # added support for object class `FOV`
   message('--- Matching cells in FOVs ---')
   if (class(obj_subset) == "FOV") {
     message("  Matching cells for object class `FOV`")
-    cells_check <- any(obj_subset %>% Cells %in% cells)
+    cells_check <- any(SeuratObject::Cells(obj_subset) %in% cells)
   } else {
     # check if cells are present in all FOV
     cells_check <-
-      lapply(Images(obj_subset) %>% seq,
+      unlist(lapply(seq_along(Seurat::Images(obj_subset)),
              function(i) {
-               any(obj_subset[[Images(obj_subset)[i]]][["centroids"]] %>% Cells %in% cells)
-             }) %>% unlist
+               any(SeuratObject::Cells(obj_subset[[Seurat::Images(obj_subset)[i]]][["centroids"]]) %in% cells)
+             }))
   }
 
   if (all(cells_check)) {
     message('--- Subsetting object (cells found in all FOVs) ---')
-    obj_subset %<>% base::subset(cells = cells,
-                                 idents = idents,
-                                 features = features,
-                                 ...)
+    obj_subset <- base::subset(obj_subset,
+                               cells = cells,
+                               idents = idents,
+                               features = features,
+                               ...)
     # subset FOVs
     message('--- Subsetting FOVs ---')
     fovs <-
-      lapply(Images(obj_subset) %>% seq, function(i) {
-        base::subset(x = obj_subset[[Images(obj_subset)[i]]],
+      lapply(seq_along(Seurat::Images(obj_subset)), function(i) {
+        base::subset(x = obj_subset[[Seurat::Images(obj_subset)[i]]],
                      cells = cells,
                      idents = idents,
                      features = features,
@@ -140,7 +144,7 @@ subset_opt <- function(
     # goes through Seurat's double-bracket assign validity machinery and a
     # fresh object copy; CosMx/Xenium panels can have 100+ FOVs).
     new_images <- obj_subset@images
-    for (i in fovs %>% seq) { new_images[[Images(object)[i]]] <- fovs[[i]] }
+    for (i in seq_along(fovs)) { new_images[[Seurat::Images(object)[i]]] <- fovs[[i]] }
     obj_subset@images <- new_images
 
   } else {
@@ -148,11 +152,11 @@ subset_opt <- function(
     # if cells are present only in one or several FOVs:
     # subset FOVs
     fovs <-
-      lapply(Images(obj_subset) %>% seq, function(i) {
-        if (any(obj_subset[[Images(obj_subset)[i]]][["centroids"]] %>% Cells %in% cells)) {
-          message("  Cell subsets are found only in FOV: ", Images(obj_subset)[i])
+      lapply(seq_along(Seurat::Images(obj_subset)), function(i) {
+        if (any(SeuratObject::Cells(obj_subset[[Seurat::Images(obj_subset)[i]]][["centroids"]]) %in% cells)) {
+          message("  Cell subsets are found only in FOV: ", Seurat::Images(obj_subset)[i])
           message("  Subsetting Centroids")
-          base::subset(x = obj_subset[[Images(obj_subset)[i]]],
+          base::subset(x = obj_subset[[Seurat::Images(obj_subset)[i]]],
                        cells = cells,
                        idents = idents,
                        features = features,
@@ -161,18 +165,19 @@ subset_opt <- function(
       })
     # remove FOVs with no matching cells
     message("  Removing FOVs where cells are NOT found: ",
-            paste0(Images(object)[which(!cells_check == TRUE)], collapse = ', '))
+            paste0(Seurat::Images(object)[which(!cells_check == TRUE)], collapse = ', '))
     # replace subsetted FOVs -- same single-assignment batching as above.
     # A NULL entry in fovs[[i]] removes that FOV from the list, same as it
     # would removing it from @images one double-bracket assignment at a time.
     new_images <- obj_subset@images
-    for (i in fovs %>% seq) { new_images[[Images(object)[i]]] <- fovs[[i]] }
+    for (i in seq_along(fovs)) { new_images[[Seurat::Images(object)[i]]] <- fovs[[i]] }
     obj_subset@images <- new_images
 
     # subset final object
     message('--- Subsetting final object ---')
-    obj_subset %<>%
-      base::subset(cells = cells,
+    obj_subset <-
+      base::subset(obj_subset,
+                   cells = cells,
                    idents = idents,
                    features = features,
                    ...)
@@ -180,7 +185,7 @@ subset_opt <- function(
 
   if (Update.object && !class(obj_subset) == "FOV") {
     message('--- Updating Seurat object ---')
-    obj_subset %<>% UpdateSeuratObject() }
+    obj_subset <- Seurat::UpdateSeuratObject(obj_subset) }
 
   if (cleanMolecules == TRUE) {
     obj_subset <- CleanMolSlot(obj_subset)

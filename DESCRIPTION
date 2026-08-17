@@ -103,7 +103,7 @@ Suggests:
     BPCells,
     testthat (>= 3.1.4)
 VignetteBuilder: knitr
-Config/roxygen2/version: 8.0.0
+Config/roxygen2/version: 8.1.0
 Config/testthat/edition: 3
 Remotes:
     dmcable/spacexr,

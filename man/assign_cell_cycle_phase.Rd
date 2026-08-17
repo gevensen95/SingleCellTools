@@ -21,7 +21,8 @@ assign_cell_cycle_phase(
 \item{threshold_quantile}{Threshold for G1 Phase, 0.5 is the recommended threshold}
 }
 \value{
-Vector containing child GO terms
+The input Seurat object with a new \code{$Phase} metadata column
+(\code{"G1"}, \code{"S"}, or \code{"G2M"} per cell).
 }
 \description{
 This function acts the same as Seurat's CellCycleScoring, but it uses AddModuleScore_UCell

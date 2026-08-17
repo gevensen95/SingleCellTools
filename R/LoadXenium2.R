@@ -95,8 +95,8 @@ LoadXenium2 <- function(data_dir, sample_name,
   data <- sapply(outs, function(otype) {
     switch(EXPR = otype, matrix = {
       message('  Reading counts matrix (cell_feature_matrix/)')
-      matrix <- suppressWarnings(Read10X(data.dir = file.path(data_dir,
-                                                              "cell_feature_matrix/")))
+      matrix <- suppressWarnings(Seurat::Read10X(data.dir = file.path(data_dir,
+                                                                      "cell_feature_matrix/")))
       matrix
     }, centroids = {
       message('  Reading cell centroids (cells.csv.gz)')
@@ -162,30 +162,35 @@ LoadXenium2 <- function(data_dir, sample_name,
   # just one of the two.
   boundaries <- list()
   fov_types  <- character(0)
+  # CreateCentroids()/CreateSegmentation()/CreateFOV() are exported by
+  # SeuratObject, not Seurat -- Seurat::CreateFOV errors with "'CreateFOV'
+  # is not an exported object from 'namespace:Seurat'" (confirmed directly);
+  # every fixture in this package's own test suite already builds these via
+  # SeuratObject:: for the same reason.
   if ("centroids" %in% type) {
-    boundaries$centroids <- CreateCentroids(data$centroids)
+    boundaries$centroids <- SeuratObject::CreateCentroids(data$centroids)
     fov_types <- c(fov_types, "centroids")
   }
   if ("segmentations" %in% type) {
-    boundaries$segmentation <- CreateSegmentation(data$segmentations)
+    boundaries$segmentation <- SeuratObject::CreateSegmentation(data$segmentations)
     fov_types <- c(fov_types, "segmentation")
   }
   message(sprintf('--- Building FOV (%s%s) ---',
                   paste(fov_types, collapse = " + "),
                   if ("microns" %in% outs) " + molecules" else ""))
-  coords <- CreateFOV(
+  coords <- SeuratObject::CreateFOV(
     coords = boundaries,
     type = fov_types,
     molecules = data$microns,
     assay = "Xenium")
 
   message('--- Building Seurat object and attaching control assays ---')
-  xenium.obj <- CreateSeuratObject(
+  xenium.obj <- Seurat::CreateSeuratObject(
     counts = data$matrix[["Gene Expression"]],
     assay = "Xenium",
     project = sample_name)
-  xenium.obj[["ControlCodeword"]] <- CreateAssayObject(counts = data$matrix[["Negative Control Codeword"]])
-  xenium.obj[["ControlProbe"]] <- CreateAssayObject(counts = data$matrix[["Negative Control Probe"]])
+  xenium.obj[["ControlCodeword"]] <- Seurat::CreateAssayObject(counts = data$matrix[["Negative Control Codeword"]])
+  xenium.obj[["ControlProbe"]] <- Seurat::CreateAssayObject(counts = data$matrix[["Negative Control Probe"]])
   xenium.obj[["fov"]] <- coords
 
   if (!is.null(molecules_lazy_ds)) {

@@ -166,7 +166,17 @@ NicheCoExpress <- function(seurat_obj,
   bg_mode        <- match.arg(bg_mode)
   test           <- match.arg(test)
   p_adjust_scope <- match.arg(p_adjust_scope)
-  if (!is.null(seed)) set.seed(seed)
+  if (!is.null(seed)) {
+    old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) get(".Random.seed", envir = .GlobalEnv) else NULL
+    on.exit({
+      if (is.null(old_seed)) {
+        if (exists(".Random.seed", envir = .GlobalEnv)) rm(".Random.seed", envir = .GlobalEnv)
+      } else {
+        assign(".Random.seed", old_seed, envir = .GlobalEnv)
+      }
+    }, add = TRUE)
+    set.seed(seed)
+  }
   if (min_samples < 2) {
     warning("`min_samples` must be >= 2 for the differential test; using 2.")
     min_samples <- 2

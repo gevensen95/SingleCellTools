@@ -158,6 +158,31 @@ test_that("NicheCoExpress runs end-to-end and returns the documented structure",
   expect_equal(attr(res$stats, "conditions"), c("healthy", "tumor"))
 })
 
+test_that("NicheCoExpress does not leak its background-sampling seed into the caller's RNG stream", {
+  # Regression test: `if (!is.null(seed)) set.seed(seed)` used to run
+  # without saving/restoring the caller's prior .Random.seed, so calling
+  # this function reset the caller's own RNG stream for any random draws
+  # made afterward in the same session.
+  .skip_if_no_seurat()
+  obj <- .make_coexpr_object(seed = 1)
+
+  set.seed(999)
+  x_ref <- runif(5)
+
+  set.seed(999)
+  invisible(suppressWarnings(suppressMessages(
+    NicheCoExpress(
+      obj, genes = c("G1", "G2", "G3"),
+      niche_col = "niche", sample_col = "sample", condition_col = "condition",
+      conditions = c("healthy", "tumor"), min_cells = 5, verbose = FALSE,
+      bg_mode = "local", seed = 42
+    )
+  )))
+  x_after <- runif(5)
+
+  expect_equal(x_after, x_ref)
+})
+
 test_that("NicheCoExpress requires at least 2 genes when given a gene vector", {
   .skip_if_no_seurat()
   obj <- .make_coexpr_object(seed = 1)

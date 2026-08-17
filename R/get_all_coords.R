@@ -2,15 +2,18 @@
 #'
 #' This function collect the coordinates from each FOV and combine them into a single data frame
 #'
-#' @param obj Seurat object (spatial)
+#' @param seurat_obj Seurat object (spatial)
+#' @param meta_cols Optional character vector of \code{seurat_obj@meta.data}
+#'   columns to join onto each row, matched by cell ID. \code{NULL} (default)
+#'   doesn't join any metadata.
 #' @return a data frame
 #' @export
 get_all_coords <- function(seurat_obj, meta_cols = NULL) {
-  fov_names <- Images(seurat_obj)
+  fov_names <- Seurat::Images(seurat_obj)
   message(sprintf('--- Collecting tissue coordinates from %d FOVs ---', length(fov_names)))
 
   coords_list <- lapply(fov_names, function(fov) {
-    coords <- GetTissueCoordinates(seurat_obj, image = fov)
+    coords <- Seurat::GetTissueCoordinates(seurat_obj, image = fov)
     coords$fov <- fov
 
     # Optionally join selected metadata columns. GetTissueCoordinates() on
