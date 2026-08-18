@@ -34,6 +34,7 @@
 12. [Niche Co-expression — `NicheCoExpress()`](#12-niche-co-expression--nichecoexpress)
     - 12.1 [Estimation Plot — `NicheCoExpressEstimationPlot()`](#121-estimation-plot--nichecoexpressestimationplot)
 13. [Single-cell Spatial (Xenium / CosMx) — `detect_fov_edges()` / `detect_tissue_holes()`](#13-single-cell-spatial-xenium--cosmx--detect_fov_edges--detect_tissue_holes)
+    - 13.1 [Combining and Managing FOVs — `combine_fovs()` / `SetImageBoundary()`](#131-combining-and-managing-fovs--combine_fovs--setimageboundary)
 14. [Subsetting Spatial Objects — `SubsetSpatial()`](#14-subsetting-spatial-objects--subsetspatial)
 15. [Tips Specific to Spatial Data](#15-tips-specific-to-spatial-data)
 16. [Session Info](#16-session-info)
@@ -145,6 +146,19 @@ lapply(brain_list, function(x) c(features = nrow(x), spots = ncol(x)))
 > samples are built -- worthwhile for many-sample runs, and close to
 > essential for Visium HD at `hd_bin_size = "002um"` (500K+ bins/section). See
 > [`SingleCellTools_vignette_bpcells.md`](SingleCellTools_vignette_bpcells.md).
+>
+> `image_backend = "deferred"` attaches only the small lowres image to each sample and stashes
+> the hires PNG's path instead of decoding it up front. When you actually need full-resolution
+> detail for a specific sample (a publication figure, fine registration), call
+> `GetHiresVisiumImage()` on demand:
+>
+> ```r
+> # One-off: get the decoded image array without touching the object
+> hires_arr <- GetHiresVisiumImage(brain_ant1)
+>
+> # Or permanently swap the object's attached image to full resolution
+> brain_ant1 <- GetHiresVisiumImage(brain_ant1, attach = TRUE)
+> ```
 
 Visualize the raw tissue sections to confirm the data loaded correctly (shown for
 `anterior1`; the same call works for any of the four):
@@ -1201,6 +1215,31 @@ Combine both filters:
 
 ```r
 xenium <- xenium[, xenium$edge_layer == 0 & xenium$hole_layer == 0]
+```
+
+### 13.1 Combining and Managing FOVs — `combine_fovs()` / `SetImageBoundary()`
+
+Xenium/CosMx runs are often stored as many small per-tile FOVs (`obj@images`) rather than one
+contiguous image. `combine_fovs()` lays them out on a grid (using each FOV's own coordinate
+range to compute a per-tile offset) and merges them into a single combined FOV — useful for a
+whole-sample plot or any analysis that expects one spatial image rather than dozens:
+
+```r
+# Lay FOVs out in a 4-column grid; keep the original per-FOV images too (append = TRUE default)
+xenium <- combine_fovs(xenium, n_cols = 4, fov_name = "combined")
+
+# Only the combined FOV, original per-FOV images dropped
+xenium <- combine_fovs(xenium, n_cols = 4, fov_name = "combined", append = FALSE)
+```
+
+Each FOV can carry more than one boundary set (e.g. `centroids` and `segmentation`) — most
+plotting/analysis functions use whichever one is set as the *default* boundary.
+`SetImageBoundary()` switches that default across every FOV on the object at once, skipping
+(with a warning) any FOV that doesn't have the requested boundary set:
+
+```r
+# Switch every FOV from point centroids to full segmentation polygons
+xenium <- SetImageBoundary(xenium, boundary = "segmentation")
 ```
 
 ---
