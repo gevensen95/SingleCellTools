@@ -234,10 +234,31 @@ PseudobulkDE <- function(obj,
   # detail we shouldn't have to reverse-engineer -- and got wrong before
   # (colnames like "Donor_trt.hi." no longer contain "trt(hi)" or split
   # cleanly on "_" into the original two fields).
+  #
+  # We deliberately do NOT pass sample_col/condition_col straight through as
+  # `group.by` names, even though those are the names we read back from
+  # `agg_obj@meta.data` below. Reason: Seurat reserves some metadata column
+  # names for its own bookkeeping -- most notably "orig.ident". When
+  # AggregateExpression(return.seurat = TRUE) builds the new pseudobulk
+  # Seurat object internally, Seurat's own object-construction code
+  # auto-populates a metadata column literally named "orig.ident" with the
+  # *new* object's own colnames (the full combined "sample_condition" key)
+  # -- silently overwriting whatever the group.by variable of that name was
+  # supposed to hold. "orig.ident" is also the single most common sample_col
+  # value anyone would pass (it's Seurat's own default sample column), so
+  # this collision is far from an edge case. Copying sample_col/condition_col
+  # onto guaranteed-non-reserved temp columns first, and grouping by those
+  # instead, sidesteps "orig.ident" and any other name Seurat treats
+  # specially, without having to special-case "orig.ident" by name.
+  tmp_sample_col    <- ".pbde_sample_tmp"
+  tmp_condition_col <- ".pbde_condition_tmp"
+  obj[[tmp_sample_col]]    <- md[[sample_col]]
+  obj[[tmp_condition_col]] <- md[[condition_col]]
+
   agg_obj <- Seurat::AggregateExpression(
     obj,
     assays        = assay,
-    group.by      = c(sample_col, condition_col),
+    group.by      = c(tmp_sample_col, tmp_condition_col),
     return.seurat = TRUE,
     slot          = "counts"
   )
@@ -249,8 +270,8 @@ PseudobulkDE <- function(obj,
   agg <- if (is.matrix(agg_raw)) agg_raw else as.matrix(agg_raw)
   storage.mode(agg) <- "integer"
 
-  sample_ids    <- as.character(agg_obj@meta.data[[sample_col]])
-  condition_ids <- as.character(agg_obj@meta.data[[condition_col]])
+  sample_ids    <- as.character(agg_obj@meta.data[[tmp_sample_col]])
+  condition_ids <- as.character(agg_obj@meta.data[[tmp_condition_col]])
 
   # AggregateExpression() silently replaces "_" with "-" *within* each
   # group.by value before joining them (confirmed empirically: a per-cell
@@ -278,7 +299,29 @@ PseudobulkDE <- function(obj,
   names(raw_sample_by_canon) <- .canon_id(raw_sample_by_canon)
   raw_sample_by_canon <- raw_sample_by_canon[!duplicated(names(raw_sample_by_canon))]
   sample_ids_raw <- unname(raw_sample_by_canon[sample_ids])
-  colnames(agg) <- sample_ids_raw
+
+  # `colnames(agg)` (and thus `rownames(coldata)`, via `row.names =` below)
+  # must be unique per pseudobulk COLUMN -- but a single sample can
+  # legitimately contribute a column to *both* condition arms being
+  # contrasted, e.g. a one-vs-rest design like "zone A vs every other zone"
+  # where every animal has spots in more than one zone. sample_ids_raw alone
+  # isn't unique in that case (the same animal's label appears once per
+  # condition arm it contributes to), which used to crash at
+  # `data.frame(..., row.names = colnames(agg))` with
+  # "duplicate row.names: <sample>, <sample>, ...". Disambiguate only the
+  # colliding entries by appending their condition; `coldata$sample` still
+  # gets the true, undecorated sample label (sample_ids_raw), not this
+  # disambiguated display name, so downstream per-sample metadata joins
+  # (extra_cols below) keep matching on real sample identity. The common
+  # one-condition-per-sample case (sample_ids_raw already unique) is
+  # unaffected -- colnames(agg) still comes out identical to the raw sample
+  # label, same guarantee as before.
+  col_ids <- sample_ids_raw
+  dup_col <- duplicated(col_ids) | duplicated(col_ids, fromLast = TRUE)
+  if (any(dup_col)) {
+    col_ids[dup_col] <- paste(col_ids[dup_col], condition_ids[dup_col], sep = "_")
+  }
+  colnames(agg) <- col_ids
 
   coldata <- data.frame(
     sample    = sample_ids_raw,

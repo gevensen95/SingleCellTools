@@ -196,6 +196,47 @@ test_that("CellSuiteSummary with top_markers > 0 runs FindAllMarkers without err
   obj
 }
 
+.make_zone_vs_rest_obj <- function(seed = 1, n_genes = 100, n_per_cell_group = 20,
+                                   n_samples = 4, zones = c("A", "B", "C")) {
+  # Unlike .make_pseudobulk_obj(), where each sample belongs to exactly one
+  # condition, every sample here has cells in *every* zone -- the structure
+  # needed to exercise a one-vs-rest design (ident_1 = one zone, ident_2 =
+  # "rest" = every other zone combined) where the same sample legitimately
+  # contributes a pseudobulk column to both condition arms.
+  set.seed(seed)
+  samples <- paste0("S", seq_len(n_samples))
+  combos  <- expand.grid(sample = samples, zone = zones, stringsAsFactors = FALSE)
+
+  n_total  <- nrow(combos) * n_per_cell_group
+  all_ids  <- character(n_total)
+  sample_v <- character(n_total)
+  zone_v   <- character(n_total)
+  counts <- matrix(0, nrow = n_genes, ncol = n_total,
+                   dimnames = list(paste0("Gene", seq_len(n_genes)), NULL))
+
+  for (i in seq_len(nrow(combos))) {
+    sp   <- combos$sample[i]
+    zn   <- combos$zone[i]
+    cols <- ((i - 1) * n_per_cell_group + 1):(i * n_per_cell_group)
+    ids  <- paste0(sp, "_", zn, "_c", seq_len(n_per_cell_group))
+
+    all_ids[cols]  <- ids
+    sample_v[cols] <- sp
+    zone_v[cols]   <- zn
+
+    lambda <- if (zn == "A") 6 else 3
+    counts[, cols] <- stats::rpois(n_genes * n_per_cell_group, lambda = lambda)
+  }
+  colnames(counts) <- all_ids
+  storage.mode(counts) <- "double"
+
+  meta <- data.frame(sample = sample_v, zone = zone_v,
+                     row.names = all_ids, stringsAsFactors = FALSE)
+  obj <- SeuratObject::CreateSeuratObject(counts = counts, meta.data = meta)
+  SeuratObject::LayerData(obj, assay = "RNA", layer = "data") <- log1p(counts)
+  obj
+}
+
 test_that("PseudobulkDE single-group mode returns results + normalized_counts", {
   .skip_if_missing("Seurat", "SeuratObject", "DESeq2")
   obj <- .make_pseudobulk_obj(seed = 1)
@@ -327,4 +368,58 @@ test_that("PseudobulkDE correctly splits sample/condition when a condition label
   # underscore in "Donor_1_trt(hi)", corrupting the recovered labels.
   expect_equal(ncol(res$normalized_counts) - 1, 4)
   expect_setequal(setdiff(colnames(res$normalized_counts), "gene"), samples)
+})
+
+test_that("PseudobulkDE works when sample_col is literally 'orig.ident' (Seurat-reserved name)", {
+  # Regression test: Seurat::AggregateExpression(return.seurat = TRUE)
+  # rebuilds the pseudobulk output via CreateSeuratObject() internally,
+  # which always repopulates a metadata column literally named
+  # "orig.ident" with the *new* object's own colnames (the full aggregated
+  # "sample_condition" key) -- regardless of what group.by variable was
+  # passed under that name. "orig.ident" is also Seurat's own default
+  # sample-identity column, i.e. the single most likely sample_col value a
+  # caller would pass, so this collision is far from an edge case. It used
+  # to silently corrupt the recovered sample labels, which made every
+  # pseudobulk column fail the (sample, condition) key-matching step and
+  # get dropped -- producing "Condition counts after filtering: x = 0, y =
+  # 0" even with plenty of real replicates present.
+  .skip_if_missing("Seurat", "SeuratObject", "DESeq2")
+  obj <- .make_pseudobulk_obj(seed = 1)
+  obj$orig.ident <- obj$sample
+  obj$sample <- NULL
+
+  res <- suppressMessages(PseudobulkDE(
+    obj, sample_col = "orig.ident", condition_col = "condition",
+    ident_1 = "treated", ident_2 = "control", verbose = FALSE
+  ))
+  expect_true(nrow(res$results) > 0)
+  # 4 treated + 4 control donors -> 8 pseudobulk samples (one
+  # normalized_counts column per donor, plus "gene").
+  expect_equal(ncol(res$normalized_counts) - 1, 8)
+})
+
+test_that("PseudobulkDE handles a one-vs-rest design where the same sample contributes to both condition arms", {
+  # Regression test: colnames(agg) used to be set to the recovered sample
+  # label alone, with no regard for which condition arm a pseudobulk column
+  # belonged to. That's fine when each sample belongs to exactly one
+  # condition (the common two-group-comparison case, e.g. treated/control),
+  # but breaks for a one-vs-rest design -- e.g. "zone A vs every other
+  # zone" -- where every sample legitimately contributes a column to BOTH
+  # arms. Two columns then shared the same name, and
+  # `data.frame(..., row.names = colnames(agg))` errored with
+  # "duplicate row.names: <sample>, <sample>, ...".
+  .skip_if_missing("Seurat", "SeuratObject", "DESeq2")
+  obj <- .make_zone_vs_rest_obj(seed = 1, n_samples = 4)
+  obj$zone_vs_rest <- ifelse(obj$zone == "A", "A", "rest")
+
+  res <- suppressMessages(PseudobulkDE(
+    obj, sample_col = "sample", condition_col = "zone_vs_rest",
+    ident_1 = "A", ident_2 = "rest", verbose = FALSE
+  ))
+  expect_true(nrow(res$results) > 0)
+  # 4 samples x 2 condition arms (A, rest) -> 8 pseudobulk columns, each
+  # disambiguated as "<sample>_<condition>" since the raw sample label alone
+  # collides across the two arms.
+  expect_equal(ncol(res$normalized_counts) - 1, 8)
+  expect_true(all(grepl("_(A|rest)$", setdiff(colnames(res$normalized_counts), "gene"))))
 })
