@@ -84,10 +84,10 @@ Suggests:
     harmony,
     sf,
     Nebulosa,
+    spacexr,
     CellChat,
     org.Mm.eg.db,
     org.Hs.eg.db,
-    spacexr,
     Banksy,
     SeuratWrappers,
     dabestr,
@@ -109,4 +109,5 @@ Remotes:
     dmcable/spacexr,
     prabhakarlab/Banksy,
     satijalab/seurat-wrappers,
-    bnprks/BPCells/r
+    bnprks/BPCells/r,
+    sqjin/CellChat

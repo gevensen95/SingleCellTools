@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/R-%3E%3D%202.10-276DC3?logo=r" alt="R >= 2.10" />
   <img src="https://img.shields.io/badge/Seurat-v5-ff69b4" alt="Seurat v5" />
   <img src="https://img.shields.io/badge/lifecycle-experimental-orange" alt="Lifecycle: experimental" />
-  <a href="SingleCellTools_vignette.md">
+  <a href="vignettes/SingleCellTools_vignette.Rmd">
     <img src="https://img.shields.io/badge/docs-vignette-brightgreen" alt="Vignette" />
   </a>
 </p>
@@ -53,7 +53,7 @@ Key things it does:
 
 ## Documentation
 
-- **[Vignette & function reference](SingleCellTools_vignette.md)** — covers every function group with worked examples, parameter tables, and tips for common pitfalls.
+- **[Vignette & function reference](vignettes/SingleCellTools_vignette.Rmd)** — covers every function group with worked examples, parameter tables, and tips for common pitfalls. Also installed as a real package vignette (`vignette("SingleCellTools_vignette", package = "SingleCellTools")` after installing with `build_vignettes = TRUE`).
 - **[ifnb tutorial](SingleCellTools_vignette_ifnb.md)** — end-to-end walkthrough using the built-in `ifnb` PBMC dataset from `SeuratData`; no raw data download required.
 - **[Spatial tutorial](SingleCellTools_vignette_spatial.md)** — Visium workflow (edge detection, integration, annotation, niche analysis) using the public `stxBrain` mouse brain dataset from `SeuratData`.
 - **[scATAC-seq tutorial](SingleCellTools_vignette_atac.md)** — object creation, QC, LSI, cross-sample integration, gene activity scoring, motif enrichment, and differential accessibility. Supports mouse (`mm10`, default) or human (`hg38`) via `CreateATACObjects()`/`CreateATACObjectsFilter()`'s `genome` argument.
@@ -74,20 +74,29 @@ DoubletFinder is GitHub-only, so install that first if you don't have it:
 remotes::install_github("chris-mcginnis-ucsf/DoubletFinder")
 ```
 
-Bioconductor dependencies (`EnsDb.Mmusculus.v79`, `glmGamPoi`, `GO.db`, `UCell`, `Signac`) need
-Bioconductor configured. If install fails:
+Several Bioconductor packages are hard `Imports` (installed no matter which functions you
+actually use) &mdash; `glmGamPoi`, `GO.db`, `AnnotationDbi`, `UCell`, `Signac`, `GenomicRanges`,
+`IRanges`, `GenomeInfoDb`, `DESeq2`, `SummarizedExperiment`, `S4Vectors`, `edgeR`, `speckle`,
+`OmnipathR`, `scmap`. Bioconductor needs to be configured for these; if install fails:
 
 ```r
 if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
-BiocManager::install(c("EnsDb.Mmusculus.v79", "glmGamPoi", "GO.db", "UCell", "Signac"))
+BiocManager::install(c("glmGamPoi", "GO.db", "AnnotationDbi", "UCell", "Signac",
+                       "GenomicRanges", "IRanges", "GenomeInfoDb", "DESeq2",
+                       "SummarizedExperiment", "S4Vectors", "edgeR", "speckle",
+                       "OmnipathR", "scmap"))
 ```
 
 Some functions (see [Dependencies](#dependencies)) call optional packages listed under
 `Suggests` &mdash; install these only if you need that specific function:
 
 ```r
-BiocManager::install(c("DESeq2", "SingleR", "SummarizedExperiment", "zellkonverter"))
-install.packages(c("sf", "rmarkdown", "knitr"))
+remotes::install_github("dmcable/spacexr")        # RunRCTD()
+remotes::install_github("prabhakarlab/Banksy")     # RunBanksyWrapper()
+remotes::install_github("sqjin/CellChat")          # RunCellChat() -- CellChat is GitHub-only
+BiocManager::install(c("SingleR", "SingleCellExperiment", "zellkonverter", "Nebulosa",
+                       "EnsDb.Mmusculus.v79", "BSgenome.Mmusculus.UCSC.mm10"))
+install.packages(c("sf", "harmony", "dabestr", "rmarkdown", "knitr"))
 ```
 
 ---
@@ -301,13 +310,20 @@ flowchart LR
 |---|---|
 | **Seurat ecosystem** | `Seurat`, `SeuratObject`, `Signac` |
 | **DoubletFinder** | `DoubletFinder` (GitHub: `chris-mcginnis-ucsf/DoubletFinder`) |
-| **Bioconductor** | `GenomicRanges`, `IRanges`, `GenomeInfoDb`, `glmGamPoi`, `GO.db`, `UCell` |
+| **Bioconductor (core)** | `GenomicRanges`, `IRanges`, `GenomeInfoDb`, `glmGamPoi`, `GO.db`, `AnnotationDbi`, `UCell` |
+| **Differential expression & stats** | `DESeq2`, `SummarizedExperiment`, `S4Vectors`, `edgeR` (`PseudobulkDE`); `speckle`, `limma` (`CompositionalTest`) |
+| **Cell-cell communication** | `liana`, `OmnipathR` (`RunLIANA()`, loaded on demand rather than at package startup) |
+| **Trajectory / state calling** | `slingshot` (`PseudotimeWrapper()`); `mclust`, `ks`, `MASS`, `cluster` (`call_mixture_states()`) |
 | **Tidyverse** | `dplyr`, `tibble`, `tidyr`, `magrittr`, `readr`, `stringr`, `purrr`, `rlang`, `ggplot2` |
 | **Numerical / spatial** | `Matrix`, `RANN`, `ClusterR`, `irlba`, `RSpectra` |
-| **Plotting** | `RColorBrewer` |
-| **Optional (Suggests)** | `sf` (`get_cells_in_polygon`, `AnnotateRegions`); `SingleR` + `SummarizedExperiment` (`AnnotateClusters(method = "singler")`); `DESeq2` (`PseudobulkDE`); `zellkonverter` (`FromAnnData` / `ToAnnData`); `rmarkdown` + `knitr` (`GenerateQCReport`); `EnsDb.Mmusculus.v79` + `BSgenome.Mmusculus.UCSC.mm10` or `EnsDb.Hsapiens.v86` + `BSgenome.Hsapiens.UCSC.hg38` (`CreateATACObjects()` / `CreateATACObjectsFilter()`, whichever `genome` you request); `BPCells` (GitHub: `bnprks/BPCells/r`) for `ConvertToBPCells()` and `on_disk = TRUE` on `CreateRNAObjects()`/`CreateVisiumObjects()`/`LoadXenium2()` |
+| **Plotting** | `RColorBrewer`, `patchwork` |
+| **Optional (Suggests)** | `sf` (`get_cells_in_polygon`, `AnnotateRegions`); `SingleR` + `SingleCellExperiment` (`AnnotateClusters(method = "singler")`); `zellkonverter` + `anndata` + `basilisk` (`FromAnnData` / `ToAnnData`); `harmony` (`MergeSeurat()`'s Harmony integration path); `rmarkdown` + `knitr` (`GenerateQCReport`); `spacexr` (GitHub: `dmcable/spacexr`) for `RunRCTD()` deconvolution; `CellChat` (GitHub: `sqjin/CellChat`) for `RunCellChat()`; `Banksy` (GitHub: `prabhakarlab/Banksy`) + `SeuratWrappers` (GitHub: `satijalab/seurat-wrappers`) for `RunBanksyWrapper()` / `MergeSeurat(banksy = TRUE)`; `dabestr` for the estimation-plot functions (`CompositionEstimationPlot()`, `NicheCoExpressEstimationPlot()`, `GenePositivityEstimationPlot()`); `Nebulosa` (`PlotFeatureDensity()`); `arrow` + `data.table` + `R.utils` (`LoadXenium2(microns_lazy = TRUE)`, `MakeParseObj()`); `png` + `scatterpie` (spatial composition plotting); `org.Mm.eg.db` / `org.Hs.eg.db` + `EnsDb.Mmusculus.v79` + `BSgenome.Mmusculus.UCSC.mm10` or `EnsDb.Hsapiens.v86` + `BSgenome.Hsapiens.UCSC.hg38` (`CreateATACObjects()` / `CreateATACObjectsFilter()`, whichever `genome` you request); `BPCells` (GitHub: `bnprks/BPCells/r`) for `ConvertToBPCells()` and `on_disk = TRUE` on `CreateRNAObjects()`/`CreateVisiumObjects()`/`LoadXenium2()` |
 
-A full list with version pins lives in [`DESCRIPTION`](DESCRIPTION).
+`spacexr`, `Banksy`, `SeuratWrappers`, and `BPCells` are GitHub-only and declared under
+`Remotes:` in [`DESCRIPTION`](DESCRIPTION), so `remotes::install_github("gevensen95/SingleCellTools")`
+resolves them automatically -- no separate `install_github()` call needed for those four.
+`DoubletFinder` is the one GitHub-only dependency *not* listed under `Remotes:`, which is why it
+needs the manual install step above. A full list with version pins lives in `DESCRIPTION`.
 
 ---
 

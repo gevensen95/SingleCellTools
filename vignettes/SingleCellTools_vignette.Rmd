@@ -1,8 +1,15 @@
-# SingleCellTools Vignette & Tutorial
+---
+title: "SingleCellTools Vignette & Tutorial"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{SingleCellTools Vignette & Tutorial}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
 
 **Package:** `SingleCellTools`  
 **Author:** K. Garrett Evensen, PhD — Bioinformatics Analyst II, The Salk Institute  
-**Version:** 2.4  
+**Version:** 2.7  
 **Source:** [github.com/gevensen95/SingleCellTools](https://github.com/gevensen95/SingleCellTools)
 
 ---
@@ -29,6 +36,7 @@
    - 5.1 [`GenerateQCReport()`](#51-generateqcreport)
    - 5.2 [`ApplyQCFilters()`](#52-applyqcfilters)
    - 5.3 [`QCComparePlots()`](#53-qccompareplots)
+   - 5.4 [Quick Multi-Panel QC Overview — `PlotQCMetrics()`](#54-quick-multi-panel-qc-overview--plotqcmetrics)
 6. [Differential Expression](#6-differential-expression)
    - 6.1 [`PseudobulkDE()`](#61-pseudobulkde)
    - 6.2 [`PlotVolcano()`](#62-plotvolcano)
@@ -90,20 +98,20 @@ The package covers:
 
 ### Core package
 
-```r
+```{r, eval=FALSE}
 # install.packages("remotes")
 remotes::install_github("gevensen95/SingleCellTools")
 ```
 
 ### DoubletFinder (GitHub-only dependency)
 
-```r
+```{r, eval=FALSE}
 remotes::install_github("chris-mcginnis-ucsf/DoubletFinder")
 ```
 
 ### Bioconductor dependencies
 
-```r
+```{r, eval=FALSE}
 if (!requireNamespace("BiocManager", quietly = TRUE))
   install.packages("BiocManager")
 
@@ -132,7 +140,7 @@ BiocManager::install(c(
 
 ### GitHub-only dependencies
 
-```r
+```{r, eval=FALSE}
 # Ligand-receptor inference
 remotes::install_github("saezlab/liana")
 
@@ -153,7 +161,7 @@ remotes::install_github("dmcable/spacexr")
 
 ### CRAN dependencies added in v2.4
 
-```r
+```{r, eval=FALSE}
 install.packages(c(
   "patchwork", "ks", "MASS", "cluster",
   "jsonlite", "betareg"
@@ -162,14 +170,14 @@ install.packages(c(
 
 ### Optional dependencies
 
-```r
+```{r, eval=FALSE}
 install.packages("sf")     # required only for get_cells_in_polygon()
 install.packages("anndata"); reticulate::install_python()  # for FromAnnData Python reader
 ```
 
 ### Load the package
 
-```r
+```{r, eval=FALSE}
 library(SingleCellTools)
 ```
 
@@ -221,7 +229,7 @@ SaveWithProvenance()           ← .rds + JSON sidecar
 
 The function auto-detects the layout so you do not need to adapt your paths.
 
-```r
+```{r, eval=FALSE}
 library(SingleCellTools)
 
 # Paths to per-sample CellRanger output folders
@@ -270,7 +278,7 @@ After running, each element of `seurat_list` is a Seurat object with:
 
 #### Inspecting QC before filtering
 
-```r
+```{r, eval=FALSE}
 # Violin plots per sample — decide your nFeature and percent.mt cutoffs here
 library(Seurat)
 library(patchwork)
@@ -280,7 +288,7 @@ VlnPlot(seurat_list[["Veh1"]], features = c("nFeature_RNA", "percent.mt"))
 
 #### Filtering based on QC
 
-```r
+```{r, eval=FALSE}
 seurat_list <- lapply(seurat_list, function(obj) {
   subset(obj,
     nFeature_RNA > 500  &
@@ -306,7 +314,7 @@ seurat_list <- lapply(seurat_list, function(obj) {
 
 For a GEO-scale run (dozens of samples, or samples with very large cell counts), set `on_disk = TRUE` to keep the returned list's memory footprint down once everything is built:
 
-```r
+```{r, eval=FALSE}
 seurat_list <- CreateRNAObjects(
   data_dirs = samples,
   treatment = c("Vehicle", "Vehicle", "DrugA", "DrugA"),
@@ -323,7 +331,7 @@ This requires the `BPCells` package (Suggests-only, not installed by default -- 
 
 If you prefer to choose cutoffs interactively by eye at the console, use the `*Filter` variant. It shows QC plots and prompts you to enter thresholds:
 
-```r
+```{r, eval=FALSE}
 seurat_list <- CreateRNAObjectsFilter(
   data_dirs  = samples,
   mt_pattern = "^mt-",
@@ -344,7 +352,7 @@ Use this when you have a new tissue type or data modality and don't yet know rea
 
 `calldoublet()` wraps the full DoubletFinder workflow into a single call. It is invoked automatically by `CreateRNAObjects()`, but you can also run it directly on any Seurat object.
 
-```r
+```{r, eval=FALSE}
 # Run on a single object
 obj_with_doublets <- calldoublet(
   obj                = seurat_list[["Veh1"]],
@@ -378,7 +386,7 @@ The returned object carries only the original counts plus `doublet_finder` metad
 
 `MergeSeurat()` takes the filtered list and handles everything through UMAP in one call.
 
-```r
+```{r, eval=FALSE}
 integrated <- MergeSeurat(
   seurat_objects = seurat_list,
 
@@ -427,7 +435,7 @@ On completion, the working directory will contain:
 | `"CCAIntegration"` | `"integrated.cca"` | Requires `k_anchor` and `k_weight` |
 | `"JointPCAIntegration"` | `"integrated.jpca"` | Requires `k_anchor` and `k_weight` |
 
-```r
+```{r, eval=FALSE}
 # Example with RPCA
 integrated <- MergeSeurat(
   seurat_objects  = seurat_list,
@@ -442,7 +450,7 @@ integrated <- MergeSeurat(
 
 For spatial assays pass `spatial = "Visium"` or `spatial = "Xenium"`. The function will use the appropriate assay name internally and keep images in sync.
 
-```r
+```{r, eval=FALSE}
 integrated_visium <- MergeSeurat(
   seurat_objects = visium_list,
   spatial        = "Visium",
@@ -458,7 +466,7 @@ integrated_visium <- MergeSeurat(
 
 Once you have a first-pass clustering and cell-type labels, it's common to want a finer look at one or a few types (e.g. the T-cell compartment). `SubsetAndRecluster()` chains subsetting → cleanup → optional re-normalization → PCA → optional integration → UMAP → clustering, with sensible defaults for Seurat v5's split-layer conventions.
 
-```r
+```{r, eval=FALSE}
 tcell <- SubsetAndRecluster(
   integrated,
   metadata_col   = "cell_type",
@@ -480,7 +488,7 @@ Key features:
 
 You can also subset by `idents` or by an explicit cell-barcode vector:
 
-```r
+```{r, eval=FALSE}
 # By cluster id
 SubsetAndRecluster(integrated, idents = c("0", "3", "7"))
 
@@ -494,7 +502,7 @@ SubsetAndRecluster(integrated, cells = my_barcodes)
 
 `MarkerPlot()` builds an annotated dot plot from a two-column data frame of genes and their cell-type labels. Genes are automatically grouped, sorted, and labeled along the right edge of the plot. Identities are optionally clustered by correlation so similar cell types appear adjacent.
 
-```r
+```{r, eval=FALSE}
 # Define a marker panel as a data frame
 markers <- data.frame(
   Gene = c(
@@ -536,7 +544,7 @@ ggsave("markerplot_lung.pdf", p, width = 12, height = 8)
 
 **Auto-sizing for large panels.** The example above sets `label.fontsize` by hand. If you'd rather not tune it yourself — especially for panels much larger than this one — leave `label.fontsize` and `axis_text_size` at their `NULL` default and `MarkerPlot()` scales both (plus a suggested figure size) down as the gene count grows, so a 100+ gene panel doesn't collapse into overlapping labels the way a fixed font size would. Pass `save_path` to save directly at that computed size instead of a separate `ggsave()` call:
 
-```r
+```{r, eval=FALSE}
 MarkerPlot(integrated, markers, save_path = "markerplot_lung.pdf")
 ```
 
@@ -550,7 +558,7 @@ Each dropped gene is reported by a message so you always know what was excluded.
 
 **Customizing identity order.** If you have already annotated clusters and want a specific order, set the identity factor levels before calling:
 
-```r
+```{r, eval=FALSE}
 Idents(integrated) <- factor(
   integrated$cell_type,
   levels = c("AT2", "AT1", "Club", "Basal", "Endothelial", "Fibroblast")
@@ -564,7 +572,7 @@ MarkerPlot(integrated, markers, cluster = FALSE)  # disable correlation clusteri
 
 `MarkerPctPlot()` isolates the percent-positive signal (percent of cells in each cluster expressing each gene) as either a heatmap tile or a dot plot. Where `MarkerPlot` encodes avg expression + percent positive together, `MarkerPctPlot` shows only the "how many cells detect this gene" signal, which is more readable when the avg-expression scaling would compress important variation.
 
-```r
+```{r, eval=FALSE}
 MarkerPctPlot2(
   integrated, cellID,
   style        = "tile",         # or "dot"
@@ -582,7 +590,7 @@ Both `MarkerPlot` and `MarkerPctPlot` accept the same two-column `genes` data fr
 
 `AnnotateClusters()` transfers cell-type labels to each cluster using either UCell module scoring (`method = "marker"`) or SingleR reference correlation (`method = "singler"`). Cluster labels are assigned by averaging per-cell scores per cluster and picking the winner, with configurable `min_score` and `min_margin` thresholds for "Unknown" fallback.
 
-```r
+```{r, eval=FALSE}
 markers_list <- list(
   T_cell = c("CD3D", "CD3E", "CD8A", "CD4"),
   B_cell = c("MS4A1", "CD79A", "CD19"),
@@ -605,13 +613,13 @@ table(integrated$predicted_cell_type)
 
 **Tumor-friendly defaults.** In tumor samples, canonical markers get compressed toward a proliferating, EMT-mixed dedifferentiated state. Pass `tumor_mode = TRUE` to disable `filter_nonspecific` and tighten `high_relative_to_max`, and to trigger a warning that labels are approximate.
 
-```r
+```{r, eval=FALSE}
 obj <- AnnotateClusters(obj, markers = markers_list, tumor_mode = TRUE)
 ```
 
 **Visium-friendly usage.** Each Visium spot mixes multiple cell types; the winner-takes-all classifier hides minority signal. Use `return_scores = "cluster"` to inspect the full per-cluster score matrix, `min_detection_frac` to drop signatures whose markers barely register, and `filter_nonspecific = FALSE`:
 
-```r
+```{r, eval=FALSE}
 res <- AnnotateClusters(
   visium, markers = markers_list,
   filter_nonspecific  = FALSE,
@@ -630,7 +638,7 @@ Reference-based annotation with a choice of three backends. All write the predic
 
 **Default: CellTypist.** A pre-trained logistic-regression classifier with a large model zoo (immune, gut, lung, kidney, tumor, developmental, and more). No user-supplied reference needed. Requires Python via `reticulate` + `pip install celltypist`.
 
-```r
+```{r, eval=FALSE}
 integrated <- AnnotateWithReference(
   integrated,
   method          = "celltypist",
@@ -643,7 +651,7 @@ table(integrated$predicted_cell_type)
 
 **scANVI** — semi-supervised VAE reference mapping via `scvi-tools`. Best when reference and query come from different technologies or protocols. Requires a labeled reference Seurat / `.h5ad`.
 
-```r
+```{r, eval=FALSE}
 integrated <- AnnotateWithReference(
   integrated,
   method        = "scanvi",
@@ -656,7 +664,7 @@ integrated <- AnnotateWithReference(
 
 **scmap** — R-native (Bioconductor), no Python required. Two variants: `scmap-cluster` (fast, cluster-level projection) and `scmap-cell` (product-quantization nearest neighbor). Requires a labeled reference.
 
-```r
+```{r, eval=FALSE}
 integrated <- AnnotateWithReference(
   integrated,
   method        = "scmap",
@@ -676,7 +684,7 @@ Complements `AnnotateClusters()` — use CellTypist / scANVI / scmap for the coa
 
 Runs `FindAllMarkers` across a list of Seurat objects, sets `Idents()` to a common cell-type / cluster column, and returns a named list of filtered marker tables (padj + log2FC thresholds applied). Useful across a cohort of samples processed separately.
 
-```r
+```{r, eval=FALSE}
 markers_by_sample <- FindMarkersList(
   seurat_list,
   idents_col       = "cell_ontology_class",
@@ -694,7 +702,7 @@ all_markers <- do.call(rbind, markers_by_sample)
 
 `AddGenePositivity()` adds a logical metadata column for each gene, flagging cells where expression exceeds a threshold. It accepts a single Seurat object or a list and returns the same shape.
 
-```r
+```{r, eval=FALSE}
 # Single object
 integrated <- AddGenePositivity(
   seurat_objects = integrated,
@@ -710,7 +718,7 @@ head(integrated@meta.data[, c("Sftpc_pos", "Ager_pos", "Trp63_pos")])
 
 For a list of objects (e.g., before merging), the function restricts to genes present in **every** object, ensuring a consistent metadata schema:
 
-```r
+```{r, eval=FALSE}
 seurat_list <- AddGenePositivity(
   seurat_objects = seurat_list,
   genes          = c("Sftpc", "Ager", "Trp63"),
@@ -720,7 +728,7 @@ seurat_list <- AddGenePositivity(
 
 You can then use positivity columns for subsetting or as covariates:
 
-```r
+```{r, eval=FALSE}
 # Subset to AT2 cells (Sftpc-positive)
 at2 <- subset(integrated, Sftpc_pos == TRUE)
 
@@ -730,7 +738,7 @@ tapply(integrated$Sftpc_pos, Idents(integrated), mean)
 
 `PlotGenePositivity()` summarizes those columns visually — three style modes:
 
-```r
+```{r, eval=FALSE}
 # Percent-positive bar chart per cluster, one bar per gene
 PlotGenePositivity(integrated, c("Sftpc", "Ager", "Trp63"))
 
@@ -760,7 +768,7 @@ positivity in this package, so lean on `GenePositivityEstimationPlot()` below fo
 result that respects the sample structure, or run your own test on
 `gpa$proportions$prop_pos`.
 
-```r
+```{r, eval=FALSE}
 gpa <- GenePositivityAnalysis(
   integrated,
   genes         = c("Sftpc", "Ager"),
@@ -779,7 +787,7 @@ Its `proportions` output is what `GenePositivityEstimationPlot()` expects, the s
 answers "is there a difference," this answers "by how much, with what uncertainty,"
 using per-sample positivity rates.
 
-```r
+```{r, eval=FALSE}
 # One gene x cell-type combination
 GenePositivityEstimationPlot(gpa, genes = "Sftpc", group_levels = "AT2",
                              idx = c("Vehicle", "DrugA"))
@@ -842,7 +850,7 @@ assignment actually is. `call_mixture_states()` fits a Gaussian mixture model (v
 you, and every cell gets a ranked state label plus a posterior-probability
 confidence/severity score instead of a hard threshold.
 
-```r
+```{r, eval=FALSE}
 # A composite ER-stress/UPR module score, as an example of a continuous score
 # worth binning into discrete states
 integrated <- AddModuleScore(
@@ -871,7 +879,7 @@ in the lowest state — a continuous severity score, useful for ROC/AUC-style
 evaluation rather than just the hard state label. Attach the calls back onto the
 object like any other metadata:
 
-```r
+```{r, eval=FALSE}
 integrated$stress_state <- states$stress_state[match(colnames(integrated), states$id)]
 VlnPlot(integrated, features = "stress_composite", group.by = "stress_state")
 ```
@@ -880,7 +888,7 @@ Fit across every cell regardless of type by omitting `group_col`/`group_value`, 
 jointly across several scores at once by passing more than one `score_col` (fits a
 multivariate mixture instead of a 1D one):
 
-```r
+```{r, eval=FALSE}
 # No stratification -- fit on every cell regardless of cell_type
 call_mixture_states(integrated, score_col = "stress_composite")
 
@@ -897,7 +905,7 @@ as-is if your object happens to use that exact column name for cell-type labels;
 otherwise call `call_mixture_states()` directly as shown above, or create an
 `annotation_first_pass` column first:
 
-```r
+```{r, eval=FALSE}
 integrated$annotation_first_pass <- integrated$cell_type   # match call_stress_states()'s fixed column name
 res <- call_stress_states(integrated, cell_type = "AT2")
 res$calls           # data.frame: cell, stress_state, stress_prob, prob_stressed
@@ -909,7 +917,7 @@ res$calls           # data.frame: cell, stress_state, stress_prob, prob_stressed
 
 For straightforward experiments where you trust the defaults, `CreateAndIntegrateRNA()` chains loading → QC → merging → integration in a single function call.
 
-```r
+```{r, eval=FALSE}
 integrated <- CreateAndIntegrateRNA(
   data_dirs          = samples,
   mt_pattern         = "^mt-",
@@ -937,7 +945,7 @@ Three functions form a self-contained QC pipeline: `GenerateQCReport()` picks cu
 
 Produces a self-contained HTML report of per-sample QC — per-metric distributions, log-skew-aware transformation, spatial QC when applicable, doublet call summaries — plus a table of **recommended filter cutoffs** built from `median ± mad_multiplier × MAD` per (sample, metric).
 
-```r
+```{r, eval=FALSE}
 GenerateQCReport(
   sample_list,
   output_file   = "qc/qc_report.html",
@@ -953,7 +961,7 @@ Alongside the HTML, it writes a machine-readable sidecar (`qc/qc_report_cutoffs.
 
 Reads the sidecar CSV (or accepts a data frame or the HTML path directly) and subsets each Seurat object to cells that pass every metric's `[suggest_lo, suggest_hi]` range. Doublet filtering is included by default via `filter_doublets = TRUE`.
 
-```r
+```{r, eval=FALSE}
 sample_list_filtered <- ApplyQCFilters(
   sample_list,
   cutoffs         = "qc/qc_report_cutoffs.csv",
@@ -967,7 +975,7 @@ sample_list_filtered$report        # sample x metric x pct_kept
 
 Handy variants:
 
-```r
+```{r, eval=FALSE}
 # Only some metrics — leave doublet score / percent.hb alone
 ApplyQCFilters(sample_list, cutoffs = "qc/qc_report_cutoffs.csv",
                metrics = c("nCount_RNA", "nFeature_RNA", "percent.mt"))
@@ -981,13 +989,35 @@ ApplyQCFilters(sample_list, cutoffs = "qc/qc_report_cutoffs.csv",
 
 Pre/post violin overlays of QC metrics, one panel per metric, faceted by sample, with `n_before → n_after (pct%)` annotations. Confirms at a glance that the filtering did what you intended.
 
-```r
+```{r, eval=FALSE}
 QCComparePlots(
   pre     = sample_list,
   post    = sample_list_filtered$obj,
   metrics = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
   log_y   = c("nCount_RNA", "nFeature_RNA")
 )
+```
+
+### 5.4 Quick Multi-Panel QC Overview — `PlotQCMetrics()`
+
+A lighter-weight alternative to `GenerateQCReport()` for a fast look at one or more samples --
+one panel per metric, grouped along the x-axis by sample. Numeric columns (`nFeature_RNA`,
+`percent.mt`, ...) are drawn as boxplots; categorical columns (e.g. a doublet-calling column)
+are drawn as stacked proportion bars. Columns are auto-detected by default (`^nFeature`,
+`^nCount`, `percent.mt`, and a doublet-calling column, if present) -- pass `qc_cols` to plot
+specific columns instead.
+
+```{r, eval=FALSE}
+# Single object, auto-detected columns
+PlotQCMetrics(sample_list$sample1)
+
+# A list of objects -- metadata is row-bound across samples, no need to merge first
+PlotQCMetrics(sample_list, group.by = "orig.ident")
+
+# Explicit columns, custom panel layout
+PlotQCMetrics(sample_list,
+             qc_cols = c("nFeature_RNA", "nCount_RNA", "percent.mt", "doublet_finder"),
+             ncol    = 2)
 ```
 
 ---
@@ -998,7 +1028,7 @@ QCComparePlots(
 
 The statistically correct way to compare conditions across donors: aggregate per-cell counts into per-sample-per-cluster pseudobulk samples, then run DESeq2. Cell-level DE (Wilcoxon, MAST) treats each cell as independent and inflates type-I error.
 
-```r
+```{r, eval=FALSE}
 # Single cluster / cell type
 res <- PseudobulkDE(
   integrated,
@@ -1015,7 +1045,7 @@ head(res$normalized_counts)      # size-factor-normalized pseudobulk counts
 
 For multi-cluster analysis, pass `cluster_col` to loop over every cluster:
 
-```r
+```{r, eval=FALSE}
 res_all <- PseudobulkDE(
   integrated,
   sample_col    = "orig.ident",
@@ -1030,7 +1060,7 @@ de_long <- do.call(rbind, lapply(res_all, `[[`, "results"))
 
 Custom design formulas work for batch adjustment, three-level factors, and interaction models:
 
-```r
+```{r, eval=FALSE}
 res <- PseudobulkDE(
   integrated,
   sample_col    = "orig.ident",
@@ -1047,7 +1077,7 @@ Genes are filtered with `edgeR::filterByExpr` when available (recommended), with
 
 Volcano plot with auto-detection of common column-name conventions. Accepts FindMarkers-style (`avg_log2FC`, `p_val_adj`) or PseudobulkDE-style (`log2FC`, `padj`) inputs.
 
-```r
+```{r, eval=FALSE}
 PlotVolcano(res$results,
             fc_threshold = 1,     # |log2FC| threshold
             p_threshold  = 0.05,
@@ -1059,7 +1089,7 @@ PlotVolcano(res$results,
 
 Merge two DE result tables on gene and classify each as `shared_up / shared_down / opposite_sign / only_a / only_b / n.s. in both`. Includes a Fisher's exact test on the shared-vs-unique contingency and a log2FC-vs-log2FC scatter.
 
-```r
+```{r, eval=FALSE}
 res_drug    <- PseudobulkDE(obj, sample_col = "orig.ident",
                             condition_col = "treatment",
                             ident_1 = "drug", ident_2 = "vehicle")
@@ -1085,7 +1115,7 @@ head(cmp$merged)
 
 Per-sample per-cluster proportions in a tidy data frame + ggplot. Three plot styles: stacked bars per sample, boxplots per group per cluster, or line plots for time-series-style comparisons.
 
-```r
+```{r, eval=FALSE}
 comp <- CellComposition(
   integrated,
   cluster_col = "cell_type",
@@ -1101,7 +1131,7 @@ head(comp$df)                  # per-sample per-cluster proportions
 
 Statistical test for shifts in composition between conditions. Prefers `speckle::propeller` (arcsin-sqrt or logit-transformed ANOVA — the current best practice), falls back to per-cluster beta regression (`betareg`), falls back further to per-cluster Wilcoxon with BH correction.
 
-```r
+```{r, eval=FALSE}
 comp_test <- CompositionalTest(
   integrated,
   cluster_col   = "cell_type",
@@ -1129,7 +1159,7 @@ doesn't actually support. The call below emits a `warning()` to that effect; use
 `CompositionalTest()` (7.2) instead when you need a p-value that respects the number
 of biological replicates.
 
-```r
+```{r, eval=FALSE}
 comp <- CompositionAnalysis(
   integrated,
   group_col     = "cell_type",
@@ -1153,7 +1183,7 @@ complementary, not redundant. See 3.11 for how to read one of these plots (raw
 per-sample swarm on top, effect size + bootstrap CI on the bottom) and what each
 `effect` option means.
 
-```r
+```{r, eval=FALSE}
 # One cell type
 CompositionEstimationPlot(comp, group_levels = "T cell",
                           idx = c("Vehicle", "DrugA"))
@@ -1174,7 +1204,7 @@ Each row has `cluster`, per-level `mean_prop_<level>`, `effect`, `stat`, `pvalue
 
 Ligand-receptor inference via `liana::liana_wrap` + `liana::liana_aggregate`. Default runs LIANA's consensus set (Connectome, logFC, NATMI, SCA, CellPhoneDB) and aggregates their rankings — more robust than any single method.
 
-```r
+```{r, eval=FALSE}
 Idents(integrated) <- integrated$cell_type
 lr <- RunLIANA(
   integrated,
@@ -1200,7 +1230,7 @@ lr_mouse <- RunLIANA(integrated, idents_col = "cell_type",
 
 Slingshot wrapper for pseudotime inference. Fits lineage curves through the specified reduction using cluster labels as anchors, writes one metadata column per detected lineage.
 
-```r
+```{r, eval=FALSE}
 integrated <- PseudotimeWrapper(
   integrated,
   reduction     = "umap",
@@ -1222,7 +1252,7 @@ sds <- integrated@misc$slingshot
 
 Quantifies how well integration has mixed batches while preserving biological structure. Meant for pre-vs-post integration comparison.
 
-```r
+```{r, eval=FALSE}
 pre  <- BatchEffectQC(integrated, reduction = "pca",
                       batch_col    = "orig.ident",
                       celltype_col = "cell_type")
@@ -1251,7 +1281,7 @@ Per-cluster diagnostics are returned in `$per_cluster` when `celltype_col` is se
 
 Nebulosa-style weighted 2D KDE on any reduction. Much more readable than `FeaturePlot` for sparse markers or module scores.
 
-```r
+```{r, eval=FALSE}
 PlotFeatureDensity(
   integrated,
   features  = c("CD3D", "CD4", "CD8A"),
@@ -1275,7 +1305,7 @@ Uses `ks::kde` when available, falls back to `MASS::kde2d`.
 
 #### Loading
 
-```r
+```{r, eval=FALSE}
 visium_dirs <- c(
   "data/visium/sample1/outs",
   "data/visium/sample2/outs"
@@ -1289,7 +1319,7 @@ visium_list <- CreateVisiumObjects(
 
 For Visium HD samples specifically (`hd_bin_size = "002um"` can mean 500K+ bins per section), pass `on_disk = TRUE` to move each object's counts layer to an on-disk `BPCells` matrix once the samples are built -- the single highest-value spot for this in the package. See [`SingleCellTools_vignette_bpcells.md`](SingleCellTools_vignette_bpcells.md).
 
-```r
+```{r, eval=FALSE}
 visium_hd_list <- CreateVisiumObjects(
   data_dirs    = visium_hd_dirs,
   hd_bin_size  = "002um",
@@ -1301,7 +1331,7 @@ visium_hd_list <- CreateVisiumObjects(
 
 Spots at the capture-area boundary, tissue edge, and tissue tears systematically have abnormal UMI counts and should be removed before analysis. `EdgeDetectionVisium()` runs four iterations of nearest-neighbor filtering to identify these spots.
 
-```r
+```{r, eval=FALSE}
 # Run on the first sample
 edge_df <- EdgeDetectionVisium(
   coord_path = "data/visium/sample1/outs/spatial",  # folder containing tissue_positions_list.csv
@@ -1317,7 +1347,7 @@ head(edge_df[, c("barcode", "Filter", "Filter4")])
 
 Choosing which iteration to use is a judgment call — inspect the spatial distribution:
 
-```r
+```{r, eval=FALSE}
 library(Seurat)
 
 # Add the filter column to metadata
@@ -1338,7 +1368,7 @@ visium_list[["S1"]] <- subset(visium_list[["S1"]], edge_filter == "Keep")
 
 #### Integrating Visium samples
 
-```r
+```{r, eval=FALSE}
 integrated_visium <- MergeSeurat(
   seurat_objects     = visium_list,
   spatial            = "Visium",
@@ -1355,7 +1385,7 @@ integrated_visium <- MergeSeurat(
 
 ### 12.2 Xenium — `LoadXenium2()`
 
-```r
+```{r, eval=FALSE}
 xenium_list <- lapply(
   c("data/xenium/sample1", "data/xenium/sample2"),
   LoadXenium2
@@ -1374,7 +1404,7 @@ integrated_xenium <- MergeSeurat(
 
 A whole-slide Xenium run's counts matrix can be large enough on its own to be worth keeping on disk; pass `on_disk = TRUE` (same idea as `microns_lazy` above, but for the counts layer instead of the molecule table):
 
-```r
+```{r, eval=FALSE}
 xenium_obj <- LoadXenium2(
   data_dir    = "data/xenium/sample1",
   sample_name = "X1",
@@ -1390,7 +1420,7 @@ See [`SingleCellTools_vignette_bpcells.md`](SingleCellTools_vignette_bpcells.md)
 
 Parse pipeline output uses a `DGE_filtered/` folder layout. `MakeParseObj()` handles the sub-library structure and optional sample splitting.
 
-```r
+```{r, eval=FALSE}
 parse_list <- MakeParseObj(
   data_dirs    = c("data/parse/run1/DGE_filtered",
                    "data/parse/run2/DGE_filtered"),
@@ -1409,7 +1439,7 @@ Two complementary functions for finding cells near boundaries in single-cell spa
 
 `detect_fov_edges()` — flags cells near the outer edge of each FOV. Two methods:
 
-```r
+```{r, eval=FALSE}
 # Bounding-box method (default): fast, deterministic, good for roughly convex FOVs
 obj <- detect_fov_edges(obj,
                         method       = "bbox",
@@ -1429,7 +1459,7 @@ Output: an integer metadata column (`0 = interior, 1 = outer ring, 2 = next ring
 
 `detect_tissue_holes()` — flags cells bordering internal gaps / tears using a 2D occupancy grid + 4-connected flood fill.
 
-```r
+```{r, eval=FALSE}
 obj <- detect_tissue_holes2(obj,
                             bin_size     = NULL,      # auto = 2.5 * median NN dist
                             min_hole_size = 4,
@@ -1439,7 +1469,7 @@ obj <- detect_tissue_holes2(obj,
 
 **Marker-gene exclusion** — biologically meaningful gaps (e.g. liver central veins expressing Glul) can be skipped:
 
-```r
+```{r, eval=FALSE}
 obj <- detect_tissue_holes2(obj,
                             exclude_gene       = "Glul",
                             sensitivity        = 0.75,   # data-adaptive quantile
@@ -1448,7 +1478,7 @@ obj <- detect_tissue_holes2(obj,
 
 Together, these give you a clean pre-analysis filter:
 
-```r
+```{r, eval=FALSE}
 obj <- obj[, obj$edge_layer == 0 & obj$hole_layer == 0]
 ```
 
@@ -1458,7 +1488,7 @@ obj <- obj[, obj$edge_layer == 0 & obj$hole_layer == 0]
 
 Tests pairwise cell-type co-localization in space by comparing the observed frequency of each (source, target) k-NN pair against a permutation null. Optionally clusters cells into "niches" based on their neighborhood composition.
 
-```r
+```{r, eval=FALSE}
 enrich <- NeighborhoodEnrichment(
   obj,
   group.by      = "cell_type",
@@ -1476,7 +1506,7 @@ obj <- enrich$obj              # a copy of `obj` with niche labels already writt
 
 Differential co-expression across niches / regions using the Manders overlap coefficient, useful for asking whether a gene pair (e.g. a ligand-receptor pair) is co-detected more often in specific tissue zones than expected, and whether that co-detection shifts between two conditions.
 
-```r
+```{r, eval=FALSE}
 co <- NicheCoExpress(
   obj,
   genes         = c("Vegfa", "Kdr"),   # or a 2-column data.frame of specific pairs
@@ -1503,7 +1533,7 @@ size/CI panels) and what each `effect` option means. It defaults `idx` to
 `attr(co$stats, "conditions")`, so the reference/test order always matches
 `co$stats$delta`'s sign convention without you having to re-specify it.
 
-```r
+```{r, eval=FALSE}
 # One niche x pair combination
 NicheCoExpressEstimationPlot(co, niches = "N1", pairs = "Vegfa_Kdr")
 
@@ -1516,7 +1546,7 @@ plots[["N1 | Vegfa_Kdr"]]
 
 For Visium, per-spot cell-type calls are fundamentally the wrong output — each spot is 1-10 cells of mixed types. RCTD deconvolves each spot as a mixture using a reference single-cell dataset.
 
-```r
+```{r, eval=FALSE}
 visium <- RunRCTD(
   visium,
   reference    = pbmc_ref,
@@ -1538,7 +1568,7 @@ SpatialDimPlot(visium, group.by = "rctd_dominant")
 
 `rctd_dominant` gives a per-spot winner, but collapsing to that single label before looking at the cluster level throws away exactly the mixture information RCTD estimated. `SummarizeRCTDByCluster()` instead averages the full `rctd_<celltype>` proportions within each cluster and picks a best-guess label from that averaged composition, using the same margin-based logic `AnnotateClusters()` uses internally:
 
-```r
+```{r, eval=FALSE}
 res <- SummarizeRCTDByCluster(visium)
 res$labels        # named vector: cluster -> most likely cell type
 res$composition    # cluster x cell-type mean-proportion matrix
@@ -1556,7 +1586,7 @@ that selects the matching `EnsDb`/`BSgenome` annotation pair -- both optional
 be installed. Object names default to `basename(data_dirs)`; override with
 `object_names`:
 
-```r
+```{r, eval=FALSE}
 atac_list <- CreateATACObjects(
   data_dirs     = c("data/atac/sample1", "data/atac/sample2"),
   add_treatment = TRUE,
@@ -1574,7 +1604,7 @@ atac_list <- CreateATACObjects(
 
 For interactive cutoff selection on ATAC QC metrics (fragment count, TSS enrichment, nucleosome signal), use:
 
-```r
+```{r, eval=FALSE}
 atac_list <- CreateATACObjectsFilter(
   data_dirs   = c("data/atac/sample1", "data/atac/sample2"),
   interactive = TRUE,
@@ -1592,7 +1622,7 @@ dedicated [`SingleCellTools_vignette_atac.md`](SingleCellTools_vignette_atac.md)
 
 Bidirectional conversion between Seurat objects and AnnData `.h5ad` files. Useful for hand-off to Python-based tools (scanpy, scVI, cellrank, CellPhoneDB) or for reading Python-produced data back into R.
 
-```r
+```{r, eval=FALSE}
 # Export to AnnData (writes .h5ad on disk)
 ToAnnData(integrated, file = "results/pbmc.h5ad", assay = "RNA", layer = "data")
 
@@ -1606,7 +1636,7 @@ The `reader = "python"` path uses `reticulate` + `anndata` (through `basilisk` w
 
 Batch conversion of all `.h5ad` files in a directory:
 
-```r
+```{r, eval=FALSE}
 files <- list.files("data/tabula_sapiens", pattern = "\\.h5ad$",
                     full.names = TRUE)
 objs  <- lapply(files, FromAnnData)
@@ -1621,7 +1651,7 @@ names(objs) <- sub("\\.h5ad$", "", basename(files))
 
 Saves a Seurat object as `.rds` and, next to it, a `<name>_provenance.json` sidecar recording session info, package versions, `DefaultAssay`, layers per assay, reductions present, metadata column names, cell/gene counts, and — optionally — the git SHA and dirty flag of the calling script directory. Future-you (or a reviewer) can inspect the sidecar without loading the RDS.
 
-```r
+```{r, eval=FALSE}
 SaveWithProvenance(
   integrated,
   file    = "results/pbmc_annotated.rds",
@@ -1636,7 +1666,7 @@ SaveWithProvenance(
 
 One-command overview: cell/gene counts, assays, reductions, per-cluster and per-sample counts, standard QC metric summaries, and optionally top markers per cluster. Suitable for a README, a paper method section, or a hand-off document.
 
-```r
+```{r, eval=FALSE}
 s <- CellSuiteSummary(integrated,
                       cluster_col = "cell_type",
                       sample_col  = "orig.ident",
@@ -1677,7 +1707,7 @@ QC metric summaries
 
 Before merging objects from different sources, verify that gene identifiers are in the same format. Mixed symbol/Ensembl objects will silently lose most genes at merge.
 
-```r
+```{r, eval=FALSE}
 # Check a single object
 detect_gene_id_type(seurat_list[["Veh1"]])
 #> [1] "MGI symbol"   # or "HGNC symbol", "Ensembl", "RefSeq", "Entrez"
@@ -1688,7 +1718,7 @@ check_gene_ids_across_objects(seurat_list)
 
 `DetectGenes()` provides bulk detection and quality flags on a specific feature set:
 
-```r
+```{r, eval=FALSE}
 DetectGenes(integrated, genes = c("Sftpc", "Ager", "ENSMUG00000001234"))
 ```
 
@@ -1698,7 +1728,7 @@ DetectGenes(integrated, genes = c("Sftpc", "Ager", "ENSMUG00000001234"))
 
 `assign_cell_cycle_phase()` uses UCell module scoring (rather than Seurat's `CellCycleScoring`) and is therefore more robust on datasets with lower sequencing depth.
 
-```r
+```{r, eval=FALSE}
 # Requires mouse S and G2M gene lists
 # The function uses built-in gene sets from Seurat by default
 integrated <- assign_cell_cycle_phase(integrated)
@@ -1718,7 +1748,7 @@ integrated <- SCTransform(integrated, vars.to.regress = c("percent.mt", "S.Score
 
 `BuildMultipleNicheAssays()` constructs a spatial neighborhood ("niche") assay across a list of objects, then clusters niches with mini-batch k-means. This is useful for identifying recurring spatial patterns across multiple tissue sections.
 
-```r
+```{r, eval=FALSE}
 visium_list <- BuildMultipleNicheAssays(
   seurat_list     = visium_list,
   neighbors       = 6,     # spots to include in each neighborhood
@@ -1736,7 +1766,7 @@ SpatialDimPlot(visium_list[["S1"]], group.by = "niche_cluster")
 
 These functions support region-of-interest (ROI) analysis in Xenium and other spatial modalities.
 
-```r
+```{r, eval=FALSE}
 # Pull tissue coordinates across all images in an object
 coords <- get_all_coords(integrated_xenium)
 
@@ -1755,7 +1785,7 @@ roi_obj <- subset_opt(integrated_xenium, cells = cells_in_roi)
 
 `subset_opt()` is a drop-in replacement for `subset()` that keeps spatial FOVs and images synchronized with the retained cells — preventing the "stale image" errors that `subset()` can produce on Xenium and Visium objects.
 
-```r
+```{r, eval=FALSE}
 # Always prefer subset_opt() over subset() for spatial objects
 clean <- subset_opt(integrated_xenium, seurat_clusters %in% c("0", "1", "3"))
 ```
@@ -1764,7 +1794,7 @@ clean <- subset_opt(integrated_xenium, seurat_clusters %in% c("0", "1", "3"))
 
 For platforms with real per-cell segmentation boundaries — Xenium, CosMx, MERFISH; anywhere `Boundaries(obj[[image]])` includes `"segmentation"`, not just cell centroids — `PlotPolygons()` draws actual cell shapes colored by any feature, as a more flexible alternative to `Seurat::ImageFeaturePlot()`/`ImageDimPlot()`:
 
-```r
+```{r, eval=FALSE}
 # Per-vertex polygon coordinates for one FOV, joined with a metadata column
 poly <- get_polygon_coords(integrated_xenium, image = "fov1", meta_cols = "cell_type")
 
@@ -1778,7 +1808,7 @@ PlotPolygons(poly, feature = "cell_type") +
 
 Layer several differently-colored subsets into one composite (e.g. two cell types on two different color gradients) with `stack_polygons()` + `collect_legend()`:
 
-```r
+```{r, eval=FALSE}
 bg    <- PlotPolygons(poly, background = "grey90")
 tcell <- PlotPolygons(subset(poly, cell_type == "T cell"),
                       feature = "Cd3e", colors = c("white", "red"))
@@ -1801,7 +1831,7 @@ overlay + legends + patchwork::plot_layout(widths = c(1, 0.25))
 
 `get_all_children()` recursively collects all descendant GO terms for a given parent term. Useful for building gene sets from broad ontology categories.
 
-```r
+```{r, eval=FALSE}
 # Get all children of "response to oxidative stress" (GO:0006979)
 children <- get_all_children("GO:0006979")
 length(children)
@@ -1849,7 +1879,7 @@ genes_in_terms <- AnnotationDbi::select(
 
 ## 18. Session Info
 
-```r
+```{r, eval=FALSE}
 sessionInfo()
 ```
 
