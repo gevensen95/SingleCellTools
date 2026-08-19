@@ -42,7 +42,6 @@ Imports:
     ggplot2 (>= 3.4.4),
     patchwork,
     RColorBrewer,
-    ClusterR,
     irlba,
     RSpectra,
     mclust,
@@ -75,6 +74,7 @@ Imports:
     future.apply,
     parallel
 Suggests:
+    ClusterR,
     SingleR,
     SingleCellExperiment,
     zellkonverter,
