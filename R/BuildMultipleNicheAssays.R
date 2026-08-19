@@ -34,6 +34,19 @@ BuildMultipleNicheAssays <- function(
     num_init = 20,
     type = NULL
 ) {
+  # ClusterR is Suggests, not a hard dependency -- check up front (before the
+  # per-object FOV/neighbor/scaling loop below, which can take a while) so a
+  # missing install fails fast with a clear message instead of erroring deep
+  # inside the MiniBatchKmeans loop after most of the work is already done.
+  if (!requireNamespace("ClusterR", quietly = TRUE)) {
+    stop(
+      "BuildMultipleNicheAssays() requires the 'ClusterR' package for ",
+      "MiniBatchKmeans clustering. Install it with install.packages('ClusterR') ",
+      "and try again.",
+      call. = FALSE
+    )
+  }
+
   message('--- Validating FOVs across input objects ---')
   # Remove objects if the fov is not found in the images slot
   remove_indices <- c()  # initialize list of indices to remove
