@@ -11,6 +11,8 @@ export(BuildMultipleNicheAssays)
 export(CellComposition)
 export(CellSuiteSummary)
 export(CleanMolSlot)
+export(CombineCellRangerRounds)
+export(CombineParseRounds)
 export(CompareMarkers)
 export(CompositionAnalysis)
 export(CompositionBarplot)
@@ -145,6 +147,7 @@ importFrom(ggplot2,
   coord_flip,
   element_blank,
   element_text,
+  expansion,
   facet_grid,
   facet_wrap,
   geom_boxplot,
@@ -175,6 +178,7 @@ importFrom(ggplot2,
   scale_fill_gradientn,
   scale_fill_manual,
   scale_size_continuous,
+  scale_y_continuous,
   scale_y_log10,
   stat_density_2d,
   stat_summary,

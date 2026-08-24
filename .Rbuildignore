@@ -2,3 +2,9 @@
 ^\.Rproj\.user$
 ^\.positai$
 ^\.claude$
+^\.Rhistory$
+^\.DS_Store$
+^Rplots.*\.pdf$
+^omnipathr-log$
+^dev$
+^SingleCellTools_vignette_.*\.md$

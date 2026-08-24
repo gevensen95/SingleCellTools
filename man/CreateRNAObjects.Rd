@@ -17,6 +17,9 @@ CreateRNAObjects(
   doublet_normalization = c("LogNormalize", "SCT"),
   doublet_vars_to_regress = "percent.mt",
   doublet_cluster_resolution = 0.1,
+  doublet_rate = 0.075,
+  doublet_pk_sweep_max_cells = 4000,
+  doublet_sweep_cores = 1,
   filter_doublets = FALSE,
   workers = length(data_dirs),
   on_disk = FALSE,
@@ -63,6 +66,31 @@ has already been computed above; set to \code{NULL} to skip regression.}
 \item{doublet_cluster_resolution}{Passed to \code{calldoublet} as
 \code{cluster_resolution}. Default \code{0.1}.}
 
+\item{doublet_rate}{Passed to \code{calldoublet} as \code{doublet_rate} --
+the assumed doublet formation rate that sets how many doublets the
+classifier looks for. Default \code{0.075}. The same value is used for
+every sample, so if recovered cell counts differ a lot across
+\code{data_dirs} (10X's rate scales with recovery, roughly 0.8\\% per
+1,000 cells), consider calling \code{\link{calldoublet}} per sample with
+its own rate instead of relying on one figure here.}
+
+\item{doublet_pk_sweep_max_cells}{Passed to \code{calldoublet} as
+\code{pk_sweep_max_cells} -- caps how many cells are used to estimate
+each sample's pK (DoubletFinder's parameter sweep is normally the
+dominant cost of this function). Default \code{4000}; set to \code{Inf}
+to always sweep on every cell.}
+
+\item{doublet_sweep_cores}{Passed to \code{calldoublet} as
+\code{sweep_cores} -- lets \code{DoubletFinder::paramSweep} parallelize
+internally across its 6 pN values, on top of (not instead of) the
+per-sample parallelism \code{workers} already provides. Default
+\code{1} (off). Because this function already parallelizes across
+samples via \code{workers}, raising \code{doublet_sweep_cores} without
+lowering \code{workers} to match oversubscribes the CPU (\code{workers
+* doublet_sweep_cores} concurrent processes) -- this errors up front if
+that product exceeds \code{parallel::detectCores()}, the same way
+\code{workers} alone does.}
+
 \item{filter_doublets}{Logical; if TRUE, subset each object to
 \code{doublet_finder == "Singlet"} after doublet calling. Default
 \code{FALSE} so the doublet labels are preserved for downstream review.}
@@ -77,7 +105,14 @@ naming the number of cores actually available. Pass \code{workers = 1}
 to run sequentially instead. \code{workers > 1} spins up that many
 background R sessions via \code{future::plan(multisession)}, restored
 on exit. Note each worker holds its own copy of that sample's data, so
-peak memory scales with \code{workers}.}
+peak memory scales with \code{workers}. Also forces
+\code{VECLIB_MAXIMUM_THREADS}/\code{OMP_NUM_THREADS}/
+\code{OPENBLAS_NUM_THREADS}/\code{MKL_NUM_THREADS} to \code{"1"} for
+the duration (restored on exit) so each worker's own BLAS calls don't
+also try to multithread across every core -- without this,
+\code{workers} background sessions each doing multithreaded PCA/scaling
+simultaneously oversubscribe the CPU and can fully erase (or worse)
+the wall-clock benefit of running in parallel at all.}
 
 \item{on_disk}{Logical; if \code{TRUE}, move each returned object's RNA
 counts layer to an on-disk BPCells matrix via \code{\link{ConvertToBPCells}}

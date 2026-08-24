@@ -22,7 +22,7 @@
     group = rep(c("keep", "drop"), length.out = n_cells),
     row.names = cells, stringsAsFactors = FALSE
   )
-  SeuratObject::CreateSeuratObject(counts = counts, meta.data = meta)
+  SeuratObject::CreateSeuratObject(counts = methods::as(counts, "CsparseMatrix"), meta.data = meta)
 }
 
 test_that("SubsetAndRecluster requires exactly one subsetting spec", {
@@ -119,7 +119,7 @@ test_that("MergeSeurat runs end-to-end (LogNormalize + Harmony) with no disk clu
     m <- matrix(stats::rpois(n_genes * n_cells, lambda = 5), nrow = n_genes,
                dimnames = list(genes, cells))
     storage.mode(m) <- "double"
-    SeuratObject::CreateSeuratObject(counts = m)
+    SeuratObject::CreateSeuratObject(counts = methods::as(m, "CsparseMatrix"))
   }
   objs <- list(s1 = make_sample("s1"), s2 = make_sample("s2"))
 
@@ -170,7 +170,7 @@ test_that("MergeSeurat runs end-to-end (LogNormalize + Harmony) with no disk clu
   # default group_column = 'orig.ident' actually distinguishes s1 from s2
   # for BANKSY's per-sample coordinate staggering (rather than every cell
   # falling into one indistinguishable "SeuratProject" group).
-  obj <- SeuratObject::CreateSeuratObject(counts = m, assay = "Xenium", project = prefix)
+  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(m, "CsparseMatrix"), assay = "Xenium", project = prefix)
 
   coords <- data.frame(x = stats::runif(n_cells, 0, 100),
                        y = stats::runif(n_cells, 0, 100),

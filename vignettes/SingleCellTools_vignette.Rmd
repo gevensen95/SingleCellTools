@@ -308,8 +308,10 @@ seurat_list <- lapply(seurat_list, function(obj) {
 | `mt_pattern` | `"^mt-"` | Mouse pattern; use `"^MT-"` for human |
 | `treatment` | `NULL` | Vector, one value per sample |
 | `run_doublet_finder` | `TRUE` | Calls `calldoublet()` under the hood |
+| `doublet_pk_sweep_max_cells` | `4000` | Passed to `calldoublet()` as `pk_sweep_max_cells` -- caps how many cells estimate each sample's pK; set `Inf` to always sweep on every cell |
+| `doublet_sweep_cores` | `1` | Passed to `calldoublet()` as `sweep_cores` -- parallelizes DoubletFinder's pN sweep *inside* each sample, on top of `workers`. Raising this without lowering `workers` to match errors (would oversubscribe the CPU) |
 | `filter_doublets` | `FALSE` | Set `TRUE` to auto-drop doublets |
-| `workers` | `1` | Parallelize reading/doublet-calling across samples via `future.apply` |
+| `workers` | `length(data_dirs)` (one per sample) | Parallelize reading/doublet-calling across samples via `future.apply`; errors up front if it (or an explicit value) exceeds `parallel::detectCores()`. Pass `workers = 1` to run sequentially |
 | `on_disk` | `FALSE` | Move each returned object's counts layer to an on-disk `BPCells` matrix as a final step |
 
 For a GEO-scale run (dozens of samples, or samples with very large cell counts), set `on_disk = TRUE` to keep the returned list's memory footprint down once everything is built:
@@ -359,7 +361,9 @@ obj_with_doublets <- calldoublet(
   samplenameIndex    = 1,              # unused internally; kept for compatibility
   normalization      = "LogNormalize", # or "SCT"
   vars.to.regress    = "percent.mt",
-  cluster_resolution = 0.1
+  cluster_resolution = 0.1,
+  pk_sweep_max_cells = 4000,           # estimate pK from <=4000 cells instead of every cell
+  sweep_cores        = 1               # DoubletFinder's own num.cores, for its 6-value pN sweep
 )
 
 # Check the result
@@ -372,13 +376,18 @@ table(obj_with_doublets$doublet_finder)
 
 1. Normalize → PCA
 2. Auto-detect significant PCs using the cumulative variance method (>90% variance or elbow)
-3. UMAP + clustering at `cluster_resolution`
-4. pK parameter sweep (no ground truth) — picks the pK at maximum BCmvn
+3. `FindNeighbors()` + `FindClusters()` at `cluster_resolution` (no UMAP is computed -- nothing downstream needs an embedding, only the PCA space and cluster labels)
+4. pK parameter sweep (no ground truth) via `DoubletFinder::paramSweep()` — picks the pK at maximum BCmvn. This reruns normalize/PCA from scratch for each of 6 fixed pN values and is normally the dominant cost of this function; see below for the two knobs that address that.
 5. Estimate homotypic doublet proportion from cluster sizes
 6. Run `doubletFinder()`
-7. **Clean up** — strips normalized layers, SCT assay, PCA, and UMAP reductions from the returned object to keep it lightweight
+7. **Clean up** — strips normalized layers, SCT assay, and the PCA reduction from the returned object to keep it lightweight
 
 The returned object carries only the original counts plus `doublet_finder` metadata, ready to be merged.
+
+**Speeding up the pK sweep.** Step 4 rebuilds a real+artificial-doublet matrix and reprocesses it from scratch for each of DoubletFinder's 6 fixed pN values, and that cost scales worse than linearly with cell count -- on a several-thousand-cell sample it can dwarf everything else `calldoublet()` does. Two independent knobs address this, and can be combined:
+
+- `pk_sweep_max_cells` (default `4000`): when a sample has more cells than this, pK is estimated from a random subsample of that size instead of every cell. The subsample is sliced from the object *after* normalization/scaling/PCA (no recomputation), so this is cheap. Homotypic proportion, `nExp`, and the final doublet classification still use every cell -- only the pK estimate itself is affected, trading a small amount of precision there for speed. Set to `Inf` to disable and always sweep on the full object.
+- `sweep_cores` (default `1`): forwarded to `DoubletFinder::paramSweep()`'s own `num.cores`, parallelizing its 6 pN passes internally (fork-based -- Mac/Linux only). No accuracy cost, since it's the same computation just done concurrently. If you're calling `calldoublet()` via `CreateRNAObjects(workers = ...)`, raising `sweep_cores`/`doublet_sweep_cores` without lowering `workers` to compensate oversubscribes the CPU (`workers * sweep_cores` concurrent processes) -- `CreateRNAObjects()` errors up front if that product exceeds the machine's core count.
 
 ---
 
@@ -1430,6 +1439,52 @@ parse_list <- MakeParseObj(
 ```
 
 The returned list is a standard list of Seurat objects that can be passed directly to `MergeSeurat()`.
+
+#### Combining resequencing rounds — `CombineParseRounds()` / `CombineCellRangerRounds()`
+
+If the same libraries were sequenced more than once (e.g. a shallow round followed by a deeper top-up round), combine the two rounds *before* building Seurat objects, so per-cell counts reflect the full sequencing depth rather than picking one round. Both functions union genes and cells across the two rounds, sum counts for barcodes present in both, zero-fill barcodes/genes seen in only one round, and write a combined output per sample in the same on-disk layout `MakeParseObj()`/`CreateRNAObjects()` already expect -- so the rest of the workflow above is unchanged from that point on.
+
+```{r, eval=FALSE}
+# Parse Biosciences: two DGE_filtered/ rounds per sample
+combined <- CombineParseRounds(
+  round1_paths = c("data/parse/run1/DGE_filtered/sample1",
+                   "data/parse/run1/DGE_filtered/sample2"),
+  round2_paths = c("data/parse/run2/DGE_filtered/sample1",
+                   "data/parse/run2/DGE_filtered/sample2"),
+  sample_names = c("sample1", "sample2"),
+  output_dir   = "data/parse/combined"
+)
+
+# Then read the combined output as usual
+parse_list <- MakeParseObj(
+  data_dirs = file.path("data/parse/combined", c("sample1", "sample2"), "DGE_filtered")
+)
+```
+
+```{r, eval=FALSE}
+# CellRanger: two filtered_feature_bc_matrix/ rounds per sample
+combined <- CombineCellRangerRounds(
+  round1_paths = c("data/cellranger/run1/sample1/outs/filtered_feature_bc_matrix",
+                   "data/cellranger/run1/sample2/outs/filtered_feature_bc_matrix"),
+  round2_paths = c("data/cellranger/run2/sample1/outs/filtered_feature_bc_matrix",
+                   "data/cellranger/run2/sample2/outs/filtered_feature_bc_matrix"),
+  sample_names = c("sample1", "sample2"),
+  output_dir   = "data/cellranger/combined"
+)
+
+# Then read the combined output with CreateRNAObjects() as usual
+seurat_list <- CreateRNAObjects(
+  data_dirs = file.path("data/cellranger/combined", c("sample1", "sample2"),
+                        "filtered_feature_bc_matrix")
+)
+```
+
+**Two things worth knowing before using the CellRanger version:**
+
+- By default (`strip_barcode_suffix = TRUE`) the GEM-well suffix (e.g. `-1`) is stripped from barcodes before matching across rounds, since two independent CellRanger runs of the same physical library will typically both emit `-1` regardless of round -- without stripping, no barcodes would ever match as "shared." This errors instead of silently merging if stripping would create a duplicate barcode within one round.
+- The combined gene key is the matrix rowname -- gene *symbol* by default, not Ensembl ID -- because the reader reuses this package's existing 10x triplet reader, which doesn't override `Seurat::ReadMtx()`'s default `feature.column = 2`. `CombineParseRounds()` doesn't have this limitation; it keys on `all_genes.csv`'s `gene_id` column when present.
+
+Both functions accept `metadata_conflict = "warn"` (default) or `"error"` for what to do when a shared barcode's non-count metadata disagrees between rounds (round 1's value wins either way) -- and both return, per sample, a one-row `summary` data frame (cells/genes per round, shared vs. round-only counts) alongside the combined data, worth a glance before trusting the merge.
 
 ---
 

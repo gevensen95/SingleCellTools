@@ -9,7 +9,10 @@ calldoublet(
   samplenameIndex,
   normalization = c("LogNormalize", "SCT"),
   vars.to.regress = NULL,
-  cluster_resolution = 0.1
+  cluster_resolution = 0.1,
+  doublet_rate = 0.075,
+  pk_sweep_max_cells = 4000,
+  sweep_cores = 1
 )
 }
 \arguments{
@@ -30,6 +33,54 @@ out during normalization (passed to either \code{SCTransform} or
 
 \item{cluster_resolution}{Resolution passed to \code{FindClusters}.
 Default \code{0.1}.}
+
+\item{doublet_rate}{Assumed doublet \emph{formation} rate for this library
+-- the fraction of barcodes expected to be multiplets given how many
+cells were loaded. Default \code{0.075} (the value DoubletFinder's own
+vignette uses). This sets \code{nExp}, the number of doublets the
+classifier is told to find, via
+\code{round(doublet_rate * ncol(obj) * (1 - homotypic_proportion))}.
+
+For 10X Chromium the rate scales roughly linearly with recovered cells
+(about 0.8\\% per 1,000 cells recovered), so a run recovering ~5,000
+cells is nearer \code{0.04} and one recovering ~10,000 nearer
+\code{0.08}; consult the loading table for your chemistry rather than
+accepting the default if your recoveries vary a lot between samples.
+
+Note this is deliberately \emph{not} \code{pK}. \code{pK} is the
+neighborhood size the pANN statistic is computed over -- it is chosen
+from the data by \code{find.pK()} and says nothing about how many
+doublets the run actually produced. Earlier versions of this function
+used \code{optimal.pk} here, which made each sample's assumed doublet
+rate an artifact of where its BCmvn curve happened to peak: across one
+8-sample experiment that produced called-doublet rates ranging from
+0.4\\% to 18.4\\%, rank-ordered by pK rather than by anything biological.
+Objects created before this change carry doublet calls made that way
+and should be re-run.}
+
+\item{pk_sweep_max_cells}{Maximum number of cells used to estimate pK via
+\code{DoubletFinder::paramSweep}. \code{paramSweep} reprocesses a fresh
+real+artificial-doublet matrix from scratch for each of its 6 fixed pN
+values, which is normally the dominant cost of this function -- that
+cost scales worse than linearly with cell count. When the object has
+more than \code{pk_sweep_max_cells} cells, pK is estimated from a
+random subsample of that size (subset from the already-normalized/
+scaled/PCA'd object, so no preprocessing is redone); homotypic
+proportion, \code{nExp}, and the final doublet classification all still
+use every cell in \code{obj}. This trades a small amount of pK-estimate
+precision for speed -- set to \code{Inf} (or higher than your largest
+sample) to disable and always sweep on the full object. Default
+\code{4000}.}
+
+\item{sweep_cores}{Number of cores \code{DoubletFinder::paramSweep} uses
+internally to parallelize across its 6 pN values (its own
+\code{num.cores} argument, fork-based -- Mac/Linux only). Default
+\code{1} (sequential). If \code{calldoublet} is itself being called
+from several \code{workers} in parallel (e.g. via
+\code{CreateRNAObjects}'s \code{workers} argument), raising this without
+lowering the outer worker count oversubscribes the CPU (\code{workers *
+sweep_cores} concurrent processes) and can make things slower, not
+faster.}
 }
 \value{
 The input Seurat object with a \code{doublet_finder} metadata

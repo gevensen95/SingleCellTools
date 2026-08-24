@@ -181,7 +181,7 @@ test_that("detect_gene_id_type recognizes Ensembl human gene IDs", {
   genes <- sprintf("ENSG%011d", seq_len(10))
   m <- matrix(stats::rpois(10 * 5, 3), nrow = 10, dimnames = list(genes, paste0("c", 1:5)))
   storage.mode(m) <- "double"
-  obj <- SeuratObject::CreateSeuratObject(counts = m)
+  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(m, "CsparseMatrix"))
   res <- detect_gene_id_type(obj, verbose = FALSE)
   expect_equal(res$guess, "ensembl")
 })
@@ -191,7 +191,7 @@ test_that("detect_gene_id_type recognizes Entrez ids", {
   genes <- as.character(1000:1009)
   m <- matrix(stats::rpois(10 * 5, 3), nrow = 10, dimnames = list(genes, paste0("c", 1:5)))
   storage.mode(m) <- "double"
-  obj <- SeuratObject::CreateSeuratObject(counts = m)
+  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(m, "CsparseMatrix"))
   res <- detect_gene_id_type(obj, verbose = FALSE)
   expect_equal(res$guess, "entrez")
 })
@@ -208,7 +208,7 @@ test_that("check_gene_ids_across_objects summarizes multiple objects with mismat
   genes_ens <- sprintf("ENSG%011d", seq_len(10))
   m <- matrix(stats::rpois(10 * 5, 3), nrow = 10, dimnames = list(genes_ens, paste0("c", 1:5)))
   storage.mode(m) <- "double"
-  obj_ens <- SeuratObject::CreateSeuratObject(counts = m)
+  obj_ens <- SeuratObject::CreateSeuratObject(counts = methods::as(m, "CsparseMatrix"))
 
   res <- check_gene_ids_across_objects(list(rna = obj_sym, ref = obj_ens), verbose = FALSE)
   expect_equal(nrow(res$summary), 2)
@@ -247,7 +247,7 @@ test_that("check_duplicate_genes reports duplicated rownames when present", {
   # constructor here. Skip gracefully rather than erroring the test suite;
   # check_duplicate_genes() is still useful for objects that pick up
   # duplicates via other paths (merges, subsets, hand-built assays).
-  obj <- tryCatch(SeuratObject::CreateSeuratObject(counts = m),
+  obj <- tryCatch(SeuratObject::CreateSeuratObject(counts = methods::as(m, "CsparseMatrix")),
                  error = function(e) NULL)
   testthat::skip_if(
     is.null(obj) || !any(duplicated(rownames(obj[["RNA"]]))),

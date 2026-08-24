@@ -79,9 +79,24 @@ PlotFeatureDensity <- function(obj,
   })
   names(expr_list) <- features
 
-  # Compute density per feature
+  # Compute density per feature on the FULL grid (min_density = 0). The
+  # low-density rows are dropped per panel below, and separately after the
+  # joint product -- never before it. Thresholding first is what broke the
+  # joint panel: each feature keeps a different subset of grid points, so
+  # the density vectors have different lengths, and multiplying them made R
+  # recycle -- pairing feature A's density at one grid point with feature
+  # B's at an unrelated one, and emitting "longer object length is not a
+  # multiple of shorter object length". The panel rendered, it was just wrong.
+  dens_full <- lapply(features, function(f) {
+    .weighted_kde(emb, weight = expr_list[[f]], n_grid = n_grid,
+                  min_density = 0)
+  })
+  names(dens_full) <- features
+
+  .trim <- function(d) d[d$density > 0.02, , drop = FALSE]
+
   dens_list <- lapply(features, function(f) {
-    d <- .weighted_kde(emb, weight = expr_list[[f]], n_grid = n_grid)
+    d <- .trim(dens_full[[f]])
     d$feature <- f
     d
   })
@@ -89,13 +104,32 @@ PlotFeatureDensity <- function(obj,
 
   # Joint panel: product of per-feature densities, re-normalized
   if (isTRUE(joint) && length(features) >= 2L) {
-    joint_grid <- dens_list[[1]][, c("x", "y")]
-    joint_grid$density <- Reduce(`*`, lapply(dens_list, `[[`, "density"))
-    if (max(joint_grid$density) > 0) {
-      joint_grid$density <- joint_grid$density / max(joint_grid$density)
+    # Every feature is evaluated on the same lattice (same embedding, same
+    # x/y range, same gridsize), so the untrimmed grids line up row for row.
+    # Verify rather than assume: .weighted_kde() short-circuits to a 0-row
+    # frame for a feature that is zero everywhere, and multiplying through
+    # that would silently drop the joint panel's meaning.
+    ref <- dens_full[[1]]
+    aligned <- nrow(ref) > 0 && all(vapply(dens_full, function(d) {
+      nrow(d) == nrow(ref) &&
+        isTRUE(all.equal(d$x, ref$x)) && isTRUE(all.equal(d$y, ref$y))
+    }, logical(1)))
+
+    if (!aligned) {
+      warning("Skipping the joint density panel: the per-feature density ",
+              "grids don't align (usually because one requested feature is ",
+              "zero in every cell). The individual panels are unaffected.",
+              call. = FALSE)
+    } else {
+      joint_grid <- ref[, c("x", "y")]
+      joint_grid$density <- Reduce(`*`, lapply(dens_full, `[[`, "density"))
+      if (max(joint_grid$density) > 0) {
+        joint_grid$density <- joint_grid$density / max(joint_grid$density)
+      }
+      joint_grid <- .trim(joint_grid)
+      joint_grid$feature <- paste(features, collapse = " + ")
+      dens_df <- rbind(dens_df, joint_grid)
     }
-    joint_grid$feature <- paste(features, collapse = " + ")
-    dens_df <- rbind(dens_df, joint_grid)
   }
 
   # Fix facet ordering
@@ -145,7 +179,7 @@ PlotFeatureDensity <- function(obj,
 # ============================================================================
 #' @keywords internal
 #' @noRd
-.weighted_kde <- function(emb, weight, n_grid = 200) {
+.weighted_kde <- function(emb, weight, n_grid = 200, min_density = 0.02) {
   weight <- pmax(weight, 0)
   # If all zero (unexpressed feature), return an empty grid.
   if (sum(weight) == 0) {
@@ -182,7 +216,12 @@ PlotFeatureDensity <- function(obj,
   if (max(grid$density) > 0) {
     grid$density <- grid$density / max(grid$density)
   }
-  # Drop cells below a small threshold for lighter rendering
-  grid <- grid[grid$density > 0.02, , drop = FALSE]
+  # Drop cells below a small threshold for lighter rendering. Callers that
+  # need to combine grids across features MUST pass min_density = 0 and
+  # trim afterwards -- trimming here first leaves each feature with a
+  # different subset of grid points, so the grids no longer align.
+  if (min_density > 0) {
+    grid <- grid[grid$density > min_density, , drop = FALSE]
+  }
   grid
 }

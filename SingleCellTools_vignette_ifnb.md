@@ -171,6 +171,13 @@ it lightweight.
 > Running it on a pre-split object that already has cell-type labels is still valid — it
 > finds technical doublets within the sample.
 
+> **Speed:** most of that per-sample time is DoubletFinder's pK parameter sweep, which
+> reprocesses a real+artificial-doublet matrix from scratch for each of 6 fixed pN values.
+> `pk_sweep_max_cells` (default `4000`) estimates pK from a random subsample instead of
+> every cell, and `sweep_cores` parallelizes the 6 pN passes internally — see
+> [Section 3.3 of the main vignette](SingleCellTools_vignette.html#33-doublet-detection--calldoublet)
+> for the tradeoffs. Both are shown below.
+
 ```r
 # Run calldoublet() on every sample
 # This may take a few minutes per sample
@@ -183,7 +190,9 @@ sample_list <- setNames(
       samplenameIndex    = i,
       normalization      = "LogNormalize",
       vars.to.regress    = "percent.mt",
-      cluster_resolution = 0.1
+      cluster_resolution = 0.1,
+      pk_sweep_max_cells = 4000,
+      sweep_cores        = 1
     )
   }),
   names(sample_list)
