@@ -41,6 +41,54 @@ test_that("ApplyQCFilters return_report = TRUE includes obj/report/cutoffs", {
   expect_true("pct_kept" %in% colnames(out$report))
 })
 
+test_that("ApplyQCFilters skips a metric whose suggest_lo == suggest_hi", {
+  # Regression: a degenerate [lo, hi] kept only cells whose value was
+  # exactly that number. It shows up when a metric is constant across a
+  # sample -- so the samples needing filtering least got gutted.
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 60)
+  obj$flat_metric <- 5                      # constant -> lo == hi
+  cutoffs <- data.frame(
+    sample     = c("S1", "S1"),
+    metric     = c("flat_metric", "nCount_RNA"),
+    suggest_lo = c(5, 0),
+    suggest_hi = c(5, 1e6),
+    stringsAsFactors = FALSE
+  )
+  out <- ApplyQCFilters(obj, cutoffs = cutoffs, single_sample_name = "S1",
+                        filter_doublets = FALSE, verbose = FALSE,
+                        return_report = TRUE)
+  # Degenerate metric contributed nothing; the wide-open one kept everything.
+  expect_equal(ncol(out$obj), ncol(obj))
+  expect_false("flat_metric" %in% out$report$metric)
+  expect_true("nCount_RNA" %in% out$report$metric)
+})
+
+test_that("ApplyQCFilters skips metrics with missing or inverted cutoffs", {
+  # An NA bound used to poison the mask: `v >= NA` is NA, so `keep` carried
+  # NAs, sum(keep) was NA, and cells[keep] produced NA cell names.
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 60)
+
+  na_cut <- data.frame(sample = "S1", metric = "nCount_RNA",
+                       suggest_lo = NA_real_, suggest_hi = 1e6,
+                       stringsAsFactors = FALSE)
+  out_na <- ApplyQCFilters(obj, cutoffs = na_cut, single_sample_name = "S1",
+                           filter_doublets = FALSE, verbose = FALSE)
+  expect_equal(ncol(out_na), ncol(obj))
+
+  # Inverted bounds would keep zero cells; skip, but warn -- the table is wrong.
+  inv_cut <- data.frame(sample = "S1", metric = "nCount_RNA",
+                        suggest_lo = 1e6, suggest_hi = 0,
+                        stringsAsFactors = FALSE)
+  expect_warning(
+    out_inv <- ApplyQCFilters(obj, cutoffs = inv_cut, single_sample_name = "S1",
+                              filter_doublets = FALSE, verbose = FALSE),
+    "inverted"
+  )
+  expect_equal(ncol(out_inv), ncol(obj))
+})
+
 test_that("ApplyQCFilters works with a named list of Seurat objects", {
   .skip_if_missing("Seurat", "SeuratObject")
   obj1 <- .make_small_seurat(seed = 1, n_cells = 40)

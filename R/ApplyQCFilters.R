@@ -13,6 +13,17 @@
 #' are ignored during filtering but pass through in \code{$cutoffs} when
 #' \code{return_report = TRUE}.
 #'
+#' A cutoff row is only applied when it describes a usable interval. If a
+#' given (sample, metric) pair has \code{suggest_lo == suggest_hi}, either
+#' bound missing, or \code{suggest_lo > suggest_hi}, that metric is skipped
+#' \emph{for that sample} and the remaining metrics still apply. The
+#' \code{lo == hi} case arises when a metric is constant or near-constant
+#' across a sample, which makes the suggested quantiles coincide -- applying
+#' it literally would keep only the cells matching that exact value.
+#' Skipped metrics are reported via \code{verbose} messages (an inverted
+#' \code{lo > hi} pair warns instead, since it means the cutoffs table is
+#' malformed) and do not appear as rows in \code{$report}.
+#'
 #' @param obj A Seurat object, or a named list of Seurat objects. When a
 #'   list, the names are matched against the \code{sample} column of the
 #'   cutoffs table.
@@ -328,6 +339,45 @@ ApplyQCFilters <- function(obj,
       }
       next
     }
+    # A cutoff pair only defines a usable interval when both ends are
+    # present and lo is genuinely below hi. Every degenerate case below
+    # skips the metric for THIS sample rather than applying it:
+    #
+    #  * lo == hi collapses [lo, hi] to a single point, so `v >= lo & v <= hi`
+    #    keeps only cells whose value is exactly that number -- typically a
+    #    handful out of thousands, or none. It happens whenever a metric is
+    #    constant (or near-constant) across a sample, which makes the
+    #    suggested quantiles coincide -- so the samples that need filtering
+    #    least were the ones getting wiped out.
+    #  * An NA end is worse than useless: `v >= NA` is NA, so `passes` carries
+    #    NAs into `keep`, `sum(keep)` becomes NA, and `cells[keep]` yields NA
+    #    cell names that then go to subset().
+    #  * lo > hi is an inverted (malformed) row that would keep zero cells.
+    #    That one warns rather than just messaging, since it means the
+    #    cutoffs table itself is wrong and worth looking at.
+    if (is.na(lo) || is.na(hi)) {
+      if (verbose) {
+        message(sprintf(
+          "  [%s] metric '%s' has a missing cutoff (lo=%s, hi=%s); not filtering on it.",
+          sample_name, mkey, format(lo), format(hi)))
+      }
+      next
+    }
+    if (lo > hi) {
+      warning(sprintf(
+        "%s: cutoffs for '%s' are inverted (lo=%s > hi=%s); not filtering on it. Check the cutoffs table.",
+        sample_name, mkey, format(lo), format(hi)), call. = FALSE)
+      next
+    }
+    if (lo == hi) {
+      if (verbose) {
+        message(sprintf(
+          "  [%s] metric '%s' has lo == hi (%s); not filtering on it.",
+          sample_name, mkey, format(lo)))
+      }
+      next
+    }
+
     v <- so@meta.data[[mkey]]
     passes <- !is.na(v) & v >= lo & v <= hi
     keep <- keep & passes

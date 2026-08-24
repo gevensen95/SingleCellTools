@@ -92,6 +92,17 @@ The sidecar CSV is expected to have columns:
 Any other columns (\code{median}, \code{mad}, \code{pct_pass}, ...)
 are ignored during filtering but pass through in \code{$cutoffs} when
 \code{return_report = TRUE}.
+
+A cutoff row is only applied when it describes a usable interval. If a
+given (sample, metric) pair has \code{suggest_lo == suggest_hi}, either
+bound missing, or \code{suggest_lo > suggest_hi}, that metric is skipped
+\emph{for that sample} and the remaining metrics still apply. The
+\code{lo == hi} case arises when a metric is constant or near-constant
+across a sample, which makes the suggested quantiles coincide -- applying
+it literally would keep only the cells matching that exact value.
+Skipped metrics are reported via \code{verbose} messages (an inverted
+\code{lo > hi} pair warns instead, since it means the cutoffs table is
+malformed) and do not appear as rows in \code{$report}.
 }
 \examples{
 \dontrun{
