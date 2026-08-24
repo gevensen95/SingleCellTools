@@ -77,7 +77,7 @@
   counts <- round(expr * 10)
   storage.mode(counts) <- "double"
 
-  obj <- SeuratObject::CreateSeuratObject(counts = counts, meta.data = meta)
+  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(counts, "CsparseMatrix"), meta.data = meta)
   SeuratObject::LayerData(obj, assay = "RNA", layer = "data") <- expr
   obj
 }

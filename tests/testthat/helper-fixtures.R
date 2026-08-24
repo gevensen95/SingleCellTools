@@ -29,6 +29,12 @@
     dimnames = list(genes, cells)
   )
   storage.mode(counts) <- "double"
+  # Build the assay from a sparse matrix. CreateSeuratObject() coerces a
+  # dense matrix to dgCMatrix anyway, but warns ("Data is of class matrix.
+  # Coercing to dgCMatrix.") every single time -- which, since nearly every
+  # test in the suite builds a fixture, buried the real warnings under ~20
+  # identical ones per run.
+  counts <- methods::as(counts, "CsparseMatrix")
 
   samples  <- paste0("S", seq_len(n_samples))
   sample_v <- sample(samples, n_cells, replace = TRUE)

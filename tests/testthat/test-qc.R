@@ -237,6 +237,31 @@ test_that("QCComparePlots works with named lists of Seurat objects", {
   expect_s3_class(p, "ggplot")
 })
 
+test_that("QCComparePlots tolerates per-sample metadata column names (e.g. pANN_*)", {
+  # Regression: DoubletFinder names its pANN column
+  # "pANN_<pN>_<pK>_<nExp>", and pK/nExp are fit per sample -- so a list of
+  # objects has matching column COUNTS but one differently-named column
+  # each. That made rbind.data.frame() fail with "names do not match
+  # previous names", which named neither the column nor the sample.
+  .skip_if_missing("Seurat", "SeuratObject")
+  mk <- function(seed, pk, nexp) {
+    o <- .make_small_seurat(seed = seed, n_cells = 30)
+    o@meta.data[[sprintf("pANN_0.25_%s_%d", pk, nexp)]] <-
+      stats::runif(ncol(o))
+    o
+  }
+  pre1 <- mk(1, 0.005, 22);  pre2 <- mk(2, 0.24, 1069)
+  post1 <- subset(pre1, cells = colnames(pre1)[1:20])
+  post2 <- subset(pre2, cells = colnames(pre2)[1:20])
+
+  expect_warning(
+    p <- QCComparePlots(list(a = pre1, b = pre2), list(a = post1, b = post2),
+                        metrics = "nCount_RNA"),
+    "not present in every"
+  )
+  expect_s3_class(p, "ggplot")
+})
+
 test_that("QCComparePlots errors when no standard metrics are present and none requested", {
   .skip_if_missing("Seurat", "SeuratObject")
   pre  <- .make_small_seurat(seed = 1, n_cells = 20)
@@ -270,25 +295,82 @@ test_that("calldoublet runs the full pipeline and adds doublet_finder, stripping
   .skip_if_missing("Seurat", "SeuratObject", "DoubletFinder")
   testthat::skip_on_cran()
   set.seed(1)
-  n_genes <- 150; n_cells <- 300
-  m <- matrix(stats::rpois(n_genes * n_cells, lambda = 3), nrow = n_genes,
-             dimnames = list(paste0("Gene", seq_len(n_genes)), paste0("c", seq_len(n_cells))))
+  # Three cell populations, each with its own 30-gene marker module, plus
+  # per-cell library size factors. Both parts are load-bearing:
+  #
+  #  * Structure (vs flat Poisson noise) is needed at all, or the PC stdev
+  #    curve is flat, calldoublet()'s PC-selection heuristics find nothing,
+  #    and the whole test skips -- which is how it behaved originally,
+  #    meaning none of the assertions below had ever actually run.
+  #
+  #  * But the separation must stay MODERATE (4x enrichment over background,
+  #    not 30x) and cells must vary in depth. With sharply separated,
+  #    equal-depth populations, paramSweep()'s large-pK grid points give
+  #    every real cell an identical fraction of artificial-doublet
+  #    neighbours -- pANN becomes constant, its kernel density estimate has
+  #    zero bandwidth, and summarizeSweep() dies inside KernSmooth::bkde()
+  #    with "missing value where TRUE/FALSE needed". These values were
+  #    checked against all 159 (pN, pK) grid points paramSweep visits here;
+  #    a 30x-enrichment version degenerated at 8 of them.
+  n_genes <- 200; n_cells <- 300; n_grp <- 3
+  grp    <- rep(seq_len(n_grp), length.out = n_cells)
+  size   <- stats::rlnorm(n_cells, 0, 0.35)
+  lambda <- matrix(1, nrow = n_genes, ncol = n_cells)
+  for (g in seq_len(n_grp)) {
+    lambda[((g - 1) * 30 + 1):(g * 30), grp == g] <- 4
+  }
+  lambda <- sweep(lambda, 2, size, "*")
+  m <- matrix(stats::rpois(n_genes * n_cells, lambda), nrow = n_genes,
+              dimnames = list(paste0("Gene", seq_len(n_genes)),
+                              paste0("c", seq_len(n_cells))))
   storage.mode(m) <- "double"
-  obj <- SeuratObject::CreateSeuratObject(counts = m)
+  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(m, "CsparseMatrix"))
 
   out <- tryCatch(
     suppressWarnings(suppressMessages(calldoublet(obj))),
     error = function(e) e
   )
-  skip_if(inherits(out, "error"),
-         paste("calldoublet pipeline did not complete on this synthetic",
-               "dataset (likely a PC-selection heuristic edge case):",
-               if (inherits(out, "error")) conditionMessage(out) else ""))
+  # Skip ONLY on the PC-selection edge case, and fail on anything else. A
+  # blanket skip_if(inherits(out, "error")) turns every real regression in
+  # this function into a silent green run.
+  if (inherits(out, "error")) {
+    skip_if(grepl("significant PCs", conditionMessage(out)),
+            paste("PC-selection heuristic found nothing on this fixture:",
+                  conditionMessage(out)))
+    stop(out)
+  }
 
   expect_true("doublet_finder" %in% colnames(out@meta.data))
   expect_true(all(out$doublet_finder %in% c("Doublet", "Singlet")))
   expect_length(SeuratObject::Reductions(out), 0)
-  expect_false("data" %in% SeuratObject::Layers(out[["RNA"]]))
+
+  # Assert on the WHOLE layer set, not just absence of "data". The old
+  # `obj[["RNA"]][["data"]] <- NULL` deletion was a silent no-op on Assay5,
+  # and a narrow expect_false() would still miss a stray scale.data or a v5
+  # split variant (data.1, scale.data.2, ...).
+  expect_equal(SeuratObject::Layers(out[["RNA"]]), "counts")
+
+  # Both DoubletFinder columns must be renamed to stable names. Any surviving
+  # run-parameterized name (pANN_<pN>_<pK>_<nExp>, DF.classifications_...)
+  # differs per sample and breaks every downstream function that stacks
+  # metadata across a sample list.
+  expect_true("doublet_pANN" %in% colnames(out@meta.data))
+  expect_length(grep("^pANN_", colnames(out@meta.data)), 0)
+  expect_length(grep("^DF\\.classifications", colnames(out@meta.data)), 0)
+
+  # nExp must come from doublet_rate, not from the fitted pK. With the
+  # default 0.075 and homotypic adjustment, the called rate should land in a
+  # plausible band -- not the 0.4%-18% spread that keying nExp to pK produced.
+  expect_lt(mean(out$doublet_finder == "Doublet"), 0.15)
+})
+
+test_that("calldoublet rejects an implausible doublet_rate before doing any work", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_cells = 20)
+  expect_error(calldoublet(obj, doublet_rate = 1.5), "must be a single number")
+  expect_error(calldoublet(obj, doublet_rate = -0.1), "must be a single number")
+  expect_error(calldoublet(obj, doublet_rate = c(0.05, 0.1)), "must be a single number")
+  expect_error(calldoublet(obj, doublet_rate = NA), "must be a single number")
 })
 
 

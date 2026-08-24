@@ -877,7 +877,7 @@ test_that("SubsetSpatial works on FOV-based (Xenium/CosMx-style) objects too", {
   counts <- matrix(1, nrow = length(genes), ncol = length(all_ids),
                    dimnames = list(genes, all_ids))
   storage.mode(counts) <- "double"
-  obj <- SeuratObject::CreateSeuratObject(counts = counts, assay = "RNA")
+  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(counts, "CsparseMatrix"), assay = "RNA")
 
   for (f in fov_names) {
     ids <- paste0(f, "_c", seq_len(cells_per_fov))

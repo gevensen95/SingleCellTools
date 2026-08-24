@@ -191,7 +191,7 @@ test_that("CellSuiteSummary with top_markers > 0 runs FindAllMarkers without err
     stringsAsFactors = FALSE
   )
 
-  obj <- SeuratObject::CreateSeuratObject(counts = counts, meta.data = meta)
+  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(counts, "CsparseMatrix"), meta.data = meta)
   SeuratObject::LayerData(obj, assay = "RNA", layer = "data") <- log1p(counts)
   obj
 }
@@ -232,7 +232,7 @@ test_that("CellSuiteSummary with top_markers > 0 runs FindAllMarkers without err
 
   meta <- data.frame(sample = sample_v, zone = zone_v,
                      row.names = all_ids, stringsAsFactors = FALSE)
-  obj <- SeuratObject::CreateSeuratObject(counts = counts, meta.data = meta)
+  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(counts, "CsparseMatrix"), meta.data = meta)
   SeuratObject::LayerData(obj, assay = "RNA", layer = "data") <- log1p(counts)
   obj
 }
@@ -355,7 +355,7 @@ test_that("PseudobulkDE correctly splits sample/condition when a condition label
 
   meta <- data.frame(sample = sample_v, condition = condition_v,
                      row.names = all_ids, stringsAsFactors = FALSE)
-  obj <- SeuratObject::CreateSeuratObject(counts = counts, meta.data = meta)
+  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(counts, "CsparseMatrix"), meta.data = meta)
   SeuratObject::LayerData(obj, assay = "RNA", layer = "data") <- log1p(counts)
 
   res <- suppressMessages(PseudobulkDE(

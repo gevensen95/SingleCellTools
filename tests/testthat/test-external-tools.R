@@ -88,7 +88,7 @@ test_that("SaveWithProvenance errors on non-Seurat input", {
   meta <- data.frame(seurat_clusters = factor(cluster_v), row.names = cells,
                      stringsAsFactors = FALSE)
 
-  obj <- SeuratObject::CreateSeuratObject(counts = counts, meta.data = meta)
+  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(counts, "CsparseMatrix"), meta.data = meta)
   emb <- matrix(c(x, y), ncol = 2, dimnames = list(cells, c("UMAP_1", "UMAP_2")))
   obj[["umap"]] <- SeuratObject::CreateDimReducObject(embeddings = emb, key = "UMAP_",
                                                       assay = "RNA")

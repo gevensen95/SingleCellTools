@@ -146,6 +146,8 @@ MarkerPlot(merged, markers)
 | `CreateRNAObjectsFilter()` | Same as above but with **interactive** QC cutoff selection. |
 | `CreateAndIntegrateRNA()` | One-shot pipeline: read &rarr; QC &rarr; merge &rarr; integrate &rarr; cluster &rarr; UMAP. |
 | `MakeParseObj()` | Build Seurat objects from Parse Biosciences pipeline output (`DGE_filtered/`). |
+| `CombineParseRounds()` | Combine two Parse Biosciences resequencing rounds of the same libraries by barcode &mdash; unions genes and cells, sums counts for barcodes present in both rounds, zero-fills cells/genes seen in only one, and writes a combined `DGE_filtered/`-style output per sample ready for `MakeParseObj()`. |
+| `CombineCellRangerRounds()` | Same idea for CellRanger output: combines two resequencing rounds' barcodes/features/matrix triplets by barcode (GEM-well suffix like `-1` stripped by default so the same physical cell matches across rounds), writing a combined `filtered_feature_bc_matrix/`-style output per sample ready for `CreateRNAObjects()`. Gene key is matrix rowname (symbol by default, not Ensembl ID) since it reuses the package's existing 10x reader. |
 | `CreateVisiumObjects()` | Load multiple Visium samples into a list. `image_backend = "deferred"` attaches the small lowres image to every sample instead of the ~100MB hires PNG, for multi-sample lists. Also handles Visium HD samples (auto-detected via a `binned_outputs/` subdirectory; `hd_bin_size` picks 002um/008um/016um, default 008um) -- requires `binned_outputs.tar.gz`/`spatial.tar.gz` already extracted. `on_disk = TRUE` moves the counts layer to an on-disk `BPCells` matrix as a final step -- the highest-value spot for it, given how large a 002um HD sample's counts matrix is. |
 | `GetHiresVisiumImage()` | Decode the full-resolution image for a sample built with `image_backend = "deferred"`, on demand. |
 | `SpatialObjectInfo()` | Audit image/FOV class, resolution, cell count, and memory footprint across a Visium *or* Xenium/CosMx/MERFISH sample or list -- see where spatial memory is going, whichever platform built the object. |
@@ -163,7 +165,7 @@ MarkerPlot(merged, markers)
 
 | Function | What it does |
 |---|---|
-| `calldoublet()` | DoubletFinder wrapper. Pick `LogNormalize` or `SCT`, regress covariates, returns object tagged with `doublet_finder`. Strips intermediate layers/reductions on return. |
+| `calldoublet()` | DoubletFinder wrapper. Pick `LogNormalize` or `SCT`, regress covariates, returns object tagged with `doublet_finder` (plus `doublet_pANN`, the raw score). Strips intermediate layers/reductions on return. `doublet_rate` (default `0.075`) sets the assumed doublet **formation** rate driving `nExp` &mdash; scale it to your recovered cell count (10X is roughly 0.8% per 1,000 cells). `pk_sweep_max_cells` (default `4000`) estimates pK from a random subsample instead of every cell, and `sweep_cores` parallelizes DoubletFinder's own 6-value pN sweep internally &mdash; both aimed at the sweep's per-sample cost, normally the dominant cost of doublet calling. |
 | `PlotQCMetrics()` | Multi-panel QC figure from a Seurat object (or list) &mdash; auto-detects `nFeature`/`nCount`/`percent.mt`/doublet-calling columns and grouping column (default `orig.ident`), or pass `qc_cols` to specify exactly which columns to plot. |
 | `EdgeDetectionVisium()` | Flags Visium spots at the edge of the capture area, around tissue boundaries, and at tears &mdash; the spots with weird counts that you almost certainly want to drop. |
 | `detect_fov_edges()` | Flags cells near the outer boundary of any spatial FOV (Visium, Xenium, MERFISH, ...) using an angular-gap + local-density test, with iterative ring labeling. |
@@ -293,6 +295,7 @@ MarkerPlot(merged, markers)
 
 ```mermaid
 flowchart LR
+    Z[CombineParseRounds<br/>CombineCellRangerRounds<br/><i>multi-round resequencing only</i>] --> A
     A[Cellranger / Parse / Xenium / Visium output] --> B[CreateRNAObjects<br/>MakeParseObj<br/>LoadXenium2<br/>CreateVisiumObjects]
     B --> C[calldoublet<br/>EdgeDetectionVisium<br/>detect_fov_edges<br/>detect_tissue_holes]
     B --> Q[GenerateQCReport]

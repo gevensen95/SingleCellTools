@@ -27,7 +27,7 @@
 
   meta <- data.frame(seurat_clusters = factor(cluster_v),
                      row.names = cells, stringsAsFactors = FALSE)
-  obj <- SeuratObject::CreateSeuratObject(counts = counts, meta.data = meta)
+  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(counts, "CsparseMatrix"), meta.data = meta)
   SeuratObject::LayerData(obj, assay = "RNA", layer = "data") <- log1p(counts)
   obj
 }
@@ -265,7 +265,7 @@ test_that(".assign_with_unassigned still applies min_score/min_margin on non-NA 
     m["Gene4", !is_t] <- m["Gene4", !is_t] + stats::rpois(sum(!is_t), 20)
     storage.mode(m) <- "double"
     meta <- data.frame(cell_type = ct, row.names = cells, stringsAsFactors = FALSE)
-    obj <- SeuratObject::CreateSeuratObject(counts = m, meta.data = meta)
+    obj <- SeuratObject::CreateSeuratObject(counts = methods::as(m, "CsparseMatrix"), meta.data = meta)
     SeuratObject::LayerData(obj, assay = "RNA", layer = "data") <- log1p(m)
     obj
   }

@@ -396,10 +396,44 @@ MergeSeurat <- function(seurat_objects,
       dplyr::group_by(cluster) %>%
       dplyr::slice_max(avg_log2FC, n = 10)
 
-    Seurat::DotPlot(obj, features = unique(markers_filtered$gene)) +
-      ggplot2::coord_flip() +
-      ggplot2::labs(x = '', y = '')
-    ggplot2::ggsave('marker_plot.pdf', width = 10, height = 10, units = 'in')
+    plot_genes <- unique(markers_filtered$gene)
+
+    if (length(plot_genes) == 0L) {
+      message('--- No markers passed p_val_adj < 0.05; skipping marker_plot.pdf ---')
+    } else {
+      # Size the page to the CONTENT rather than a fixed 10x10in. After
+      # coord_flip() genes run down the y axis and clusters across the x, so
+      # a 10-cluster run with 10 markers each is up to 100 gene labels
+      # crammed into 10 inches -- roughly 0.1in per label, well past
+      # illegible. Same coefficients/breakpoints as MarkerPlot()'s
+      # auto-sizing so the two functions produce consistent-looking output.
+      n_genes  <- length(plot_genes)
+      n_idents <- length(unique(Seurat::Idents(obj)))
+      plot_height <- max(6, n_genes * 0.16 + 2)
+      plot_width  <- max(7, n_idents * 0.6 + 3)
+      gene_text_size <- if (n_genes <= 30) 9
+                        else if (n_genes <= 60) 7.5
+                        else if (n_genes <= 100) 6.5
+                        else 5.5
+
+      p_markers <- Seurat::DotPlot(obj, features = plot_genes) +
+        ggplot2::coord_flip() +
+        ggplot2::labs(x = '', y = '') +
+        ggplot2::theme(
+          axis.text.y = ggplot2::element_text(size = gene_text_size),
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
+        )
+
+      message(sprintf(
+        '--- Saving marker_plot.pdf (%d genes x %d clusters, %.1f x %.1f in) ---',
+        n_genes, n_idents, plot_width, plot_height))
+      # plot = is explicit rather than relying on ggsave()'s last_plot(),
+      # and limitsize = FALSE because a run with many clusters can legitimately
+      # need a page taller than ggplot2's 50in guard.
+      ggplot2::ggsave('marker_plot.pdf', plot = p_markers,
+                      width = plot_width, height = plot_height,
+                      units = 'in', limitsize = FALSE)
+    }
   }
 
   return(obj)

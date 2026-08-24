@@ -81,6 +81,28 @@
 #'   has already been computed above; set to \code{NULL} to skip regression.
 #' @param doublet_cluster_resolution Passed to \code{calldoublet} as
 #'   \code{cluster_resolution}. Default \code{0.1}.
+#' @param doublet_rate Passed to \code{calldoublet} as \code{doublet_rate} --
+#'   the assumed doublet formation rate that sets how many doublets the
+#'   classifier looks for. Default \code{0.075}. The same value is used for
+#'   every sample, so if recovered cell counts differ a lot across
+#'   \code{data_dirs} (10X's rate scales with recovery, roughly 0.8\% per
+#'   1,000 cells), consider calling \code{\link{calldoublet}} per sample with
+#'   its own rate instead of relying on one figure here.
+#' @param doublet_pk_sweep_max_cells Passed to \code{calldoublet} as
+#'   \code{pk_sweep_max_cells} -- caps how many cells are used to estimate
+#'   each sample's pK (DoubletFinder's parameter sweep is normally the
+#'   dominant cost of this function). Default \code{4000}; set to \code{Inf}
+#'   to always sweep on every cell.
+#' @param doublet_sweep_cores Passed to \code{calldoublet} as
+#'   \code{sweep_cores} -- lets \code{DoubletFinder::paramSweep} parallelize
+#'   internally across its 6 pN values, on top of (not instead of) the
+#'   per-sample parallelism \code{workers} already provides. Default
+#'   \code{1} (off). Because this function already parallelizes across
+#'   samples via \code{workers}, raising \code{doublet_sweep_cores} without
+#'   lowering \code{workers} to match oversubscribes the CPU (\code{workers
+#'   * doublet_sweep_cores} concurrent processes) -- this errors up front if
+#'   that product exceeds \code{parallel::detectCores()}, the same way
+#'   \code{workers} alone does.
 #' @param filter_doublets Logical; if TRUE, subset each object to
 #'   \code{doublet_finder == "Singlet"} after doublet calling. Default
 #'   \code{FALSE} so the doublet labels are preserved for downstream review.
@@ -94,7 +116,14 @@
 #'   to run sequentially instead. \code{workers > 1} spins up that many
 #'   background R sessions via \code{future::plan(multisession)}, restored
 #'   on exit. Note each worker holds its own copy of that sample's data, so
-#'   peak memory scales with \code{workers}.
+#'   peak memory scales with \code{workers}. Also forces
+#'   \code{VECLIB_MAXIMUM_THREADS}/\code{OMP_NUM_THREADS}/
+#'   \code{OPENBLAS_NUM_THREADS}/\code{MKL_NUM_THREADS} to \code{"1"} for
+#'   the duration (restored on exit) so each worker's own BLAS calls don't
+#'   also try to multithread across every core -- without this,
+#'   \code{workers} background sessions each doing multithreaded PCA/scaling
+#'   simultaneously oversubscribe the CPU and can fully erase (or worse)
+#'   the wall-clock benefit of running in parallel at all.
 #' @param on_disk Logical; if \code{TRUE}, move each returned object's RNA
 #'   counts layer to an on-disk BPCells matrix via \code{\link{ConvertToBPCells}}
 #'   as the very last step, after doublet calling/QC. Requires the
@@ -122,6 +151,9 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                              doublet_normalization = c("LogNormalize", "SCT"),
                              doublet_vars_to_regress = "percent.mt",
                              doublet_cluster_resolution = 0.1,
+                             doublet_rate = 0.075,
+                             doublet_pk_sweep_max_cells = 4000,
+                             doublet_sweep_cores = 1,
                              filter_doublets = FALSE,
                              workers = length(data_dirs),
                              on_disk = FALSE,
@@ -130,11 +162,69 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                               was_default = missing(workers))
   doublet_normalization <- match.arg(doublet_normalization)
 
+  # doublet_sweep_cores parallelizes *inside* each calldoublet() call, on top
+  # of the `workers`-many calldoublet() calls already running concurrently --
+  # workers * doublet_sweep_cores concurrent processes, not just `workers`.
+  # .resolve_workers() already guards `workers` alone against
+  # detectCores(); this extends the same "error with a concrete suggested
+  # value" discipline to the combined oversubscription case rather than
+  # silently letting it contend for cores.
+  if (isTRUE(run_doublet_finder) && workers > 1 && doublet_sweep_cores > 1) {
+    n_cores <- suppressWarnings(parallel::detectCores())
+    if (!is.na(n_cores) && (workers * doublet_sweep_cores) > n_cores) {
+      stop(sprintf(
+        "workers (%d) * doublet_sweep_cores (%d) = %d concurrent processes exceeds the %d core(s) available on this machine. Lower one of them -- e.g. doublet_sweep_cores = %d.",
+        workers, doublet_sweep_cores, workers * doublet_sweep_cores, n_cores,
+        max(1, n_cores %/% workers)))
+    }
+  }
+
   if (workers > 1) {
     if (!requireNamespace("future.apply", quietly = TRUE)) {
       stop("Package 'future.apply' is required for workers > 1. ",
            "install.packages('future.apply')")
     }
+
+    # Clamp BLAS/LAPACK's own internal multithreading to 1 thread per worker
+    # BEFORE spinning up the multisession cluster below, so this propagates
+    # to each worker's environment at spawn time (PSOCK workers inherit the
+    # launching process's env vars, but only as of when they're created --
+    # setting this after plan() would be too late for already-running
+    # workers). Without this, each worker's own PCA/scaling calls (the
+    # dominant cost of both the read step and calldoublet()) try to use
+    # every core via multithreaded BLAS -- on a machine using Accelerate/
+    # vecLib (the default R BLAS on macOS) or OpenBLAS/MKL, `workers`
+    # background R sessions doing that simultaneously oversubscribe the
+    # CPU and contend with each other for the same cores, which can erase
+    # or even reverse the wall-clock benefit of the outer future-level
+    # parallelism -- confirmed empirically: a 2-directory run took *longer*
+    # than a naive sequential estimate once this contention was in play.
+    # Restored on exit like the future plan itself, and skipped entirely
+    # when workers == 1 -- with no outer parallelism to contend with, a
+    # single sample should get to use every core for its own PCA.
+    # unset = NA (rather than the default "") lets us tell "this var was
+    # never set" apart from "this var was explicitly set to an empty
+    # string" -- restoring an unset var via Sys.setenv(VAR = "") does NOT
+    # unset it, it *creates* the var with a literal empty-string value,
+    # which some OpenMP runtimes (seen here as
+    # "OMP: Warning #234: OMP_NUM_THREADS: Invalid symbols found") reject
+    # and warn about on every subsequent OMP-using call for the rest of
+    # the R session. Sys.unsetenv() is the only way to truly remove it.
+    old_blas_env <- Sys.getenv(c("VECLIB_MAXIMUM_THREADS", "OMP_NUM_THREADS",
+                                 "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"),
+                               unset = NA)
+    Sys.setenv(VECLIB_MAXIMUM_THREADS = "1", OMP_NUM_THREADS = "1",
+              OPENBLAS_NUM_THREADS = "1", MKL_NUM_THREADS = "1")
+    on.exit({
+      was_set <- !is.na(old_blas_env)
+      if (any(was_set)) {
+        do.call(Sys.setenv, as.list(old_blas_env[was_set]))
+      }
+      if (any(!was_set)) {
+        Sys.unsetenv(names(old_blas_env)[!was_set])
+      }
+    }, add = TRUE)
+
     old_plan <- future::plan(future::multisession, workers = workers)
     on.exit(future::plan(old_plan), add = TRUE)
   }
@@ -273,7 +363,10 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                          samplenameIndex    = i,
                          normalization      = doublet_normalization,
                          vars.to.regress    = doublet_vars_to_regress,
-                         cluster_resolution = doublet_cluster_resolution)
+                         cluster_resolution = doublet_cluster_resolution,
+                         doublet_rate       = doublet_rate,
+                         pk_sweep_max_cells = doublet_pk_sweep_max_cells,
+                         sweep_cores        = doublet_sweep_cores)
       if (isTRUE(filter_doublets)) {
         n_before <- ncol(out)
         out      <- subset(out, doublet_finder == "Singlet")

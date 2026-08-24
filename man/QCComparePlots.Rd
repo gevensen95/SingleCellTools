@@ -12,7 +12,8 @@ QCComparePlots(
   log_y = c("nCount_RNA", "nFeature_RNA", "nCount_Spatial", "nFeature_Spatial"),
   colors = c("#8AB0D6", "#F4A261"),
   ncol = NULL,
-  show_counts = TRUE
+  show_counts = TRUE,
+  counts_size = 2.5
 )
 }
 \arguments{
@@ -43,7 +44,14 @@ Default \code{c("#8AB0D6", "#F4A261")}.}
 Default \code{NULL} (patchwork chooses).}
 
 \item{show_counts}{Logical; if TRUE (default) annotate each sample with
-\code{n_before -> n_after (pct_kept\%)}.}
+\code{n_before}, \code{-> n_after} and \code{(pct_kept\%)} stacked on
+three lines above that sample's violins.}
+
+\item{counts_size}{Text size for the \code{show_counts} annotation, in
+\code{ggplot2} size units. Default \code{2.5}. The y axis is expanded to
+fit the annotation automatically, but with many samples in one panel the
+labels can still crowd each other horizontally -- lower this (or pass
+\code{show_counts = FALSE}) if they do.}
 }
 \value{
 A \code{ggplot} object (single metric) or a patchwork of them
@@ -52,7 +60,7 @@ A \code{ggplot} object (single metric) or a patchwork of them
 \description{
 Draws violin overlays of QC metrics from paired pre- and post-filter
 Seurat objects (or lists of them) so the effect of \code{ApplyQCFilters}
-— or any other cell-level filtering step — can be inspected at a
+-- or any other cell-level filtering step -- can be inspected at a
 glance. One violin per (sample, filter-state) shows the distribution
 shift; a text annotation reports \code{n_before -> n_after} per sample.
 }

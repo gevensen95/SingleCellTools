@@ -46,7 +46,7 @@
   meta <- data.frame(celltype = celltype_v, row.names = all_ids,
                      stringsAsFactors = FALSE)
 
-  obj <- SeuratObject::CreateSeuratObject(counts = counts, meta.data = meta, assay = "RNA")
+  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(counts, "CsparseMatrix"), meta.data = meta, assay = "RNA")
 
   for (fov in fov_names) {
     cents <- SeuratObject::CreateCentroids(coords_list[[fov]])
@@ -134,7 +134,7 @@
     stringsAsFactors = FALSE
   )
 
-  obj <- SeuratObject::CreateSeuratObject(counts = counts, meta.data = meta, assay = "Spatial")
+  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(counts, "CsparseMatrix"), meta.data = meta, assay = "Spatial")
   SeuratObject::LayerData(obj, assay = "Spatial", layer = "data") <- log1p(counts)
   Seurat::Idents(obj) <- meta$seurat_clusters
 
