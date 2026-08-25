@@ -1,0 +1,399 @@
+SingleCellTools Vignette: On-Disk Data with BPCells
+================
+
+This vignette covers moving single-cell and spatial data to on-disk
+matrices via [BPCells](https://bnprks.github.io/BPCells/) instead of
+holding everything in RAM – both through this package’s own wrappers and
+by using BPCells directly.
+
+> **A note on accuracy.** The `SingleCellTools`-specific material below
+> (`ConvertToBPCells()`, the `on_disk` arguments, the caveats) was
+> written and checked by direct code review of this package’s source.
+> The “using BPCells directly” section further down uses BPCells’ own
+> documented functions to the best of available knowledge, but BPCells
+> is a separate, actively-developed package – if a function name below
+> doesn’t match what you have installed, check `?BPCells::<function>` or
+> the package’s own vignettes (`vignette(package = "BPCells")`) rather
+> than assuming this document is stale in every other respect too.
+
+## Table of Contents
+
+1.  [Why BPCells](#1-why-bpcells)
+2.  [Setup](#2-setup)
+3.  [Quick Start: Through
+    SingleCellTools](#3-quick-start-through-singlecelltools)
+4.  [`ConvertToBPCells()` in Detail](#4-converttobpcells-in-detail)
+5.  [Using BPCells Directly](#5-using-bpcells-directly)
+6.  [Spatial Data: Visium HD and
+    Xenium](#6-spatial-data-visium-hd-and-xenium)
+7.  [What Still Ends Up in Memory (and
+    Why)](#7-what-still-ends-up-in-memory-and-why)
+8.  [Verifying an On-Disk-Backed
+    Object](#8-verifying-an-on-disk-backed-object)
+9.  [When *Not* to Use BPCells](#9-when-not-to-use-bpcells)
+10. [Tips](#10-tips)
+
+------------------------------------------------------------------------
+
+## 1. Why BPCells
+
+A Seurat object’s counts matrix is sparse, but “sparse” still means
+“read entirely into RAM as one object.” For a single 10x sample that’s
+fine. It stops being fine once you’re working with:
+
+- dozens to hundreds of samples read into one list (`CreateRNAObjects()`
+  on a GEO-scale cohort),
+- Visium HD data at `hd_bin_size = "002um"` (500K+ bins per section
+  instead of ~5K spots),
+- or a whole-slide Xenium/CosMx run (100K+ cells, tens of thousands of
+  genes).
+
+BPCells stores the same sparse matrix on disk in a format designed for
+fast streaming access, and exposes it as an `IterableMatrix` object that
+implements enough of R’s standard matrix interface (`dim()`,
+`dimnames()`, subsetting, `rowSums()`/`colSums()`, arithmetic,
+`cbind()`/`rbind()`, …) to be a drop-in replacement almost everywhere a
+regular matrix is expected.
+
+The reason this matters for this package specifically: Seurat v5’s
+`Assay5`/`Layers` system was built to accept exactly this kind of
+backend-agnostic matrix. A BPCells matrix dropped into an `Assay5` layer
+isn’t a special case Seurat has to know about – it’s just a matrix that
+happens to stream from disk. `NormalizeData()`, `ScaleData()`,
+`RunPCA()`, plotting – none of it needs to change. That’s why the
+integration here is a couple of small functions rather than a new object
+type (more on that design choice, and why building a custom Seurat-like
+class would have been the wrong call, in [Section
+4](#4-converttobpcells-in-detail)).
+
+------------------------------------------------------------------------
+
+## 2. Setup
+
+BPCells is Suggests-only in `SingleCellTools` – it isn’t installed by
+default, and nothing in the package requires it unless you explicitly
+ask for `on_disk = TRUE` or call `ConvertToBPCells()`. It’s also not on
+CRAN, so it installs from GitHub:
+
+``` r
+# install.packages("remotes")
+remotes::install_github("bnprks/BPCells/r")
+```
+
+BPCells has a compiled C++ backend. It builds cleanly on Linux and
+macOS; Windows support has historically been weaker/less official, so
+budget extra time for that if it’s your platform, or consider running on
+Linux/macOS/WSL for this specific piece of the workflow.
+
+``` r
+library(SingleCellTools)
+library(BPCells)
+```
+
+------------------------------------------------------------------------
+
+## 3. Quick Start: Through SingleCellTools
+
+The fastest path is the `on_disk` argument already built into the three
+loaders that benefit most from it.
+
+### RNA
+
+``` r
+seurat_list <- CreateRNAObjects(
+  data_dirs   = samples,             # dozens of CellRanger output folders
+  treatment   = treatment_vector,
+  on_disk     = TRUE,
+  bpcells_dir = "bpcells_cache"      # default: "bpcells" under the working directory
+)
+```
+
+Each returned object’s `counts` layer is now a BPCells `IterableMatrix`
+living on disk under `bpcells_cache/<sample_name>/counts/`, instead of a
+`dgCMatrix` in RAM. Everything downstream (`NormalizeData()`, doublet
+review, `MergeSeurat()`, …) works unmodified.
+
+### Visium
+
+``` r
+visium_hd_list <- CreateVisiumObjects(
+  data_dirs   = visium_hd_dirs,
+  hd_bin_size = "002um",             # the case this actually matters for
+  on_disk     = TRUE
+)
+```
+
+### Xenium
+
+``` r
+xenium_obj <- LoadXenium2(
+  data_dir    = "data/xenium/sample1",
+  sample_name = "X1",
+  on_disk     = TRUE
+)
+```
+
+All three do the same thing under the hood: build the object exactly as
+before, then call `ConvertToBPCells()` on the result as a final step.
+See [Section 7](#7-what-still-ends-up-in-memory-and-why) for why it’s a
+final step rather than something threaded through the read itself.
+
+------------------------------------------------------------------------
+
+## 4. `ConvertToBPCells()` in Detail
+
+`ConvertToBPCells()` is the general-purpose tool the three `on_disk`
+arguments call internally, and it also works retroactively on any
+existing Seurat object – built by this package, by plain Seurat, or by
+anything else.
+
+``` r
+# A single object
+obj <- ConvertToBPCells(obj, path = "bpcells_myobject")
+
+# A list of objects -- one subdirectory per object, named from the list's own
+# names if present, otherwise Project(obj)
+obj_list <- ConvertToBPCells(obj_list, path = "bpcells_cohort")
+```
+
+**Why not a custom Seurat-like object instead?** This was actually asked
+directly during design: could `SingleCellTools` define its own object
+type that keeps spatial data on disk while still working with native
+Seurat functions? The honest answer is that this would be reinventing
+what `Assay5` already does. Seurat’s method dispatch, subsetting,
+merging, and every downstream package built on top of it (hundreds of
+functions across the ecosystem) all expect a `Seurat`/`Assay5` object. A
+parallel class would mean re-implementing that entire surface, with no
+way to keep up automatically as upstream Seurat changes. Working *with*
+`Assay5`’s backend-agnostic design, as `BPCells` and
+`ConvertToBPCells()` both do, gets the same result (native functions,
+on-disk data) without any of that maintenance burden.
+
+**Key arguments:**
+
+| Argument | Default | Notes |
+|----|----|----|
+| `obj` | – | A Seurat object, or a (optionally named) list of them |
+| `assay` | `NULL` | Uses `DefaultAssay(obj)` if not given |
+| `layers` | `"counts"` | Character vector; a layer not present is skipped with a warning, not an error |
+| `path` | `file.path(getwd(), "bpcells")` | One subdirectory per layer, or per object then layer for a list |
+| `overwrite` | `FALSE` | Protects an existing on-disk matrix from a silent second write |
+
+**Caveats, restated from the function’s own docs because they matter
+enough to repeat:**
+
+- BPCells matrices are lazy/immutable – operations build a new transform
+  pipeline rather than mutating in place. Fine for the normal pipeline;
+  see [Section 7](#7-what-still-ends-up-in-memory-and-why) for the one
+  place this bites.
+- Signac `ChromatinAssay` objects (from
+  `CreateATACObjects()`/`CreateATACObjectsFilter()`) are **not
+  supported** – `ConvertToBPCells()` checks for this and errors clearly
+  rather than attempting a coercion that would silently drop the
+  fragments/ranges/ annotation slots a `ChromatinAssay` actually needs.
+  This is a real, checked limitation, not a gap that happens to work by
+  accident. See the [scATAC-seq
+  vignette](SingleCellTools_vignette_atac.md) for the ATAC-specific
+  note.
+- Windows support inherits BPCells’ own (weaker/unofficial) Windows
+  support.
+
+------------------------------------------------------------------------
+
+## 5. Using BPCells Directly
+
+Everything above goes through this package. You can also use BPCells on
+its own – useful if you want finer control over the read (e.g. reading
+straight from a `.h5` file without building the full Seurat object
+first), or you’re working outside a `SingleCellTools` loader entirely.
+
+**Read a 10x `.h5` file as an on-disk-backed matrix:**
+
+``` r
+mat <- BPCells::open_matrix_10x_hdf5(
+  path = "data/sample1/outs/filtered_feature_bc_matrix.h5"
+)
+```
+
+This gives you an `IterableMatrix` immediately, without materializing
+the whole thing in RAM first – unlike `Seurat::Read10X_h5()`, which
+reads and densifies-into-sparse eagerly.
+
+**Persist it to BPCells’ own on-disk format** (recommended before doing
+repeated work against it – `open_matrix_10x_hdf5()` re-reads from the
+source `.h5` on each access, while a `write_matrix_dir()`‘d matrix is
+stored in a layout BPCells’ own engine is optimized for):
+
+``` r
+BPCells::write_matrix_dir(mat, "bpcells_sample1")
+mat <- BPCells::open_matrix_dir("bpcells_sample1")
+```
+
+**Combine multiple samples without loading any of them fully into
+memory** – BPCells matrices support `cbind()` the same way regular
+matrices do (genes as rows, cells as columns, so `cbind()` concatenates
+cells across samples):
+
+``` r
+sample_dirs <- c("data/sample1/outs/filtered_feature_bc_matrix.h5",
+                 "data/sample2/outs/filtered_feature_bc_matrix.h5",
+                 "data/sample3/outs/filtered_feature_bc_matrix.h5")
+
+mats <- lapply(sample_dirs, BPCells::open_matrix_10x_hdf5)
+combined <- do.call(cbind, mats)
+```
+
+**Build the Seurat object from the combined on-disk matrix, then proceed
+normally:**
+
+``` r
+obj <- SeuratObject::CreateSeuratObject(counts = combined)
+obj <- Seurat::NormalizeData(obj)
+obj <- Seurat::FindVariableFeatures(obj)
+obj <- Seurat::ScaleData(obj)     # see Section 7 -- this step is where care matters
+obj <- Seurat::RunPCA(obj)
+```
+
+At no point in this sequence does the full genes x cells matrix, across
+all samples, get materialized in RAM at once.
+`NormalizeData()`/`FindVariableFeatures()` stream over the on-disk data;
+`ScaleData()` and `RunPCA()` typically operate on a restricted feature
+set (variable features), which keeps the materialized piece small
+regardless of how large the full matrix is.
+
+If you’d rather stay inside `SingleCellTools`’s own functions for the
+initial per-sample read (QC metrics, doublet calling, treatment tagging)
+and only reach for BPCells at the end, that’s exactly what
+`on_disk = TRUE` in `CreateRNAObjects()` does – see [Section
+3](#3-quick-start-through-singlecelltools).
+
+------------------------------------------------------------------------
+
+## 6. Spatial Data: Visium HD and Xenium
+
+The same `cbind()`-based pattern applies to spatial platforms, with one
+difference: spatial objects also carry image/coordinate data that
+BPCells has nothing to do with. `ConvertToBPCells()` (and `on_disk`)
+only ever touch the requested assay’s counts layer – images, centroids,
+and molecule tables are untouched and still need the image-specific
+tools this package already has:
+
+| Concern | Tool |
+|----|----|
+| Counts matrix on disk | `ConvertToBPCells()` / `on_disk = TRUE` (this vignette) |
+| Hires image memory | `image_backend = "deferred"` on `CreateVisiumObjects()`, or `DropSpatialImage()` retroactively |
+| Auditing where spatial memory is going | `SpatialObjectInfo()` |
+| Full (pre-QV-filter) Xenium transcript table | `LoadXenium2(microns_lazy = TRUE)` + `QueryXeniumMolecules()` |
+
+For a Visium HD run at `hd_bin_size = "002um"`, the counts matrix
+genuinely is the dominant memory cost (500K+ bins), which is why
+`on_disk = TRUE` on `CreateVisiumObjects()` matters more there than for
+standard-resolution Visium. See the [spatial
+vignette](SingleCellTools_vignette_spatial.md) (Section 2, “Load the
+Data”) for where this fits into a full Visium workflow, and the [main
+vignette](SingleCellTools_vignette.md) (Section 12.2, “Xenium”) for the
+equivalent on `LoadXenium2()`.
+
+------------------------------------------------------------------------
+
+## 7. What Still Ends Up in Memory (and Why)
+
+Two honest limitations, worth understanding before relying on this for a
+memory-critical run:
+
+**`on_disk = TRUE` reduces steady-state memory, not peak memory during
+construction.** `CreateRNAObjects(on_disk = TRUE)` still builds each
+object and runs doublet calling fully in memory first, and only converts
+to BPCells as the very last step before returning. This is a deliberate
+choice, not an oversight: `DoubletFinder` (used inside `calldoublet()`)
+wasn’t written expecting a BPCells-backed matrix, and routing it through
+one mid-pipeline is a correctness risk this package isn’t in a position
+to guarantee works. The payoff is real but specific – it’s the size of
+the *returned* object list that shrinks, which for a many-sample cohort
+you’re about to hold in memory for the rest of a session is still the
+number that usually matters.
+
+**Anything that forces `as.matrix()` on the whole assay defeats the
+point.** BPCells matrices are lazy; `as.matrix()` on the *entire* assay
+materializes the whole thing into a dense in-memory matrix regardless of
+how it was stored, silently undoing the on-disk benefit. This package’s
+own functions were already audited for exactly this pattern (see the
+handful of places noted in code comments across `MarkerHeatmap.R`,
+`PseudobulkDE.R`, and similar) – the risk is mainly in code *you* write
+against a BPCells-backed object. Subsetting to a smaller piece first (a
+marker gene list, a cluster) and *then* `as.matrix()`-ing that subset is
+fine; the trap is only ever doing it against the whole assay.
+
+------------------------------------------------------------------------
+
+## 8. Verifying an On-Disk-Backed Object
+
+A few quick checks to confirm a conversion actually took:
+
+``` r
+# The layer's class should no longer be a plain dgCMatrix
+class(SeuratObject::LayerData(obj, layer = "counts"))
+#> [1] "IterableMatrix"
+#> attr(,"package")
+#> [1] "BPCells"
+
+# The on-disk directory should exist and be non-trivially sized
+dir.exists("bpcells_cache/sample1/counts")
+sum(file.size(list.files("bpcells_cache/sample1/counts", full.names = TRUE)))
+
+# Normal Seurat functions still see the same dimensions
+dim(obj)
+SeuratObject::Layers(obj)
+```
+
+If you’re working across a multi-sample list built with
+`CreateVisiumObjects()` or similar, `SpatialObjectInfo()` is still the
+right tool for auditing image/FOV memory – it doesn’t currently report
+on the counts layer’s backend, so use the `class()` check above
+alongside it for the full picture.
+
+------------------------------------------------------------------------
+
+## 9. When *Not* to Use BPCells
+
+This isn’t free – reading from disk is slower per-access than RAM, and
+the lazy pipeline adds a small amount of overhead to every operation.
+It’s worth it when the alternative is not fitting in memory at all, or
+when steady-state memory for a many-sample list matters more than raw
+speed. It’s usually not worth it for:
+
+- a single small-to-medium sample you’re actively exploring
+  interactively (the `ifnb`/`stxBrain` tutorial datasets in the other
+  vignettes, for instance),
+- short-lived analysis scripts where the object never outlives one R
+  session anyway,
+- anything where you’re about to `as.matrix()` most of the assay
+  regardless (dense differential expression on a small gene panel, for
+  example) – there’s no on-disk benefit left to capture at that point.
+
+------------------------------------------------------------------------
+
+## 10. Tips
+
+- Set `bpcells_dir` explicitly (rather than relying on the
+  `"bpcells"`-under-cwd default) if you’re running from a script that
+  might execute from different working directories across runs – the
+  on-disk matrices are real files that outlive the R session, and a
+  relative default can silently point somewhere unexpected.
+- `overwrite = FALSE` (`ConvertToBPCells()`’s default) means a second
+  run into the same `path` errors instead of silently discarding the
+  first conversion. That’s usually what you want; pass
+  `overwrite = TRUE` explicitly when you actually mean to redo it.
+- If you’re not sure whether a given downstream step in your own
+  analysis code is safe against a BPCells-backed object, the practical
+  test is simple: does it call `as.matrix()`, `as.data.frame()`, or
+  similar on the whole assay? If yes, that step will materialize the
+  full matrix into RAM regardless of backend – which may still be fine
+  (subsetted first, or a one-time cost you’re prepared for), just worth
+  knowing about rather than assuming it stayed on disk.
+
+------------------------------------------------------------------------
+
+*Related: [main vignette](SingleCellTools_vignette.md), [spatial
+vignette](SingleCellTools_vignette_spatial.md), [scATAC-seq
+vignette](SingleCellTools_vignette_atac.md).*

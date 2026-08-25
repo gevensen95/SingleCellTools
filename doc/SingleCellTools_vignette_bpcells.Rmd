@@ -1,4 +1,11 @@
-# SingleCellTools Vignette: On-Disk Data with BPCells
+---
+title: "SingleCellTools Vignette: On-Disk Data with BPCells"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{SingleCellTools Vignette: On-Disk Data with BPCells}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
 
 This vignette covers moving single-cell and spatial data to on-disk matrices via
 [BPCells](https://bnprks.github.io/BPCells/) instead of holding everything in RAM --

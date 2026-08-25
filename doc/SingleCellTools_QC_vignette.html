@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Quality Control with SingleCellTools</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Quality Control with SingleCellTools</h1>
+
+
+
+<p><strong>Package:</strong> <code>SingleCellTools</code><br />
+<strong>Author:</strong> K. Garrett Evensen, PhD — Bioinformatics
+Analyst II, The Salk Institute<br />
+<strong>Version:</strong> 2.8<br />
+<strong>Source:</strong> <a href="https://github.com/gevensen95/SingleCellTools">github.com/gevensen95/SingleCellTools</a></p>
+<hr />
+<div id="table-of-contents" class="section level2">
+<h2>Table of Contents</h2>
+<p><strong>Part I — Single-cell QC</strong></p>
+<ol style="list-style-type: decimal">
+<li><a href="#id_1-how-this-package-thinks-about-qc">How this package
+thinks about QC</a></li>
+<li><a href="#id_2-look-before-you-filter">Look before you filter</a>
+<ul>
+<li>2.1 <a href="#id_21-plotqcmetrics--the-30-second-look"><code>PlotQCMetrics()</code>
+— the 30-second look</a></li>
+<li>2.2 <a href="#id_22-generateqcreport--the-real-report"><code>GenerateQCReport()</code>
+— the real report</a></li>
+</ul></li>
+<li><a href="#id_3-choosing-cutoffs">Choosing cutoffs</a></li>
+<li><a href="#id_4-applyqcfilters--applying-them"><code>ApplyQCFilters()</code>
+— applying them</a></li>
+<li><a href="#id_5-qccompareplots--did-the-filter-do-what-you-meant"><code>QCComparePlots()</code>
+— did the filter do what you meant?</a></li>
+<li><a href="#id_6-doublets--calldoublet">Doublets —
+<code>calldoublet()</code></a></li>
+<li><a href="#id_7-batch-effects--batcheffectqc">Batch effects —
+<code>BatchEffectQC()</code></a></li>
+<li><a href="#id_8-cell-cycle--assign_cell_cycle_phase">Cell cycle —
+<code>assign_cell_cycle_phase()</code></a></li>
+<li><a href="#id_9-structural-sanity-checks">Structural sanity
+checks</a></li>
+</ol>
+<p><strong>Part II — Spatial QC</strong></p>
+<ol start="10" style="list-style-type: decimal">
+<li><a href="#id_10-what-changes-when-the-data-has-coordinates">What
+changes when the data has coordinates</a></li>
+<li><a href="#id_11-inspecting-a-spatial-object">Inspecting a spatial
+object</a></li>
+<li><a href="#id_12-metric-based-qc-still-applies">Metric-based QC still
+applies</a></li>
+<li><a href="#id_13-spatial-artifacts">Spatial artifacts</a>
+<ul>
+<li>13.1 <a href="#id_131-visium-edge-spots--edgedetectionvisium">Visium
+edge spots — <code>EdgeDetectionVisium()</code></a></li>
+<li>13.2 <a href="#id_132-imaging-platform-fov-edges--detect_fov_edges">Imaging-platform
+FOV edges — <code>detect_fov_edges()</code></a></li>
+<li>13.3 <a href="#id_133-tissue-holes--detect_tissue_holes">Tissue
+holes — <code>detect_tissue_holes()</code></a></li>
+</ul></li>
+<li><a href="#id_14-is-the-annotation-spatially-coherent--spatialconcordance">Is
+the annotation spatially coherent? —
+<code>SpatialConcordance()</code></a></li>
+<li><a href="#id_15-subsetting-without-corrupting-images">Subsetting
+without corrupting images</a></li>
+<li><a href="#id_16-a-spatial-qc-recipe">A spatial QC recipe</a></li>
+</ol>
+<hr />
+</div>
+<div id="part-i-single-cell-qc" class="section level1">
+<h1>Part I — Single-cell QC</h1>
+<div id="how-this-package-thinks-about-qc" class="section level2">
+<h2>1. How this package thinks about QC</h2>
+<p>QC here is four separable questions, and it helps to keep them apart
+because they fail differently:</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Question</th>
+<th>Tool</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Are these barcodes cells?</td>
+<td><code>GenerateQCReport()</code> → <code>ApplyQCFilters()</code></td>
+</tr>
+<tr class="even">
+<td>Are they <em>single</em> cells?</td>
+<td><code>calldoublet()</code></td>
+</tr>
+<tr class="odd">
+<td>Is variation between samples technical?</td>
+<td><code>BatchEffectQC()</code></td>
+</tr>
+<tr class="even">
+<td>Is variation within a sample a confounder?</td>
+<td><code>assign_cell_cycle_phase()</code></td>
+</tr>
+</tbody>
+</table>
+<p>The metric-based path is deliberately <strong>two-step</strong>: a
+report that <em>suggests</em> cutoffs and writes them to a CSV, then a
+separate call that <em>applies</em> them. The point is that the CSV is
+editable. You are expected to look at the report, disagree with some of
+its suggestions, change those numbers, and keep the file as the record
+of what you actually did.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">library</span>(SingleCellTools)</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="fu">library</span>(Seurat)</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="co"># objs is a named list of Seurat objects, one per sample</span></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a>objs <span class="ot">&lt;-</span> <span class="fu">CreateRNAObjects</span>(data_dirs, <span class="at">run_doublet_finder =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
+</div>
+<div id="look-before-you-filter" class="section level2">
+<h2>2. Look before you filter</h2>
+<div id="plotqcmetrics-the-30-second-look" class="section level3">
+<h3>2.1 <code>PlotQCMetrics()</code> — the 30-second look</h3>
+<p>Violin panels of whatever QC columns exist, split by a grouping
+variable. Use it to decide whether anything is obviously wrong before
+investing in the full report.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">PlotQCMetrics</span>(obj, <span class="at">group.by =</span> <span class="st">&quot;orig.ident&quot;</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a><span class="co"># Restrict to specific metrics, control the grid</span></span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a><span class="fu">PlotQCMetrics</span>(obj,</span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>              <span class="at">group.by =</span> <span class="st">&quot;sample&quot;</span>,</span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a>              <span class="at">qc_cols  =</span> <span class="fu">c</span>(<span class="st">&quot;nFeature_RNA&quot;</span>, <span class="st">&quot;nCount_RNA&quot;</span>, <span class="st">&quot;percent.mt&quot;</span>),</span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a>              <span class="at">ncol     =</span> <span class="dv">3</span>)</span></code></pre></div>
+</div>
+<div id="generateqcreport-the-real-report" class="section level3">
+<h3>2.2 <code>GenerateQCReport()</code> — the real report</h3>
+<p>Renders a standalone HTML report and, crucially, writes a
+<strong>sidecar CSV</strong> of suggested per-sample, per-metric cutoffs
+next to it (<code>&lt;report&gt;_cutoffs.csv</code>). That CSV is the
+input to <code>ApplyQCFilters()</code>.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="fu">GenerateQCReport</span>(objs,</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>                 <span class="at">output_file =</span> <span class="st">&quot;qc/qc_report.html&quot;</span>,</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a>                 <span class="at">title       =</span> <span class="st">&quot;Experiment 1 QC&quot;</span>,</span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a>                 <span class="at">sample_col  =</span> <span class="st">&quot;orig.ident&quot;</span>)</span></code></pre></div>
+<p>Arguments worth knowing:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="fu">GenerateQCReport</span>(</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>  objs,</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>  <span class="at">output_file      =</span> <span class="st">&quot;qc/qc_report.html&quot;</span>,</span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>  <span class="at">metadata_cols    =</span> <span class="fu">c</span>(<span class="st">&quot;nFeature_RNA&quot;</span>, <span class="st">&quot;nCount_RNA&quot;</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>                       <span class="st">&quot;percent.mt&quot;</span>, <span class="st">&quot;percent.rb&quot;</span>, <span class="st">&quot;percent.hb&quot;</span>),</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>  <span class="at">mad_multiplier   =</span> <span class="dv">3</span>,      <span class="co"># width of the suggested interval, in MADs</span></span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>  <span class="at">log_skewed       =</span> <span class="cn">TRUE</span>,   <span class="co"># log-scale metrics whose skew exceeds...</span></span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a>  <span class="at">log_threshold    =</span> <span class="dv">10</span>,     <span class="co"># ...this</span></span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>  <span class="at">complexity_score =</span> <span class="cn">TRUE</span>,   <span class="co"># genes-per-UMI, catches low-complexity barcodes</span></span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a>  <span class="at">doublet_col      =</span> <span class="st">&quot;doublet_finder&quot;</span></span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a>)</span></code></pre></div>
+<p><code>mad_multiplier</code> is the main dial. Cutoffs are median ±
+<em>k</em>·MAD per sample per metric, so lowering it filters harder. MAD
+is used rather than SD because the outliers you are trying to exclude
+would otherwise inflate the very statistic defining the threshold.</p>
+</div>
+</div>
+<div id="choosing-cutoffs" class="section level2">
+<h2>3. Choosing cutoffs</h2>
+<p>Open the HTML, then open the CSV. It has one row per (sample,
+metric):</p>
+<pre><code>sample,metric,suggest_lo,suggest_hi,median,mad,pct_pass
+Alt1,nFeature_RNA,214,3180,641,489,0.94
+Alt1,percent.mt,0,8.7,1.2,2.1,0.96
+...</code></pre>
+<p>Edit <code>suggest_lo</code> / <code>suggest_hi</code> freely — extra
+columns are ignored by the filter and passed through. Some
+judgement:</p>
+<ul>
+<li><strong><code>percent.mt</code> deserves a hard ceiling, not a MAD
+interval.</strong> If a sample is uniformly high-mitochondrial, its
+median is high and MAD-based cutoffs will happily keep dying cells. Set
+an absolute value you’re willing to defend.</li>
+<li><strong>A lower bound on <code>nCount_RNA</code> is doing
+cell-calling</strong>, which the upstream pipeline already did. Be
+deliberate about overruling it.</li>
+<li><strong>Degenerate rows are skipped, not applied.</strong> If a
+metric is constant across a sample its suggested quantiles coincide, and
+<code>suggest_lo == suggest_hi</code> would keep only cells matching
+that exact value. <code>ApplyQCFilters()</code> detects that (and
+missing or inverted bounds) and skips <em>that metric for that
+sample</em>, leaving the others in force. Watch for the message — it
+usually means the metric is uninformative for that sample.</li>
+</ul>
+</div>
+<div id="applyqcfilters-applying-them" class="section level2">
+<h2>4. <code>ApplyQCFilters()</code> — applying them</h2>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>objs_filt <span class="ot">&lt;-</span> <span class="fu">ApplyQCFilters</span>(objs, <span class="at">cutoffs =</span> <span class="st">&quot;qc/qc_report_cutoffs.csv&quot;</span>)</span></code></pre></div>
+<p>Point it at the <code>.html</code> and it finds the sidecar CSV
+itself. Pass a data frame instead if you built cutoffs
+programmatically.</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">ApplyQCFilters</span>(</span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>  objs,</span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>  <span class="at">cutoffs         =</span> <span class="st">&quot;qc/qc_report.html&quot;</span>,   <span class="co"># sidecar resolved automatically</span></span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>  <span class="at">metrics         =</span> <span class="fu">c</span>(<span class="st">&quot;nFeature_RNA&quot;</span>, <span class="st">&quot;percent.mt&quot;</span>),  <span class="co"># subset of the table</span></span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a>  <span class="at">override        =</span> <span class="fu">list</span>(<span class="at">percent.mt =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">5</span>)),       <span class="co"># beats the table</span></span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a>  <span class="at">filter_doublets =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a>  <span class="at">return_report   =</span> <span class="cn">TRUE</span></span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a>)</span>
+<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a></span>
+<span id="cb7-10"><a href="#cb7-10" tabindex="-1"></a>res<span class="sc">$</span>obj        <span class="co"># filtered objects</span></span>
+<span id="cb7-11"><a href="#cb7-11" tabindex="-1"></a>res<span class="sc">$</span>report     <span class="co"># per-sample, per-metric retention</span></span>
+<span id="cb7-12"><a href="#cb7-12" tabindex="-1"></a>res<span class="sc">$</span>cutoffs    <span class="co"># what was actually applied</span></span></code></pre></div>
+<p><code>return_report = TRUE</code> is worth making a habit.
+<code>res$report</code> gives <code>n_before</code> /
+<code>n_after</code> / <code>pct_kept</code> per metric, which is how
+you notice that one metric is doing all the filtering.</p>
+<p>A single object with multiple samples in one column works too:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="fu">ApplyQCFilters</span>(merged, <span class="at">cutoffs =</span> cut_df, <span class="at">sample_col =</span> <span class="st">&quot;sample&quot;</span>)</span></code></pre></div>
+</div>
+<div id="qccompareplots-did-the-filter-do-what-you-meant" class="section level2">
+<h2>5. <code>QCComparePlots()</code> — did the filter do what you
+meant?</h2>
+<p>Pre/post violins per sample with retention annotated.</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a>p <span class="ot">&lt;-</span> <span class="fu">QCComparePlots</span>(objs, objs_filt)</span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a>p <span class="ot">&lt;-</span> <span class="fu">QCComparePlots</span>(objs, objs_filt, <span class="at">metrics =</span> <span class="fu">c</span>(<span class="st">&quot;nCount_RNA&quot;</span>, <span class="st">&quot;percent.mt&quot;</span>))</span></code></pre></div>
+<p>Read it for <strong>shape</strong>, not just counts. A filter that
+removed a tail is doing its job; one that shifted the whole distribution
+removed a cell population.</p>
+<p>Two practical notes:</p>
+<ul>
+<li>Objects in a list may carry per-sample metadata column
+<em>names</em> — most often DoubletFinder’s
+<code>pANN_&lt;pN&gt;_&lt;pK&gt;_&lt;nExp&gt;</code>, whose values
+differ per sample. Columns not shared by every object are dropped with a
+warning, which is expected and harmless.</li>
+<li><code>counts_size</code> shrinks the retention labels if they crowd
+each other on a panel with many samples.</li>
+</ul>
+</div>
+<div id="doublets-calldoublet" class="section level2">
+<h2>6. Doublets — <code>calldoublet()</code></h2>
+<p>A DoubletFinder wrapper. Adds <code>doublet_finder</code>
+(<code>&quot;Singlet&quot;</code>/<code>&quot;Doublet&quot;</code>) and
+<code>doublet_pANN</code> (the raw score), and strips its own
+intermediates on the way out.</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a>obj <span class="ot">&lt;-</span> <span class="fu">calldoublet</span>(obj, <span class="at">samplenameIndex =</span> <span class="dv">1</span>)</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a></span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a><span class="co"># usually run through the loader instead</span></span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a>objs <span class="ot">&lt;-</span> <span class="fu">CreateRNAObjects</span>(data_dirs,</span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>                         <span class="at">run_doublet_finder =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>                         <span class="at">doublet_rate       =</span> <span class="fl">0.075</span>)</span></code></pre></div>
+<p><strong><code>doublet_rate</code> is the argument that
+matters.</strong> It is the assumed doublet <em>formation</em> rate —
+the fraction of barcodes expected to be multiplets given how many cells
+were loaded — and it sets how many doublets the classifier looks for. It
+is deliberately <strong>not</strong> <code>pK</code>, which is the pANN
+neighborhood size chosen from the data and carries no information about
+doublet abundance.</p>
+<p>Scale it to your recovery rather than accepting the default. For 10X
+Chromium the rate runs at roughly 0.8% per 1,000 cells recovered:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="co"># ~4,000 cells recovered -&gt; ~3%</span></span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>objs <span class="ot">&lt;-</span> <span class="fu">CreateRNAObjects</span>(data_dirs, <span class="at">doublet_rate =</span> <span class="fl">0.03</span>)</span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a></span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a><span class="co"># per-sample rates, if recovery varies a lot</span></span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>objs <span class="ot">&lt;-</span> <span class="fu">Map</span>(<span class="cf">function</span>(o, r) <span class="fu">calldoublet</span>(o, <span class="at">doublet_rate =</span> r),</span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>            objs, <span class="fu">c</span>(<span class="at">Alt1 =</span> <span class="fl">0.035</span>, <span class="at">Alt2 =</span> <span class="fl">0.05</span>, <span class="at">PBS1 =</span> <span class="fl">0.04</span>))</span></code></pre></div>
+<p>Speed knobs, since the pK sweep dominates the runtime:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="fu">calldoublet</span>(obj,</span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>            <span class="at">pk_sweep_max_cells =</span> <span class="dv">4000</span>,  <span class="co"># estimate pK on a subsample</span></span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a>            <span class="at">sweep_cores        =</span> <span class="dv">1</span>)     <span class="co"># paramSweep&#39;s own parallelism</span></span></code></pre></div>
+<p>Raising <code>sweep_cores</code> above 1 while
+<code>CreateRNAObjects(workers = n)</code> is also parallelizing
+oversubscribes the CPU; the loader errors up front if
+<code>workers * doublet_sweep_cores</code> exceeds the core count.</p>
+<p>Doublet filtering happens inside <code>ApplyQCFilters()</code>
+(<code>filter_doublets = TRUE</code>) rather than at call time, so
+labels survive for review.</p>
+</div>
+<div id="batch-effects-batcheffectqc" class="section level2">
+<h2>7. Batch effects — <code>BatchEffectQC()</code></h2>
+<p>Quantifies how mixed your batches are in a reduction, so “did
+integration work” stops being a matter of squinting at a UMAP.</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a>pre  <span class="ot">&lt;-</span> <span class="fu">BatchEffectQC</span>(merged, <span class="at">reduction =</span> <span class="st">&quot;pca&quot;</span>,     <span class="at">batch_col =</span> <span class="st">&quot;sample&quot;</span>)</span>
+<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a>post <span class="ot">&lt;-</span> <span class="fu">BatchEffectQC</span>(merged, <span class="at">reduction =</span> <span class="st">&quot;harmony&quot;</span>, <span class="at">batch_col =</span> <span class="st">&quot;sample&quot;</span>)</span>
+<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a>pre<span class="sc">$</span>summary</span>
+<span id="cb13-5"><a href="#cb13-5" tabindex="-1"></a>post<span class="sc">$</span>summary</span></code></pre></div>
+<p>Run it <strong>before and after</strong> integration. The absolute
+number means little; the change means everything. With
+<code>celltype_col</code> set you also get <code>per_cluster</code>,
+which is where over-integration shows up — a cluster that mixed
+<em>too</em> well may have had a real biological difference erased.</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="fu">BatchEffectQC</span>(merged, <span class="at">reduction =</span> <span class="st">&quot;harmony&quot;</span>,</span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a>              <span class="at">batch_col =</span> <span class="st">&quot;sample&quot;</span>, <span class="at">celltype_col =</span> <span class="st">&quot;celltype&quot;</span>)</span></code></pre></div>
+</div>
+<div id="cell-cycle-assign_cell_cycle_phase" class="section level2">
+<h2>8. Cell cycle — <code>assign_cell_cycle_phase()</code></h2>
+<p>UCell-based scoring, then a per-cell phase call. Works on human or
+mouse with no species argument — gene symbols are matched to the
+object’s features case-insensitively, and the defaults come from
+<code>Seurat::cc.genes.updated.2019</code>.</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a>obj <span class="ot">&lt;-</span> <span class="fu">assign_cell_cycle_phase</span>(obj)</span>
+<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a><span class="fu">table</span>(obj<span class="sc">$</span>Phase)</span></code></pre></div>
+<p><strong>Read <code>threshold_quantile</code> carefully.</strong> A
+cell is G1 when <em>both</em> scores are at or below their quantile
+cutoffs, so the default <code>0.5</code> calls roughly 60% of cells
+“cycling” <strong>on any dataset</strong>, quiescent or not. It is a
+within-dataset rank, not an absolute call.</p>
+<p>Calibrate it against canonical markers rather than trusting the
+default:</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a>mk  <span class="ot">&lt;-</span> <span class="fu">intersect</span>(<span class="fu">c</span>(<span class="st">&quot;Mki67&quot;</span>, <span class="st">&quot;Top2a&quot;</span>, <span class="st">&quot;Ccnb1&quot;</span>, <span class="st">&quot;Birc5&quot;</span>), <span class="fu">rownames</span>(obj))</span>
+<span id="cb16-2"><a href="#cb16-2" tabindex="-1"></a>det <span class="ot">&lt;-</span> Matrix<span class="sc">::</span><span class="fu">colSums</span>(<span class="fu">LayerData</span>(obj, <span class="at">layer =</span> <span class="st">&quot;counts&quot;</span>)[mk, , <span class="at">drop =</span> <span class="cn">FALSE</span>] <span class="sc">&gt;</span> <span class="dv">0</span>)</span>
+<span id="cb16-3"><a href="#cb16-3" tabindex="-1"></a></span>
+<span id="cb16-4"><a href="#cb16-4" tabindex="-1"></a><span class="cf">for</span> (q <span class="cf">in</span> <span class="fu">c</span>(<span class="fl">0.5</span>, <span class="fl">0.75</span>, <span class="fl">0.9</span>, <span class="fl">0.95</span>)) {</span>
+<span id="cb16-5"><a href="#cb16-5" tabindex="-1"></a>  p <span class="ot">&lt;-</span> <span class="fu">assign_cell_cycle_phase</span>(obj, <span class="at">threshold_quantile =</span> q)<span class="sc">$</span>Phase</span>
+<span id="cb16-6"><a href="#cb16-6" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;q=%.2f  cycling=%5.1f%%  marker+ among cycling=%5.1f%%</span><span class="sc">\n</span><span class="st">&quot;</span>,</span>
+<span id="cb16-7"><a href="#cb16-7" tabindex="-1"></a>              q, <span class="dv">100</span> <span class="sc">*</span> <span class="fu">mean</span>(p <span class="sc">!=</span> <span class="st">&quot;G1&quot;</span>), <span class="dv">100</span> <span class="sc">*</span> <span class="fu">mean</span>(det[p <span class="sc">!=</span> <span class="st">&quot;G1&quot;</span>] <span class="sc">&gt;</span> <span class="dv">0</span>)))</span>
+<span id="cb16-8"><a href="#cb16-8" tabindex="-1"></a>}</span></code></pre></div>
+<p>If precision barely improves as you tighten while recall collapses,
+the score is only weakly discriminative at your depth — in which case
+<strong>don’t discretize</strong>. Regress on the continuous scores
+instead of the <code>Phase</code> factor:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" tabindex="-1"></a>obj <span class="ot">&lt;-</span> <span class="fu">SCTransform</span>(obj, <span class="at">vars.to.regress =</span></span>
+<span id="cb17-2"><a href="#cb17-2" tabindex="-1"></a>  <span class="fu">c</span>(<span class="st">&quot;signature_1_S.Score_UCell&quot;</span>, <span class="st">&quot;signature_1_G2M.Score_UCell&quot;</span>))</span></code></pre></div>
+</div>
+<div id="structural-sanity-checks" class="section level2">
+<h2>9. Structural sanity checks</h2>
+<p>Cheap, and they catch problems that look like biology later.</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a><span class="co"># Duplicate gene symbols across a list of objects</span></span>
+<span id="cb18-2"><a href="#cb18-2" tabindex="-1"></a><span class="fu">check_duplicate_genes</span>(objs)</span>
+<span id="cb18-3"><a href="#cb18-3" tabindex="-1"></a></span>
+<span id="cb18-4"><a href="#cb18-4" tabindex="-1"></a><span class="co"># Gene ID type (symbol vs Ensembl vs Entrez) -- catches a mismatched reference</span></span>
+<span id="cb18-5"><a href="#cb18-5" tabindex="-1"></a><span class="fu">check_gene_ids_across_objects</span>(objs)</span>
+<span id="cb18-6"><a href="#cb18-6" tabindex="-1"></a></span>
+<span id="cb18-7"><a href="#cb18-7" tabindex="-1"></a><span class="co"># Per-cluster summary: sizes, QC metrics, sample composition</span></span>
+<span id="cb18-8"><a href="#cb18-8" tabindex="-1"></a><span class="fu">CellSuiteSummary</span>(merged, <span class="at">cluster_col =</span> <span class="st">&quot;seurat_clusters&quot;</span>, <span class="at">sample_col =</span> <span class="st">&quot;sample&quot;</span>)</span></code></pre></div>
+<p><code>CellSuiteSummary()</code> is the fastest way to spot a cluster
+that is one sample’s worth of low-quality cells wearing a cluster
+label.</p>
+<hr />
+</div>
+</div>
+<div id="part-ii-spatial-qc" class="section level1">
+<h1>Part II — Spatial QC</h1>
+<div id="what-changes-when-the-data-has-coordinates" class="section level2">
+<h2>10. What changes when the data has coordinates</h2>
+<p>Everything in Part I still applies — a low-count spot is still a
+low-count spot. Spatial adds three things it cannot see:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Position-dependent artifacts.</strong> Tissue edges, FOV
+boundaries and holes produce systematically odd measurements that no
+per-cell metric flags.</li>
+<li><strong>Images that must stay consistent with the cells.</strong>
+Subsetting a spatial object with plain <code>subset()</code> can leave
+<code>@images</code> referencing cells that no longer exist.</li>
+<li><strong>A spatial coherence question.</strong> Is an annotation
+spatially structured, or scattered like noise?</li>
+</ol>
+</div>
+<div id="inspecting-a-spatial-object" class="section level2">
+<h2>11. Inspecting a spatial object</h2>
+<p><code>SpatialObjectInfo()</code> returns one row per image — class,
+cell count, whether an actual image is attached or only coordinates. Run
+it first; most spatial confusion is really confusion about what
+<code>@images</code> contains.</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" tabindex="-1"></a>vis <span class="ot">&lt;-</span> <span class="fu">CreateVisiumObjects</span>(data_dirs, <span class="at">file_type =</span> <span class="st">&quot;h5&quot;</span>)</span>
+<span id="cb19-2"><a href="#cb19-2" tabindex="-1"></a><span class="fu">SpatialObjectInfo</span>(vis)</span></code></pre></div>
+<p>Coordinates for every image in one data frame, optionally joined to
+metadata:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" tabindex="-1"></a>coords <span class="ot">&lt;-</span> <span class="fu">get_all_coords</span>(obj, <span class="at">meta_cols =</span> <span class="fu">c</span>(<span class="st">&quot;seurat_clusters&quot;</span>, <span class="st">&quot;nCount_Spatial&quot;</span>))</span>
+<span id="cb20-2"><a href="#cb20-2" tabindex="-1"></a><span class="fu">head</span>(coords)</span></code></pre></div>
+<p>That data frame is the escape hatch — anything the plotting helpers
+don’t cover, you can do in <code>ggplot2</code> directly from it.</p>
+</div>
+<div id="metric-based-qc-still-applies" class="section level2">
+<h2>12. Metric-based QC still applies</h2>
+<p>The same report/filter/compare loop works; only the metric names
+change.</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" tabindex="-1"></a><span class="fu">GenerateQCReport</span>(vis,</span>
+<span id="cb21-2"><a href="#cb21-2" tabindex="-1"></a>                 <span class="at">output_file      =</span> <span class="st">&quot;qc/visium_qc.html&quot;</span>,</span>
+<span id="cb21-3"><a href="#cb21-3" tabindex="-1"></a>                 <span class="at">metadata_cols    =</span> <span class="fu">c</span>(<span class="st">&quot;nFeature_Spatial&quot;</span>, <span class="st">&quot;nCount_Spatial&quot;</span>,</span>
+<span id="cb21-4"><a href="#cb21-4" tabindex="-1"></a>                                      <span class="st">&quot;percent.mt&quot;</span>),</span>
+<span id="cb21-5"><a href="#cb21-5" tabindex="-1"></a>                 <span class="at">spatial_max_cols =</span> <span class="dv">3</span>)</span>
+<span id="cb21-6"><a href="#cb21-6" tabindex="-1"></a></span>
+<span id="cb21-7"><a href="#cb21-7" tabindex="-1"></a>vis_filt <span class="ot">&lt;-</span> <span class="fu">ApplyQCFilters</span>(vis, <span class="at">cutoffs =</span> <span class="st">&quot;qc/visium_qc_cutoffs.csv&quot;</span>)</span>
+<span id="cb21-8"><a href="#cb21-8" tabindex="-1"></a><span class="fu">QCComparePlots</span>(vis, vis_filt,</span>
+<span id="cb21-9"><a href="#cb21-9" tabindex="-1"></a>               <span class="at">metrics =</span> <span class="fu">c</span>(<span class="st">&quot;nCount_Spatial&quot;</span>, <span class="st">&quot;nFeature_Spatial&quot;</span>))</span></code></pre></div>
+<p><code>QCComparePlots()</code> already log-scales
+<code>nCount_Spatial</code> / <code>nFeature_Spatial</code> by default.
+<code>spatial_max_cols</code> controls the report’s spatial panel
+grid.</p>
+<p>One judgement call specific to spatial: a low-count spot at the
+tissue edge is usually an artifact, while a low-count spot in the middle
+of dense tissue may be a genuinely small or quiescent cell type.
+Filtering on counts alone treats them identically, which is the argument
+for the next section.</p>
+</div>
+<div id="spatial-artifacts" class="section level2">
+<h2>13. Spatial artifacts</h2>
+<div id="visium-edge-spots-edgedetectionvisium" class="section level3">
+<h3>13.1 Visium edge spots — <code>EdgeDetectionVisium()</code></h3>
+<p>Flags spots at the tissue border, where partial coverage depresses
+counts. Note it returns a <strong>data frame</strong>, not a modified
+object — join it back yourself.</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" tabindex="-1"></a>edges <span class="ot">&lt;-</span> <span class="fu">EdgeDetectionVisium</span>(<span class="at">seurat.obj =</span> vis[[<span class="dv">1</span>]],</span>
+<span id="cb22-2"><a href="#cb22-2" tabindex="-1"></a>                             <span class="at">search     =</span> <span class="st">&quot;radius&quot;</span>,</span>
+<span id="cb22-3"><a href="#cb22-3" tabindex="-1"></a>                             <span class="at">radius_factor =</span> <span class="fl">1.5</span>)</span>
+<span id="cb22-4"><a href="#cb22-4" tabindex="-1"></a><span class="fu">head</span>(edges)   <span class="co"># barcode, coordinates, Filter, Filter2, Filter3, Filter4</span></span></code></pre></div>
+<p>The four <code>Filter*</code> columns are increasingly aggressive
+definitions of “edge” (<code>&quot;Keep&quot;</code> / <code>&quot;Filter&quot;</code>), so
+you can pick a stringency rather than accept one:</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" tabindex="-1"></a>vis[[<span class="dv">1</span>]]<span class="sc">$</span>edge <span class="ot">&lt;-</span> edges<span class="sc">$</span>Filter2[<span class="fu">match</span>(<span class="fu">colnames</span>(vis[[<span class="dv">1</span>]]), edges<span class="sc">$</span>barcode)]</span>
+<span id="cb23-2"><a href="#cb23-2" tabindex="-1"></a>vis_core <span class="ot">&lt;-</span> <span class="fu">SubsetSpatial</span>(vis[[<span class="dv">1</span>]], <span class="at">subset =</span> edge <span class="sc">==</span> <span class="st">&quot;Keep&quot;</span>)</span></code></pre></div>
+<p>Neighbor search is either <code>&quot;radius&quot;</code> (spots within
+<code>radius_factor</code> × the inferred spot spacing) or a fixed
+<code>neighbors</code> count. Radius is the safer default on tissue with
+variable spot density.</p>
+</div>
+<div id="imaging-platform-fov-edges-detect_fov_edges" class="section level3">
+<h3>13.2 Imaging-platform FOV edges —
+<code>detect_fov_edges()</code></h3>
+<p>For Xenium/CosMx/MERFISH, where the artifact is the <em>imaging
+field</em> boundary rather than the tissue border. Returns the object
+with an integer <code>edge_layer</code> column: how many erosion passes
+in a cell sits.</p>
+<div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" tabindex="-1"></a>obj <span class="ot">&lt;-</span> <span class="fu">detect_fov_edges</span>(obj, <span class="at">method =</span> <span class="st">&quot;bbox&quot;</span>, <span class="at">n_iterations =</span> <span class="dv">2</span>)</span>
+<span id="cb24-2"><a href="#cb24-2" tabindex="-1"></a><span class="fu">table</span>(obj<span class="sc">$</span>edge_layer)</span>
+<span id="cb24-3"><a href="#cb24-3" tabindex="-1"></a></span>
+<span id="cb24-4"><a href="#cb24-4" tabindex="-1"></a><span class="co"># drop the outermost layer only</span></span>
+<span id="cb24-5"><a href="#cb24-5" tabindex="-1"></a>obj_core <span class="ot">&lt;-</span> <span class="fu">SubsetSpatial</span>(obj, <span class="at">subset =</span> edge_layer <span class="sc">&gt;</span> <span class="dv">1</span>)</span></code></pre></div>
+<p><code>method = &quot;bbox&quot;</code> peels from the FOV bounding box and
+suits rectangular FOVs. <code>&quot;angular&quot;</code> flags cells whose
+neighbors span less than <code>gap_threshold</code> radians — cells on
+any boundary, including irregular tissue edges. Use
+<code>&quot;angular&quot;</code> when FOVs are not rectangular or have been
+stitched.</p>
+</div>
+<div id="tissue-holes-detect_tissue_holes" class="section level3">
+<h3>13.3 Tissue holes — <code>detect_tissue_holes()</code></h3>
+<p>Finds interior voids — tears, folds, vessel lumens — which read as
+low-density regions rather than low-count cells.</p>
+<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" tabindex="-1"></a>obj <span class="ot">&lt;-</span> <span class="fu">detect_tissue_holes</span>(obj, <span class="at">min_hole_size =</span> <span class="dv">4</span>, <span class="at">sensitivity =</span> <span class="fl">0.75</span>)</span>
+<span id="cb25-2"><a href="#cb25-2" tabindex="-1"></a><span class="fu">table</span>(obj<span class="sc">$</span>hole_layer)</span></code></pre></div>
+<p>Raise <code>sensitivity</code> to flag more aggressively.
+<code>min_hole_size</code> guards against calling every small gap a
+hole. If a marker reliably marks the structure you <em>don’t</em> want
+called a hole (a lumen-lining gene, say), <code>exclude_gene</code>
+keeps it out:</p>
+<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" tabindex="-1"></a><span class="fu">detect_tissue_holes</span>(obj, <span class="at">exclude_gene =</span> <span class="st">&quot;Pecam1&quot;</span>,</span>
+<span id="cb26-2"><a href="#cb26-2" tabindex="-1"></a>                    <span class="at">exclude_gene_threshold =</span> <span class="dv">1</span>)</span></code></pre></div>
+<p>Both detectors add a label rather than removing cells, deliberately —
+inspect the labels spatially before subsetting on them.</p>
+</div>
+</div>
+<div id="is-the-annotation-spatially-coherent-spatialconcordance" class="section level2">
+<h2>14. Is the annotation spatially coherent? —
+<code>SpatialConcordance()</code></h2>
+<p>Tests whether cells sharing a label sit near each other more than
+chance, by permutation. This is the closest thing to an objective check
+that a clustering or deconvolution result is spatially real.</p>
+<div class="sourceCode" id="cb27"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" tabindex="-1"></a><span class="fu">SpatialConcordance</span>(obj, <span class="at">group.by =</span> <span class="st">&quot;seurat_clusters&quot;</span>, <span class="at">k =</span> <span class="dv">6</span>, <span class="at">n_perm =</span> <span class="dv">100</span>)</span></code></pre></div>
+<p>One row per image, with <code>observed</code> (mean same-label
+neighbor fraction), <code>null_mean</code>, <code>z</code>,
+<code>p</code>, <code>padj</code>.</p>
+<p>A high <code>z</code> says the labels are spatially structured. A
+<code>z</code> near zero says they’re scattered — which for a
+tissue-architecture cluster means the cluster is probably technical. Run
+it on a shuffled label as a negative control:</p>
+<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" tabindex="-1"></a>obj<span class="sc">$</span>shuffled <span class="ot">&lt;-</span> <span class="fu">sample</span>(obj<span class="sc">$</span>seurat_clusters)</span>
+<span id="cb28-2"><a href="#cb28-2" tabindex="-1"></a><span class="fu">SpatialConcordance</span>(obj, <span class="at">group.by =</span> <span class="st">&quot;shuffled&quot;</span>)   <span class="co"># z should be ~0</span></span></code></pre></div>
+<p><code>exclude</code> drops labels before scoring — useful for an
+“Unknown” or low-quality class that would otherwise dominate.</p>
+</div>
+<div id="subsetting-without-corrupting-images" class="section level2">
+<h2>15. Subsetting without corrupting images</h2>
+<p><strong>Use <code>SubsetSpatial()</code>, not
+<code>subset()</code>.</strong> Plain subsetting can leave
+<code>@images</code> inconsistent with the cells that remain;
+<code>SubsetSpatial()</code> subsets every image alongside the
+expression data and drops images left with no cells, with a message.</p>
+<div class="sourceCode" id="cb29"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" tabindex="-1"></a>obj_sub <span class="ot">&lt;-</span> <span class="fu">SubsetSpatial</span>(obj, <span class="at">subset =</span> celltype <span class="sc">==</span> <span class="st">&quot;Hepatocyte&quot;</span>)</span>
+<span id="cb29-2"><a href="#cb29-2" tabindex="-1"></a>obj_sub <span class="ot">&lt;-</span> <span class="fu">SubsetSpatial</span>(obj, <span class="at">cells =</span> keep_barcodes)</span>
+<span id="cb29-3"><a href="#cb29-3" tabindex="-1"></a>obj_sub <span class="ot">&lt;-</span> <span class="fu">SubsetSpatial</span>(obj, <span class="at">idents =</span> <span class="fu">c</span>(<span class="st">&quot;0&quot;</span>, <span class="st">&quot;3&quot;</span>))</span>
+<span id="cb29-4"><a href="#cb29-4" tabindex="-1"></a>obj_sub <span class="ot">&lt;-</span> <span class="fu">SubsetSpatial</span>(obj, <span class="at">features =</span> keep_genes)   <span class="co"># images untouched</span></span></code></pre></div>
+<p>Two related helpers:</p>
+<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" tabindex="-1"></a><span class="co"># Images named image, image.1, image.2... -&gt; meaningful names</span></span>
+<span id="cb30-2"><a href="#cb30-2" tabindex="-1"></a>obj <span class="ot">&lt;-</span> <span class="fu">RenameSpatialImages</span>(obj, <span class="at">group_col =</span> <span class="st">&quot;sample&quot;</span>)</span>
+<span id="cb30-3"><a href="#cb30-3" tabindex="-1"></a>obj <span class="ot">&lt;-</span> <span class="fu">RenameSpatialImages</span>(obj, <span class="at">new_names =</span> <span class="fu">c</span>(<span class="at">image =</span> <span class="st">&quot;slice_A&quot;</span>))</span>
+<span id="cb30-4"><a href="#cb30-4" tabindex="-1"></a></span>
+<span id="cb30-5"><a href="#cb30-5" tabindex="-1"></a><span class="co"># Shrink an object for sharing: drop images, or keep coordinates only</span></span>
+<span id="cb30-6"><a href="#cb30-6" tabindex="-1"></a>obj <span class="ot">&lt;-</span> <span class="fu">DropSpatialImage</span>(obj, <span class="at">mode =</span> <span class="st">&quot;downgrade&quot;</span>)   <span class="co"># coords stay, pixels go</span></span>
+<span id="cb30-7"><a href="#cb30-7" tabindex="-1"></a>obj <span class="ot">&lt;-</span> <span class="fu">DropSpatialImage</span>(obj, <span class="at">mode =</span> <span class="st">&quot;remove&quot;</span>)      <span class="co"># everything goes</span></span></code></pre></div>
+<p><code>mode = &quot;downgrade&quot;</code> is usually what you want before
+<code>saveRDS()</code> — the hires image is often most of the file size,
+and coordinates are what analysis needs.</p>
+</div>
+<div id="a-spatial-qc-recipe" class="section level2">
+<h2>16. A spatial QC recipe</h2>
+<div class="sourceCode" id="cb31"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" tabindex="-1"></a><span class="co"># 1. What am I holding?</span></span>
+<span id="cb31-2"><a href="#cb31-2" tabindex="-1"></a>vis <span class="ot">&lt;-</span> <span class="fu">CreateVisiumObjects</span>(data_dirs, <span class="at">file_type =</span> <span class="st">&quot;h5&quot;</span>)</span>
+<span id="cb31-3"><a href="#cb31-3" tabindex="-1"></a><span class="fu">SpatialObjectInfo</span>(vis)</span>
+<span id="cb31-4"><a href="#cb31-4" tabindex="-1"></a><span class="fu">check_gene_ids_across_objects</span>(vis)</span>
+<span id="cb31-5"><a href="#cb31-5" tabindex="-1"></a></span>
+<span id="cb31-6"><a href="#cb31-6" tabindex="-1"></a><span class="co"># 2. Standard metric QC</span></span>
+<span id="cb31-7"><a href="#cb31-7" tabindex="-1"></a><span class="fu">GenerateQCReport</span>(vis, <span class="at">output_file =</span> <span class="st">&quot;qc/visium_qc.html&quot;</span>,</span>
+<span id="cb31-8"><a href="#cb31-8" tabindex="-1"></a>                 <span class="at">metadata_cols =</span> <span class="fu">c</span>(<span class="st">&quot;nFeature_Spatial&quot;</span>, <span class="st">&quot;nCount_Spatial&quot;</span>,</span>
+<span id="cb31-9"><a href="#cb31-9" tabindex="-1"></a>                                   <span class="st">&quot;percent.mt&quot;</span>))</span>
+<span id="cb31-10"><a href="#cb31-10" tabindex="-1"></a><span class="co">#    -&gt; edit qc/visium_qc_cutoffs.csv here &lt;-</span></span>
+<span id="cb31-11"><a href="#cb31-11" tabindex="-1"></a>vis_f <span class="ot">&lt;-</span> <span class="fu">ApplyQCFilters</span>(vis, <span class="at">cutoffs =</span> <span class="st">&quot;qc/visium_qc_cutoffs.csv&quot;</span>,</span>
+<span id="cb31-12"><a href="#cb31-12" tabindex="-1"></a>                        <span class="at">return_report =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb31-13"><a href="#cb31-13" tabindex="-1"></a><span class="fu">QCComparePlots</span>(vis, vis_f<span class="sc">$</span>obj)</span>
+<span id="cb31-14"><a href="#cb31-14" tabindex="-1"></a></span>
+<span id="cb31-15"><a href="#cb31-15" tabindex="-1"></a><span class="co"># 3. Spatial artifacts -- label, look, then decide</span></span>
+<span id="cb31-16"><a href="#cb31-16" tabindex="-1"></a>edges <span class="ot">&lt;-</span> <span class="fu">EdgeDetectionVisium</span>(<span class="at">seurat.obj =</span> vis_f<span class="sc">$</span>obj[[<span class="dv">1</span>]])</span>
+<span id="cb31-17"><a href="#cb31-17" tabindex="-1"></a>vis_f<span class="sc">$</span>obj[[<span class="dv">1</span>]]<span class="sc">$</span>edge <span class="ot">&lt;-</span> edges<span class="sc">$</span>Filter2[<span class="fu">match</span>(<span class="fu">colnames</span>(vis_f<span class="sc">$</span>obj[[<span class="dv">1</span>]]),</span>
+<span id="cb31-18"><a href="#cb31-18" tabindex="-1"></a>                                           edges<span class="sc">$</span>barcode)]</span>
+<span id="cb31-19"><a href="#cb31-19" tabindex="-1"></a><span class="fu">SpatialDimPlotFixed</span>(vis_f<span class="sc">$</span>obj[[<span class="dv">1</span>]], <span class="at">group.by =</span> <span class="st">&quot;edge&quot;</span>)</span>
+<span id="cb31-20"><a href="#cb31-20" tabindex="-1"></a></span>
+<span id="cb31-21"><a href="#cb31-21" tabindex="-1"></a><span class="co"># 4. Cluster, then ask whether the clusters are spatially real</span></span>
+<span id="cb31-22"><a href="#cb31-22" tabindex="-1"></a>merged <span class="ot">&lt;-</span> <span class="fu">MergeSeurat</span>(vis_f<span class="sc">$</span>obj, <span class="at">spatial =</span> <span class="st">&quot;Visium&quot;</span>)</span>
+<span id="cb31-23"><a href="#cb31-23" tabindex="-1"></a><span class="fu">SpatialConcordance</span>(merged, <span class="at">group.by =</span> <span class="st">&quot;seurat_clusters&quot;</span>)</span>
+<span id="cb31-24"><a href="#cb31-24" tabindex="-1"></a></span>
+<span id="cb31-25"><a href="#cb31-25" tabindex="-1"></a><span class="co"># 5. Shrink before saving</span></span>
+<span id="cb31-26"><a href="#cb31-26" tabindex="-1"></a><span class="fu">saveRDS</span>(<span class="fu">DropSpatialImage</span>(merged, <span class="at">mode =</span> <span class="st">&quot;downgrade&quot;</span>), <span class="st">&quot;visium_qc.rds&quot;</span>)</span></code></pre></div>
+<hr />
+</div>
+<div id="see-also" class="section level2">
+<h2>See also</h2>
+<ul>
+<li>The main <a href="SingleCellTools_vignette.html">SingleCellTools
+vignette</a> for the full analysis workflow.</li>
+<li><code>?GenerateQCReport</code>, <code>?ApplyQCFilters</code>,
+<code>?calldoublet</code> — every argument above is documented with its
+rationale.</li>
+</ul>
+</div>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

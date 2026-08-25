@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>SingleCellTools Vignette: scATAC-seq Workflow</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">SingleCellTools Vignette: scATAC-seq
+Workflow</h1>
+
+
+
+<p><strong>Package:</strong> <code>SingleCellTools</code>
+<strong>Data:</strong> Illustrative — CellRanger-ATAC output directories
+(<code>peaks.bed</code>, <code>singlecell.csv</code>,
+<code>fragments.tsv.gz</code> under an <code>outs/</code> subfolder),
+the same generic-path convention the main scRNA-seq vignette uses rather
+than one specific downloadable dataset. <code>CreateATACObjects()</code>
+takes raw fragment files as input, which isn’t something a one-line
+<code>SeuratData::LoadData()</code> call can provide the way it does for
+the <code>ifnb</code>/<code>stxBrain</code> vignettes – so this
+walkthrough is written against a generic 4-sample, 2-condition design
+(<code>Vehicle</code> x2, <code>DrugA</code> x2), matching the main
+vignette’s own treatment/condition setup, and every call uses this
+package’s real function signatures. <strong>Goal:</strong> Walk through
+a complete scATAC-seq workflow — object creation, QC, dimensionality
+reduction, cross-sample integration, gene activity scoring, motif
+enrichment, and differential accessibility.</p>
+<blockquote>
+<p><strong>Mouse (<code>mm10</code>) or human
+(<code>hg38</code>).</strong>
+<code>CreateATACObjects()</code>/<code>CreateATACObjectsFilter()</code>
+take a <code>genome = c(&quot;mm10&quot;, &quot;hg38&quot;)</code> argument that selects the
+matching gene annotation
+(<code>EnsDb.Mmusculus.v79</code>/<code>EnsDb.Hsapiens.v86</code>) and
+genome sequence
+(<code>BSgenome.Mmusculus.UCSC.mm10</code>/<code>BSgenome.Hsapiens.UCSC.hg38</code>)
+package – <code>&quot;mm10&quot;</code> is the default. Both genomes’ packages are
+optional (Suggests): only the one matching whichever <code>genome</code>
+you actually request needs to be installed, and you’ll get an actionable
+<code>BiocManager::install(...)</code> error naming it if it’s missing.
+For any other organism/build, build the <code>ChromatinAssay</code>
+yourself following Signac’s own vignette instead of these two functions;
+everything from Section 4 onward here applies to any genome once you
+have a Seurat object carrying an ATAC peak assay, regardless of how it
+was built.</p>
+</blockquote>
+<hr />
+<div id="table-of-contents" class="section level2">
+<h2>Table of Contents</h2>
+<ol style="list-style-type: decimal">
+<li><a href="#id_1-setup">Setup</a></li>
+<li><a href="#id_2-loading--createatacobjects">Loading —
+<code>CreateATACObjects()</code></a></li>
+<li><a href="#id_3-qc-and-filtering">QC and Filtering</a>
+<ul>
+<li>3.1 <a href="#id_31-createatacobjectsfilter"><code>CreateATACObjectsFilter()</code></a></li>
+<li>3.2 <a href="#id_32-alternative-generateqcreport--applyqcfilters">Alternative:
+<code>GenerateQCReport()</code> / <code>ApplyQCFilters()</code></a></li>
+</ul></li>
+<li><a href="#id_4-per-sample-normalization-and-dimensionality-reduction-lsi">Per-Sample
+Normalization and Dimensionality Reduction (LSI)</a></li>
+<li><a href="#id_5-merging-and-cross-sample-integration">Merging and
+Cross-Sample Integration</a></li>
+<li><a href="#id_6-clustering-and-umap">Clustering and UMAP</a></li>
+<li><a href="#id_7-gene-activity-scores-and-annotation">Gene Activity
+Scores and Annotation</a></li>
+<li><a href="#id_8-motif-enrichment--chromvar">Motif Enrichment —
+<code>chromVAR</code></a></li>
+<li><a href="#id_9-differential-accessibility-between-conditions">Differential
+Accessibility Between Conditions</a></li>
+<li><a href="#id_10-composition-analysis-between-conditions">Composition
+Analysis Between Conditions</a></li>
+<li><a href="#id_11-peak-to-gene-links-optional">Peak-to-Gene Links
+(Optional)</a></li>
+<li><a href="#id_12-tips-specific-to-atac-data">Tips Specific to ATAC
+Data</a></li>
+<li><a href="#id_13-session-info">Session Info</a></li>
+</ol>
+<hr />
+</div>
+<div id="setup" class="section level2">
+<h2>1. Setup</h2>
+<div id="install-required-packages" class="section level3">
+<h3>Install required packages</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="co"># SingleCellTools</span></span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>remotes<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;gevensen95/SingleCellTools&quot;</span>)</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="co"># Bioconductor dependencies CreateATACObjects()/CreateATACObjectsFilter() use internally.</span></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a><span class="co"># GenomicRanges/IRanges/GenomeInfoDb/Signac are required regardless of genome; only</span></span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a><span class="co"># install the EnsDb/BSgenome pair matching whichever `genome` you&#39;ll actually use.</span></span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;BiocManager&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)) <span class="fu">install.packages</span>(<span class="st">&quot;BiocManager&quot;</span>)</span>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a>BiocManager<span class="sc">::</span><span class="fu">install</span>(<span class="fu">c</span>(<span class="st">&quot;Signac&quot;</span>, <span class="st">&quot;GenomicRanges&quot;</span>, <span class="st">&quot;IRanges&quot;</span>, <span class="st">&quot;GenomeInfoDb&quot;</span>))</span>
+<span id="cb1-9"><a href="#cb1-9" tabindex="-1"></a>BiocManager<span class="sc">::</span><span class="fu">install</span>(<span class="fu">c</span>(<span class="st">&quot;EnsDb.Mmusculus.v79&quot;</span>, <span class="st">&quot;BSgenome.Mmusculus.UCSC.mm10&quot;</span>))  <span class="co"># genome = &quot;mm10&quot;</span></span>
+<span id="cb1-10"><a href="#cb1-10" tabindex="-1"></a><span class="co"># BiocManager::install(c(&quot;EnsDb.Hsapiens.v86&quot;, &quot;BSgenome.Hsapiens.UCSC.hg38&quot;))  # genome = &quot;hg38&quot;</span></span>
+<span id="cb1-11"><a href="#cb1-11" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" tabindex="-1"></a><span class="co"># Cross-sample integration (Section 5)</span></span>
+<span id="cb1-13"><a href="#cb1-13" tabindex="-1"></a><span class="fu">install.packages</span>(<span class="st">&quot;harmony&quot;</span>)</span>
+<span id="cb1-14"><a href="#cb1-14" tabindex="-1"></a></span>
+<span id="cb1-15"><a href="#cb1-15" tabindex="-1"></a><span class="co"># Motif enrichment (Section 8) -- not required for Sections 1-7</span></span>
+<span id="cb1-16"><a href="#cb1-16" tabindex="-1"></a>BiocManager<span class="sc">::</span><span class="fu">install</span>(<span class="fu">c</span>(<span class="st">&quot;JASPAR2020&quot;</span>, <span class="st">&quot;TFBSTools&quot;</span>, <span class="st">&quot;chromVAR&quot;</span>, <span class="st">&quot;motifmatchr&quot;</span>))</span></code></pre></div>
+</div>
+<div id="load-libraries" class="section level3">
+<h3>Load libraries</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">library</span>(SingleCellTools)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a><span class="fu">library</span>(Signac)</span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a><span class="fu">library</span>(Seurat)</span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a><span class="fu">library</span>(GenomicRanges)</span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a><span class="fu">library</span>(patchwork)</span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="loading-createatacobjects" class="section level2">
+<h2>2. Loading — <code>CreateATACObjects()</code></h2>
+<p><code>CreateATACObjects()</code> expects each element of
+<code>data_dirs</code> to be a standard
+<code>cellranger-atac count</code> output folder – i.e. it looks for
+<code>&lt;dir&gt;/outs/peaks.bed</code>,
+<code>&lt;dir&gt;/outs/singlecell.csv</code>, and
+<code>&lt;dir&gt;/outs/fragments.tsv.gz</code> (with its
+<code>.tbi</code> index alongside it, required by Signac’s
+fragment-reading functions even though it isn’t passed explicitly).
+Point <code>data_dirs</code> straight at CellRanger’s own output – no
+renaming or reorganizing needed.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>data_dirs <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">&quot;data/atac/sample1&quot;</span>, <span class="st">&quot;data/atac/sample2&quot;</span>,</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>              <span class="st">&quot;data/atac/sample3&quot;</span>, <span class="st">&quot;data/atac/sample4&quot;</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a>atac_list <span class="ot">&lt;-</span> <span class="fu">CreateATACObjects</span>(</span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a>  <span class="at">data_dirs            =</span> data_dirs,</span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a>  <span class="at">add_treatment        =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a>  <span class="at">treatment            =</span> <span class="fu">c</span>(<span class="st">&quot;Vehicle&quot;</span>, <span class="st">&quot;Vehicle&quot;</span>, <span class="st">&quot;DrugA&quot;</span>, <span class="st">&quot;DrugA&quot;</span>),</span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a>  <span class="at">genome               =</span> <span class="st">&quot;mm10&quot;</span>,   <span class="co"># default -- pass &quot;hg38&quot; for human data</span></span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a>  <span class="at">passed_filters_value =</span> <span class="dv">500</span></span>
+<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a>)</span>
+<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a><span class="fu">names</span>(atac_list)   <span class="co"># basename(data_dirs) -- &quot;sample1&quot;, &quot;sample2&quot;, &quot;sample3&quot;, &quot;sample4&quot;</span></span>
+<span id="cb3-12"><a href="#cb3-12" tabindex="-1"></a></span>
+<span id="cb3-13"><a href="#cb3-13" tabindex="-1"></a><span class="co"># Or, for human data, with custom list names instead of basename(data_dirs):</span></span>
+<span id="cb3-14"><a href="#cb3-14" tabindex="-1"></a>atac_list_human <span class="ot">&lt;-</span> <span class="fu">CreateATACObjects</span>(</span>
+<span id="cb3-15"><a href="#cb3-15" tabindex="-1"></a>  <span class="at">data_dirs    =</span> <span class="fu">c</span>(<span class="st">&quot;data/atac/donor1&quot;</span>, <span class="st">&quot;data/atac/donor2&quot;</span>),</span>
+<span id="cb3-16"><a href="#cb3-16" tabindex="-1"></a>  <span class="at">genome       =</span> <span class="st">&quot;hg38&quot;</span>,</span>
+<span id="cb3-17"><a href="#cb3-17" tabindex="-1"></a>  <span class="at">object_names =</span> <span class="fu">c</span>(<span class="st">&quot;Donor1&quot;</span>, <span class="st">&quot;Donor2&quot;</span>)</span>
+<span id="cb3-18"><a href="#cb3-18" tabindex="-1"></a>)</span></code></pre></div>
+<p>Behind the scenes, this:</p>
+<ol style="list-style-type: decimal">
+<li>Reads each sample’s <code>peaks.bed</code> and builds one
+<strong>combined peak set</strong> across all <code>data_dirs</code>
+(<code>GenomicRanges::reduce()</code> on the union, kept within
+<code>[peakwidths_min, peakwidths_max]</code>, default
+<code>[20, 10000]</code>), so every sample’s counts land on the same
+peak coordinates from the start – no separate peak-reconciliation step
+needed later.</li>
+<li>Drops peaks on scaffolds/contigs not in the standard mouse
+chromosomes.</li>
+<li>Loads gene annotations from <code>EnsDb.Mmusculus.v79</code> and
+attaches them via <code>Signac::Annotation()</code>.</li>
+<li>Builds a per-sample <code>ChromatinAssay</code> +
+<code>Seurat</code> object (assay name <code>&quot;ATAC&quot;</code>) from that
+sample’s own fragments against the shared peak set, keeping only cells
+with <code>passed_filters &gt; passed_filters_value</code> from
+<code>singlecell.csv</code>.</li>
+<li>Computes <code>nucleosome_signal</code>,
+<code>TSS.enrichment</code>, <code>pct_reads_in_peaks</code>, and
+<code>blacklist_ratio</code> per cell.</li>
+<li>Prints an unfiltered 5-panel QC boxplot (one panel per metric,
+grouped by sample) so you can eyeball where reasonable cutoffs might
+fall before filtering anything.</li>
+</ol>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="co"># Per-sample cell/peak counts</span></span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="fu">sapply</span>(atac_list, dim)</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a><span class="co"># QC metrics live in metadata, same shape as any Seurat object</span></span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a><span class="fu">head</span>(atac_list<span class="sc">$</span>sample1<span class="sc">@</span>meta.data[, <span class="fu">c</span>(<span class="st">&quot;passed_filters&quot;</span>, <span class="st">&quot;peak_region_fragments&quot;</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>                                     <span class="st">&quot;pct_reads_in_peaks&quot;</span>, <span class="st">&quot;TSS.enrichment&quot;</span>,</span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>                                     <span class="st">&quot;nucleosome_signal&quot;</span>, <span class="st">&quot;blacklist_ratio&quot;</span>)])</span></code></pre></div>
+<blockquote>
+<p><strong>On <code>ConvertToBPCells()</code>/<code>on_disk</code> and
+ATAC data.</strong> Unlike
+<code>CreateRNAObjects()</code>/<code>CreateVisiumObjects()</code>/<code>LoadXenium2()</code>,
+<code>CreateATACObjects()</code>/<code>CreateATACObjectsFilter()</code>
+don’t have an <code>on_disk</code> argument, and calling
+<code>ConvertToBPCells()</code> on the <code>&quot;ATAC&quot;</code> assay here
+errors deliberately rather than attempting it. The <code>&quot;ATAC&quot;</code>
+assay is a Signac <code>ChromatinAssay</code>, not a standard Seurat
+assay – it carries fragments/ranges/annotation slots that
+<code>ConvertToBPCells()</code>’s generic <code>Assay5</code> coercion
+has no way to preserve, so this is a real, checked limitation rather
+than an oversight. See <a href="SingleCellTools_vignette_bpcells.md"><code>SingleCellTools_vignette_bpcells.md</code></a>
+for what is and isn’t covered.</p>
+</blockquote>
+<hr />
+</div>
+<div id="qc-and-filtering" class="section level2">
+<h2>3. QC and Filtering</h2>
+<div id="createatacobjectsfilter" class="section level3">
+<h3>3.1 <code>CreateATACObjectsFilter()</code></h3>
+<p><code>CreateATACObjectsFilter()</code> does everything
+<code>CreateATACObjects()</code> does, plus an explicit filtering step –
+either fixed cutoffs in one call, or an interactive prompt-per-metric
+session. It rebuilds the combined peak set and every object from the raw
+CellRanger output again (it doesn’t take <code>atac_list</code> as
+input), so treat it as an alternative entry point from Section 2, not a
+follow-up step on <code>atac_list</code>.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="co"># Fixed cutoffs in one call</span></span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>atac_list_filtered <span class="ot">&lt;-</span> <span class="fu">CreateATACObjectsFilter</span>(</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a>  <span class="at">data_dirs                 =</span> data_dirs,</span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a>  <span class="at">treatment                 =</span> <span class="fu">c</span>(<span class="st">&quot;Vehicle&quot;</span>, <span class="st">&quot;Vehicle&quot;</span>, <span class="st">&quot;DrugA&quot;</span>, <span class="st">&quot;DrugA&quot;</span>),</span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a>  <span class="at">filter                    =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a>  <span class="at">interactive               =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a>  <span class="at">genome                    =</span> <span class="st">&quot;mm10&quot;</span>,   <span class="co"># default -- pass &quot;hg38&quot; for human data</span></span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a>  <span class="at">peak_region_fragments_min =</span> <span class="dv">3000</span>,</span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a>  <span class="at">peak_region_fragments_max =</span> <span class="dv">100000</span>,</span>
+<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a>  <span class="at">pct_reads_in_peaks_min    =</span> <span class="dv">40</span>,</span>
+<span id="cb5-11"><a href="#cb5-11" tabindex="-1"></a>  <span class="at">blacklist_ratio_max       =</span> <span class="fl">0.025</span>,</span>
+<span id="cb5-12"><a href="#cb5-12" tabindex="-1"></a>  <span class="at">nucleosome_signal_max     =</span> <span class="dv">4</span>,</span>
+<span id="cb5-13"><a href="#cb5-13" tabindex="-1"></a>  <span class="at">TSS.enrichment_min        =</span> <span class="dv">2</span></span>
+<span id="cb5-14"><a href="#cb5-14" tabindex="-1"></a>)</span>
+<span id="cb5-15"><a href="#cb5-15" tabindex="-1"></a></span>
+<span id="cb5-16"><a href="#cb5-16" tabindex="-1"></a><span class="co"># Or: interactive mode -- prompts once per metric, offering either a quantile</span></span>
+<span id="cb5-17"><a href="#cb5-17" tabindex="-1"></a><span class="co"># or an absolute threshold, and re-subsets before asking the next question</span></span>
+<span id="cb5-18"><a href="#cb5-18" tabindex="-1"></a>atac_list_filtered <span class="ot">&lt;-</span> <span class="fu">CreateATACObjectsFilter</span>(<span class="at">data_dirs =</span> data_dirs, <span class="at">interactive =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
+<p>If you already built <code>atac_list</code> in Section 2 and just
+want to apply fixed thresholds without re-reading fragments from disk
+(<code>CreateATACObjectsFilter()</code>’s peak-building and
+fragment-reading steps are the slow part), subset it directly
+instead:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>atac_list_filtered <span class="ot">&lt;-</span> <span class="fu">lapply</span>(atac_list, <span class="cf">function</span>(obj) {</span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>  <span class="fu">subset</span>(obj, <span class="at">subset =</span></span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a>           peak_region_fragments <span class="sc">&gt;</span> <span class="dv">3000</span> <span class="sc">&amp;</span> peak_region_fragments <span class="sc">&lt;</span> <span class="dv">100000</span> <span class="sc">&amp;</span></span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a>           pct_reads_in_peaks <span class="sc">&gt;</span> <span class="dv">40</span> <span class="sc">&amp;</span> blacklist_ratio <span class="sc">&lt;</span> <span class="fl">0.025</span> <span class="sc">&amp;</span></span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a>           nucleosome_signal <span class="sc">&lt;</span> <span class="dv">4</span> <span class="sc">&amp;</span> TSS.enrichment <span class="sc">&gt;</span> <span class="dv">2</span>)</span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a>})</span></code></pre></div>
+</div>
+<div id="alternative-generateqcreport-applyqcfilters" class="section level3">
+<h3>3.2 Alternative: <code>GenerateQCReport()</code> /
+<code>ApplyQCFilters()</code></h3>
+<p><code>GenerateQCReport()</code>/<code>ApplyQCFilters()</code> (used
+for RNA/spatial QC elsewhere in this package) are modality-agnostic –
+they work directly off whatever metadata columns you point them at, so
+they apply to ATAC’s
+<code>TSS.enrichment</code>/<code>nucleosome_signal</code>/
+<code>pct_reads_in_peaks</code> exactly the way they apply to RNA’s
+<code>nFeature_RNA</code>/<code>percent.mt</code>. This path gives you
+MAD-based suggested cutoffs per sample (rather than picking fixed
+numbers yourself) and a saved cutoffs CSV you can review or edit before
+applying:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="fu">GenerateQCReport</span>(</span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>  atac_list,</span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>  <span class="at">metadata_cols =</span> <span class="fu">c</span>(<span class="st">&quot;passed_filters&quot;</span>, <span class="st">&quot;peak_region_fragments&quot;</span>, <span class="st">&quot;pct_reads_in_peaks&quot;</span>,</span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>                    <span class="st">&quot;TSS.enrichment&quot;</span>, <span class="st">&quot;nucleosome_signal&quot;</span>, <span class="st">&quot;blacklist_ratio&quot;</span>),</span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a>  <span class="at">output_file   =</span> <span class="st">&quot;atac_qc_report.html&quot;</span>,</span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a>  <span class="at">title         =</span> <span class="st">&quot;scATAC-seq QC report&quot;</span></span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a>)</span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a></span>
+<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a><span class="co"># Review/edit atac_qc_report_cutoffs.csv if needed, then apply</span></span>
+<span id="cb7-10"><a href="#cb7-10" tabindex="-1"></a>atac_list_filtered <span class="ot">&lt;-</span> <span class="fu">ApplyQCFilters</span>(atac_list, <span class="at">cutoffs =</span> <span class="st">&quot;atac_qc_report_cutoffs.csv&quot;</span>)</span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="per-sample-normalization-and-dimensionality-reduction-lsi" class="section level2">
+<h2>4. Per-Sample Normalization and Dimensionality Reduction (LSI)</h2>
+<p>ATAC data is normalized and reduced differently from RNA: term
+frequency-inverse document frequency (TF-IDF) instead of
+log-normalization, and latent semantic indexing (LSI, an SVD on the
+TF-IDF matrix) instead of PCA. <code>SingleCellTools</code> doesn’t wrap
+this step – it’s plain Signac, run once per sample before merging so
+each sample’s own top features are used going in:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a>atac_list_filtered <span class="ot">&lt;-</span> <span class="fu">lapply</span>(atac_list_filtered, <span class="cf">function</span>(obj) {</span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>  obj <span class="ot">&lt;-</span> <span class="fu">RunTFIDF</span>(obj)</span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>  obj <span class="ot">&lt;-</span> <span class="fu">FindTopFeatures</span>(obj, <span class="at">min.cutoff =</span> <span class="st">&quot;q0&quot;</span>)   <span class="co"># keep all peaks; raise for a stricter set</span></span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>  obj <span class="ot">&lt;-</span> <span class="fu">RunSVD</span>(obj)</span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>  obj</span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a>})</span></code></pre></div>
+<p>Check whether the first LSI component just tracks sequencing depth
+(common, and worth knowing about before using it for
+clustering/UMAP):</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="fu">DepthCor</span>(atac_list_filtered<span class="sc">$</span>sample1)</span></code></pre></div>
+<p>If component 1 correlates strongly with depth
+(<code>|correlation| &gt; ~0.5</code> is the usual rule of thumb), drop
+it from downstream <code>dims</code> – e.g. use <code>2:30</code>
+instead of <code>1:30</code>, as this vignette does from here on.</p>
+<hr />
+</div>
+<div id="merging-and-cross-sample-integration" class="section level2">
+<h2>5. Merging and Cross-Sample Integration</h2>
+<p><code>MergeSeurat()</code> does <strong>not</strong> support ATAC
+objects – its normalization
+(<code>SCTransform</code>/<code>NormalizeData</code>) and reduction
+(<code>RunPCA</code>) steps are RNA-specific, and its
+<code>spatial</code> argument only recognizes
+<code>&#39;no&#39;</code>/<code>&#39;Visium&#39;</code>/<code>&#39;Xenium&#39;</code>. Merge and
+integrate ATAC samples directly with Signac + <code>harmony</code>,
+following the same LSI-then-batch-correct pattern Signac’s own
+multi-sample vignette uses. Because <code>CreateATACObjects()</code>
+already put every sample on the same combined peak set, a plain
+<code>merge()</code> is enough to combine them – no separate
+peak-reconciliation step needed:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a>combined <span class="ot">&lt;-</span> <span class="fu">merge</span>(atac_list_filtered[[<span class="dv">1</span>]], atac_list_filtered[<span class="sc">-</span><span class="dv">1</span>],</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a>                  <span class="at">add.cell.ids =</span> <span class="fu">names</span>(atac_list_filtered))</span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a></span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a>combined <span class="ot">&lt;-</span> <span class="fu">RunTFIDF</span>(combined)</span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>combined <span class="ot">&lt;-</span> <span class="fu">FindTopFeatures</span>(combined, <span class="at">min.cutoff =</span> <span class="st">&quot;q0&quot;</span>)</span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>combined <span class="ot">&lt;-</span> <span class="fu">RunSVD</span>(combined)</span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a><span class="fu">DepthCor</span>(combined)   <span class="co"># re-check on the merged object</span></span></code></pre></div>
+<p>Batch-correct across samples on the LSI embedding with
+<code>harmony::RunHarmony()</code> – the same
+direct-<code>RunHarmony()</code> approach <code>MergeSeurat()</code>
+uses for RNA/spatial data, since current CRAN <code>harmony</code> no
+longer exports the legacy <code>HarmonyMatrix()</code> that
+<code>Seurat::IntegrateLayers(method = &quot;HarmonyIntegration&quot;)</code>
+depends on:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a>combined <span class="ot">&lt;-</span> harmony<span class="sc">::</span><span class="fu">RunHarmony</span>(</span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  combined,</span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  <span class="at">group.by.vars  =</span> <span class="st">&quot;orig.ident&quot;</span>,</span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  <span class="at">reduction.use  =</span> <span class="st">&quot;lsi&quot;</span>,</span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>  <span class="at">dims.use       =</span> <span class="dv">2</span><span class="sc">:</span><span class="dv">30</span>,           <span class="co"># drop LSI-1 if DepthCor() showed strong depth correlation</span></span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>  <span class="at">reduction.save =</span> <span class="st">&quot;harmony&quot;</span></span>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>)</span></code></pre></div>
+<hr />
+</div>
+<div id="clustering-and-umap" class="section level2">
+<h2>6. Clustering and UMAP</h2>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a>combined <span class="ot">&lt;-</span> <span class="fu">RunUMAP</span>(combined, <span class="at">reduction =</span> <span class="st">&quot;harmony&quot;</span>, <span class="at">dims =</span> <span class="dv">2</span><span class="sc">:</span><span class="dv">30</span>)</span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>combined <span class="ot">&lt;-</span> <span class="fu">FindNeighbors</span>(combined, <span class="at">reduction =</span> <span class="st">&quot;harmony&quot;</span>, <span class="at">dims =</span> <span class="dv">2</span><span class="sc">:</span><span class="dv">30</span>)</span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a>combined <span class="ot">&lt;-</span> <span class="fu">FindClusters</span>(combined, <span class="at">algorithm =</span> <span class="dv">3</span>, <span class="at">resolution =</span> <span class="fl">0.5</span>)   <span class="co"># SLM -- Signac&#39;s recommended algorithm for LSI-based clustering</span></span>
+<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a></span>
+<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a><span class="fu">DimPlot</span>(combined, <span class="at">label =</span> <span class="cn">TRUE</span>) <span class="sc">+</span> <span class="fu">ggtitle</span>(<span class="st">&quot;ATAC clusters&quot;</span>)</span>
+<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a><span class="fu">DimPlot</span>(combined, <span class="at">group.by =</span> <span class="st">&quot;orig.ident&quot;</span>) <span class="sc">+</span> <span class="fu">ggtitle</span>(<span class="st">&quot;By sample -- should be interleaved&quot;</span>)</span>
+<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a><span class="fu">DimPlot</span>(combined, <span class="at">group.by =</span> <span class="st">&quot;treatment&quot;</span>, <span class="at">cols =</span> <span class="fu">c</span>(<span class="st">&quot;Vehicle&quot;</span> <span class="ot">=</span> <span class="st">&quot;steelblue&quot;</span>, <span class="st">&quot;DrugA&quot;</span> <span class="ot">=</span> <span class="st">&quot;tomato&quot;</span>))</span></code></pre></div>
+<hr />
+</div>
+<div id="gene-activity-scores-and-annotation" class="section level2">
+<h2>7. Gene Activity Scores and Annotation</h2>
+<p>Clusters from peak accessibility alone aren’t labeled with cell
+identities yet. <code>Signac::GeneActivity()</code> estimates per-gene
+activity by summing accessibility over each gene’s body + upstream
+promoter region, giving an RNA-like activity score you can annotate the
+same way you would real expression:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a>gene_activities <span class="ot">&lt;-</span> <span class="fu">GeneActivity</span>(combined)</span>
+<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a>combined[[<span class="st">&quot;ACTIVITY&quot;</span>]] <span class="ot">&lt;-</span> <span class="fu">CreateAssayObject</span>(<span class="at">counts =</span> gene_activities)</span>
+<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a><span class="fu">DefaultAssay</span>(combined) <span class="ot">&lt;-</span> <span class="st">&quot;ACTIVITY&quot;</span></span>
+<span id="cb13-5"><a href="#cb13-5" tabindex="-1"></a>combined <span class="ot">&lt;-</span> <span class="fu">NormalizeData</span>(combined, <span class="at">normalization.method =</span> <span class="st">&quot;LogNormalize&quot;</span>,</span>
+<span id="cb13-6"><a href="#cb13-6" tabindex="-1"></a>                          <span class="at">scale.factor =</span> <span class="fu">median</span>(combined<span class="sc">$</span>nCount_ACTIVITY))</span></code></pre></div>
+<p>With an RNA-like assay in hand, this package’s existing annotation
+functions apply directly – they only need an assay with sensible feature
+names, not RNA specifically. <code>MarkerPlot()</code> (dot plot) and
+<code>AnnotateClusters()</code> (per-cluster UCell scoring) both work
+unchanged on the <code>&quot;ACTIVITY&quot;</code> assay:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a>lineage_markers <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a>  <span class="at">Gene     =</span> <span class="fu">c</span>(<span class="st">&quot;Cd3e&quot;</span>, <span class="st">&quot;Cd3d&quot;</span>, <span class="st">&quot;Cd19&quot;</span>, <span class="st">&quot;Ms4a1&quot;</span>, <span class="st">&quot;Cd14&quot;</span>, <span class="st">&quot;Itgam&quot;</span>, <span class="st">&quot;Epcam&quot;</span>, <span class="st">&quot;Krt8&quot;</span>),</span>
+<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a>  <span class="at">CellType =</span> <span class="fu">c</span>(<span class="st">&quot;T cell&quot;</span>, <span class="st">&quot;T cell&quot;</span>, <span class="st">&quot;B cell&quot;</span>, <span class="st">&quot;B cell&quot;</span>,</span>
+<span id="cb14-4"><a href="#cb14-4" tabindex="-1"></a>              <span class="st">&quot;Myeloid&quot;</span>, <span class="st">&quot;Myeloid&quot;</span>, <span class="st">&quot;Epithelial&quot;</span>, <span class="st">&quot;Epithelial&quot;</span>)</span>
+<span id="cb14-5"><a href="#cb14-5" tabindex="-1"></a>)</span>
+<span id="cb14-6"><a href="#cb14-6" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" tabindex="-1"></a><span class="fu">MarkerPlot</span>(combined, <span class="at">genes =</span> lineage_markers, <span class="at">assay =</span> <span class="st">&quot;ACTIVITY&quot;</span>, <span class="at">cluster =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb14-8"><a href="#cb14-8" tabindex="-1"></a></span>
+<span id="cb14-9"><a href="#cb14-9" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">AnnotateClusters</span>(</span>
+<span id="cb14-10"><a href="#cb14-10" tabindex="-1"></a>  combined,</span>
+<span id="cb14-11"><a href="#cb14-11" tabindex="-1"></a>  <span class="at">markers            =</span> <span class="fu">list</span>(<span class="at">Tcell =</span> <span class="fu">c</span>(<span class="st">&quot;Cd3e&quot;</span>, <span class="st">&quot;Cd3d&quot;</span>), <span class="at">Bcell =</span> <span class="fu">c</span>(<span class="st">&quot;Cd19&quot;</span>, <span class="st">&quot;Ms4a1&quot;</span>),</span>
+<span id="cb14-12"><a href="#cb14-12" tabindex="-1"></a>                            <span class="at">Myeloid =</span> <span class="fu">c</span>(<span class="st">&quot;Cd14&quot;</span>, <span class="st">&quot;Itgam&quot;</span>), <span class="at">Epithelial =</span> <span class="fu">c</span>(<span class="st">&quot;Epcam&quot;</span>, <span class="st">&quot;Krt8&quot;</span>)),</span>
+<span id="cb14-13"><a href="#cb14-13" tabindex="-1"></a>  <span class="at">cluster_col        =</span> <span class="st">&quot;seurat_clusters&quot;</span>,</span>
+<span id="cb14-14"><a href="#cb14-14" tabindex="-1"></a>  <span class="at">filter_nonspecific =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb14-15"><a href="#cb14-15" tabindex="-1"></a>  <span class="at">min_detection_frac =</span> <span class="fl">0.05</span>,</span>
+<span id="cb14-16"><a href="#cb14-16" tabindex="-1"></a>  <span class="at">return_scores      =</span> <span class="st">&quot;cluster&quot;</span>,</span>
+<span id="cb14-17"><a href="#cb14-17" tabindex="-1"></a>  <span class="at">new_col            =</span> <span class="st">&quot;cell_type&quot;</span></span>
+<span id="cb14-18"><a href="#cb14-18" tabindex="-1"></a>)</span>
+<span id="cb14-19"><a href="#cb14-19" tabindex="-1"></a>combined <span class="ot">&lt;-</span> res<span class="sc">$</span>obj</span>
+<span id="cb14-20"><a href="#cb14-20" tabindex="-1"></a><span class="fu">table</span>(combined<span class="sc">$</span>cell_type)</span>
+<span id="cb14-21"><a href="#cb14-21" tabindex="-1"></a></span>
+<span id="cb14-22"><a href="#cb14-22" tabindex="-1"></a><span class="co"># Feature-density view of gene activity, same as for real expression elsewhere in this package</span></span>
+<span id="cb14-23"><a href="#cb14-23" tabindex="-1"></a><span class="fu">DefaultAssay</span>(combined) <span class="ot">&lt;-</span> <span class="st">&quot;ACTIVITY&quot;</span></span>
+<span id="cb14-24"><a href="#cb14-24" tabindex="-1"></a><span class="fu">PlotFeatureDensity</span>(combined, <span class="at">features =</span> <span class="fu">c</span>(<span class="st">&quot;Cd3e&quot;</span>, <span class="st">&quot;Epcam&quot;</span>), <span class="at">reduction =</span> <span class="st">&quot;umap&quot;</span>)</span>
+<span id="cb14-25"><a href="#cb14-25" tabindex="-1"></a></span>
+<span id="cb14-26"><a href="#cb14-26" tabindex="-1"></a><span class="fu">DefaultAssay</span>(combined) <span class="ot">&lt;-</span> <span class="st">&quot;ATAC&quot;</span>   <span class="co"># switch back for peak-level work below</span></span></code></pre></div>
+<hr />
+</div>
+<div id="motif-enrichment-chromvar" class="section level2">
+<h2>8. Motif Enrichment — <code>chromVAR</code></h2>
+<p>Gene activity tells you <em>what genes look accessible</em>; motif
+enrichment (via <code>chromVAR</code>) tells you <em>which transcription
+factors’ binding sites look accessible</em>, per cell – useful for
+spotting a regulatory program driving a cluster or condition rather than
+a single gene. This is plain Signac/chromVAR, not wrapped by
+<code>SingleCellTools</code>:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a>pfm <span class="ot">&lt;-</span> TFBSTools<span class="sc">::</span><span class="fu">getMatrixSet</span>(</span>
+<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a>  <span class="at">x    =</span> JASPAR2020<span class="sc">::</span>JASPAR2020,</span>
+<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a>  <span class="at">opts =</span> <span class="fu">list</span>(<span class="at">collection =</span> <span class="st">&quot;CORE&quot;</span>, <span class="at">tax_group =</span> <span class="st">&quot;vertebrates&quot;</span>)</span>
+<span id="cb15-4"><a href="#cb15-4" tabindex="-1"></a>)</span>
+<span id="cb15-5"><a href="#cb15-5" tabindex="-1"></a></span>
+<span id="cb15-6"><a href="#cb15-6" tabindex="-1"></a>combined <span class="ot">&lt;-</span> <span class="fu">AddMotifs</span>(combined, <span class="at">genome =</span> BSgenome.Mmusculus.UCSC.mm10<span class="sc">::</span>BSgenome.Mmusculus.UCSC.mm10,</span>
+<span id="cb15-7"><a href="#cb15-7" tabindex="-1"></a>                     <span class="at">pfm =</span> pfm)</span>
+<span id="cb15-8"><a href="#cb15-8" tabindex="-1"></a>combined <span class="ot">&lt;-</span> <span class="fu">RunChromVAR</span>(combined, <span class="at">genome =</span> BSgenome.Mmusculus.UCSC.mm10<span class="sc">::</span>BSgenome.Mmusculus.UCSC.mm10)</span>
+<span id="cb15-9"><a href="#cb15-9" tabindex="-1"></a></span>
+<span id="cb15-10"><a href="#cb15-10" tabindex="-1"></a><span class="fu">DefaultAssay</span>(combined) <span class="ot">&lt;-</span> <span class="st">&quot;chromvar&quot;</span></span>
+<span id="cb15-11"><a href="#cb15-11" tabindex="-1"></a><span class="co"># Example: CTCF motif accessibility per cluster (swap in the JASPAR ID you care about)</span></span>
+<span id="cb15-12"><a href="#cb15-12" tabindex="-1"></a><span class="fu">FeaturePlot</span>(combined, <span class="at">features =</span> <span class="st">&quot;MA0139.1&quot;</span>)</span>
+<span id="cb15-13"><a href="#cb15-13" tabindex="-1"></a><span class="fu">VlnPlot</span>(combined, <span class="at">features =</span> <span class="st">&quot;MA0139.1&quot;</span>, <span class="at">group.by =</span> <span class="st">&quot;cell_type&quot;</span>)</span>
+<span id="cb15-14"><a href="#cb15-14" tabindex="-1"></a></span>
+<span id="cb15-15"><a href="#cb15-15" tabindex="-1"></a><span class="fu">DefaultAssay</span>(combined) <span class="ot">&lt;-</span> <span class="st">&quot;ATAC&quot;</span>   <span class="co"># switch back for the rest of this vignette</span></span></code></pre></div>
+<p><code>AddMotifs()</code>’s querying vertebrate-wide motifs (rather
+than restricting to one species) is standard practice here – DNA-binding
+motifs are far more conserved across species than the genes encoding the
+TFs themselves, so this isn’t mouse-specific despite our data being
+mouse.</p>
+<hr />
+</div>
+<div id="differential-accessibility-between-conditions" class="section level2">
+<h2>9. Differential Accessibility Between Conditions</h2>
+<div id="per-cell-fast-but-pools-cells-like-any-per-cell-test" class="section level3">
+<h3>Per-cell (fast, but pools cells like any per-cell test)</h3>
+<p>Signac’s recommended test for accessibility is logistic regression
+(<code>test.use = &quot;LR&quot;</code>), controlling for sequencing depth as a
+latent variable – the standard approach for binary-ish, sparse peak
+data:</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a><span class="fu">Idents</span>(combined) <span class="ot">&lt;-</span> combined<span class="sc">$</span>treatment</span>
+<span id="cb16-2"><a href="#cb16-2" tabindex="-1"></a></span>
+<span id="cb16-3"><a href="#cb16-3" tabindex="-1"></a>da_peaks <span class="ot">&lt;-</span> <span class="fu">FindMarkers</span>(</span>
+<span id="cb16-4"><a href="#cb16-4" tabindex="-1"></a>  combined,</span>
+<span id="cb16-5"><a href="#cb16-5" tabindex="-1"></a>  <span class="at">ident.1     =</span> <span class="st">&quot;DrugA&quot;</span>,</span>
+<span id="cb16-6"><a href="#cb16-6" tabindex="-1"></a>  <span class="at">ident.2     =</span> <span class="st">&quot;Vehicle&quot;</span>,</span>
+<span id="cb16-7"><a href="#cb16-7" tabindex="-1"></a>  <span class="at">test.use    =</span> <span class="st">&quot;LR&quot;</span>,</span>
+<span id="cb16-8"><a href="#cb16-8" tabindex="-1"></a>  <span class="at">latent.vars =</span> <span class="st">&quot;nCount_ATAC&quot;</span>,</span>
+<span id="cb16-9"><a href="#cb16-9" tabindex="-1"></a>  <span class="at">min.pct     =</span> <span class="fl">0.05</span></span>
+<span id="cb16-10"><a href="#cb16-10" tabindex="-1"></a>)</span>
+<span id="cb16-11"><a href="#cb16-11" tabindex="-1"></a></span>
+<span id="cb16-12"><a href="#cb16-12" tabindex="-1"></a><span class="co"># Nearest gene for the top differential peaks</span></span>
+<span id="cb16-13"><a href="#cb16-13" tabindex="-1"></a><span class="fu">ClosestFeature</span>(combined, <span class="at">regions =</span> <span class="fu">rownames</span>(da_peaks)[<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>])</span></code></pre></div>
+<p>The same motif-level test works directly on the <code>chromvar</code>
+assay for differential motif <em>activity</em> rather than differential
+peak accessibility:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" tabindex="-1"></a><span class="fu">DefaultAssay</span>(combined) <span class="ot">&lt;-</span> <span class="st">&quot;chromvar&quot;</span></span>
+<span id="cb17-2"><a href="#cb17-2" tabindex="-1"></a>da_motifs <span class="ot">&lt;-</span> <span class="fu">FindMarkers</span>(combined, <span class="at">ident.1 =</span> <span class="st">&quot;DrugA&quot;</span>, <span class="at">ident.2 =</span> <span class="st">&quot;Vehicle&quot;</span>,</span>
+<span id="cb17-3"><a href="#cb17-3" tabindex="-1"></a>                         <span class="at">test.use =</span> <span class="st">&quot;LR&quot;</span>, <span class="at">latent.vars =</span> <span class="st">&quot;nCount_ATAC&quot;</span>)</span>
+<span id="cb17-4"><a href="#cb17-4" tabindex="-1"></a><span class="fu">DefaultAssay</span>(combined) <span class="ot">&lt;-</span> <span class="st">&quot;ATAC&quot;</span></span></code></pre></div>
+<p>Like any per-cell test, <code>FindMarkers()</code> here treats every
+cell as an independent replicate rather than every sample – the same
+pseudoreplication concern flagged for
+<code>CompositionAnalysis(test = ...)</code> elsewhere in this package’s
+vignettes applies to peak/motif accessibility too.</p>
+</div>
+<div id="pseudobulk-the-sample-respecting-alternative" class="section level3">
+<h3>Pseudobulk (the sample-respecting alternative)</h3>
+<p><code>PseudobulkDE()</code> is assay-agnostic – it aggregates
+whatever assay you point it at via
+<code>Seurat::AggregateExpression()</code> and runs <code>DESeq2</code>
+on the per-sample totals, which works on a peak-count matrix exactly as
+well as it does on a gene-count matrix. With 2 samples per condition
+here, this is the test that actually reflects the number of biological
+replicates:</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a>pb_atac <span class="ot">&lt;-</span> <span class="fu">PseudobulkDE</span>(</span>
+<span id="cb18-2"><a href="#cb18-2" tabindex="-1"></a>  combined,</span>
+<span id="cb18-3"><a href="#cb18-3" tabindex="-1"></a>  <span class="at">sample_col    =</span> <span class="st">&quot;orig.ident&quot;</span>,</span>
+<span id="cb18-4"><a href="#cb18-4" tabindex="-1"></a>  <span class="at">condition_col =</span> <span class="st">&quot;treatment&quot;</span>,</span>
+<span id="cb18-5"><a href="#cb18-5" tabindex="-1"></a>  <span class="at">ident_1       =</span> <span class="st">&quot;DrugA&quot;</span>,</span>
+<span id="cb18-6"><a href="#cb18-6" tabindex="-1"></a>  <span class="at">ident_2       =</span> <span class="st">&quot;Vehicle&quot;</span>,</span>
+<span id="cb18-7"><a href="#cb18-7" tabindex="-1"></a>  <span class="at">assay         =</span> <span class="st">&quot;ATAC&quot;</span></span>
+<span id="cb18-8"><a href="#cb18-8" tabindex="-1"></a>)</span>
+<span id="cb18-9"><a href="#cb18-9" tabindex="-1"></a>pb_atac<span class="sc">$</span>results                       <span class="co"># DESeq2 results, one row per peak</span></span>
+<span id="cb18-10"><a href="#cb18-10" tabindex="-1"></a><span class="fu">subset</span>(pb_atac<span class="sc">$</span>results, padj <span class="sc">&lt;</span> <span class="fl">0.05</span>)</span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="composition-analysis-between-conditions" class="section level2">
+<h2>10. Composition Analysis Between Conditions</h2>
+<p>Whether the cluster/cell-type mix itself shifted between conditions
+uses the exact same functions as the RNA/spatial vignettes –
+<code>CompositionAnalysis()</code>/
+<code>CompositionEstimationPlot()</code> only need a
+<code>group_col</code>/<code>sample_col</code>/<code>condition_col</code>
+on any Seurat object, ATAC included:</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" tabindex="-1"></a>comp <span class="ot">&lt;-</span> <span class="fu">CompositionAnalysis</span>(</span>
+<span id="cb19-2"><a href="#cb19-2" tabindex="-1"></a>  combined,</span>
+<span id="cb19-3"><a href="#cb19-3" tabindex="-1"></a>  <span class="at">group_col     =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb19-4"><a href="#cb19-4" tabindex="-1"></a>  <span class="at">sample_col    =</span> <span class="st">&quot;orig.ident&quot;</span>,</span>
+<span id="cb19-5"><a href="#cb19-5" tabindex="-1"></a>  <span class="at">condition_col =</span> <span class="st">&quot;treatment&quot;</span>,</span>
+<span id="cb19-6"><a href="#cb19-6" tabindex="-1"></a>  <span class="at">test          =</span> <span class="st">&quot;chisq&quot;</span></span>
+<span id="cb19-7"><a href="#cb19-7" tabindex="-1"></a>)</span>
+<span id="cb19-8"><a href="#cb19-8" tabindex="-1"></a>comp<span class="sc">$</span>proportions</span></code></pre></div>
+<p>As with every <code>test = ...</code> call in this package’s other
+vignettes: this pools cells across samples per condition, so it emits a
+<code>warning()</code> and shouldn’t be read as a valid replicate-level
+p-value with only 2 samples per condition here.
+<code>CompositionEstimationPlot()</code> is the sample-respecting
+complement – one point per <code>orig.ident</code> (not per cell), plus
+a bootstrap 95% CI on the effect size, rather than a p-value:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" tabindex="-1"></a><span class="fu">CompositionEstimationPlot</span>(comp, <span class="at">idx =</span> <span class="fu">c</span>(<span class="st">&quot;Vehicle&quot;</span>, <span class="st">&quot;DrugA&quot;</span>))</span></code></pre></div>
+<p>See the main vignette’s 3.11 section for a full walkthrough of how to
+read a <code>dabestr</code> estimation plot (the two-panel layout, and
+what each <code>effect</code> option measures) – the same plot type is
+used throughout this package.</p>
+<hr />
+</div>
+<div id="peak-to-gene-links-optional" class="section level2">
+<h2>11. Peak-to-Gene Links (Optional)</h2>
+<p><code>Signac::LinkPeaks()</code> correlates peak accessibility with
+nearby gene expression across cells to nominate candidate regulatory
+links – it needs a matched RNA assay on the same cells (e.g. a multiome
+dataset), which this generic ATAC-only walkthrough doesn’t assume you
+have. If you do:</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" tabindex="-1"></a>combined <span class="ot">&lt;-</span> <span class="fu">RegionStats</span>(combined, <span class="at">genome =</span> BSgenome.Mmusculus.UCSC.mm10<span class="sc">::</span>BSgenome.Mmusculus.UCSC.mm10)</span>
+<span id="cb21-2"><a href="#cb21-2" tabindex="-1"></a>combined <span class="ot">&lt;-</span> <span class="fu">LinkPeaks</span>(combined, <span class="at">peak.assay =</span> <span class="st">&quot;ATAC&quot;</span>, <span class="at">expression.assay =</span> <span class="st">&quot;RNA&quot;</span>)</span>
+<span id="cb21-3"><a href="#cb21-3" tabindex="-1"></a><span class="fu">CoveragePlot</span>(combined, <span class="at">region =</span> <span class="st">&quot;Epcam&quot;</span>, <span class="at">extend.upstream =</span> <span class="dv">5000</span>, <span class="at">extend.downstream =</span> <span class="dv">5000</span>)</span></code></pre></div>
+<hr />
+</div>
+<div id="tips-specific-to-atac-data" class="section level2">
+<h2>12. Tips Specific to ATAC Data</h2>
+<p><strong><code>CreateATACObjects()</code>/<code>CreateATACObjectsFilter()</code>
+support <code>genome = &quot;mm10&quot;</code> (default) or
+<code>&quot;hg38&quot;</code>.</strong> Each requires only the matching
+<code>EnsDb</code>/<code>BSgenome</code> package pair to be installed
+(optional Suggests dependencies) – see the note at the top of this
+vignette. For any other organism/build, build the
+<code>ChromatinAssay</code> yourself following Signac’s own vignette
+instead of these two functions.</p>
+<p><strong>Pass <code>object_names</code> if
+<code>basename(data_dirs)</code> isn’t a good sample label.</strong>
+Both functions default to naming the returned list from
+<code>basename(data_dirs)</code>; override it with
+<code>object_names = c(...)</code> (same length as
+<code>data_dirs</code>) when your folder names aren’t what you want as
+<code>orig.ident</code>/list names downstream.</p>
+<p><strong>The fragments file needs its <code>.tbi</code> index
+alongside it.</strong> <code>CreateFragmentObject()</code> (called
+internally) expects <code>fragments.tsv.gz.tbi</code> in the same
+directory as <code>fragments.tsv.gz</code>, even though the index path
+isn’t passed explicitly – this is standard <code>cellranger-atac</code>
+output, so it’s normally already there.</p>
+<p><strong>Check <code>DepthCor()</code> before trusting LSI component
+1.</strong> It’s routinely dominated by sequencing depth rather than
+biological signal; dropping it (<code>dims = 2:30</code> instead of
+<code>1:30</code>) is the Signac-recommended default, not a special
+case.</p>
+<p><strong><code>FindTopFeatures(min.cutoff = &quot;q0&quot;)</code> keeps every
+peak; raise it for a stricter, faster-to-compute feature set</strong>
+(e.g. <code>&quot;q75&quot;</code> keeps only the top 25% most commonly used
+peaks) – useful on very large peak sets where <code>RunSVD()</code>
+becomes slow.</p>
+<p><strong><code>algorithm = 3</code> (SLM) in
+<code>FindClusters()</code></strong> is Signac’s recommended clustering
+algorithm for LSI-based reductions, rather than Seurat’s RNA default
+(Louvain, <code>algorithm = 1</code>).</p>
+<p><strong>Reuse this package’s assay-agnostic functions rather than
+reimplementing them for ATAC.</strong> <code>MarkerPlot()</code>,
+<code>AnnotateClusters()</code>, <code>PlotFeatureDensity()</code>,
+<code>CompositionAnalysis()</code>/<code>CompositionEstimationPlot()</code>,
+and <code>PseudobulkDE()</code> all work unchanged on a
+<code>GeneActivity()</code>-derived assay or the peak assay directly –
+there’s no ATAC-specific annotation/composition/DE function in this
+package because none of the existing ones needed to be ATAC-specific in
+the first place.</p>
+<p><strong><code>GenerateQCReport()</code>/<code>ApplyQCFilters()</code>
+work on ATAC metadata columns too.</strong> They don’t hardcode RNA
+metric names – point <code>metadata_cols</code> at whatever QC columns
+your object actually has.</p>
+<hr />
+</div>
+<div id="session-info" class="section level2">
+<h2>13. Session Info</h2>
+<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span></code></pre></div>
+<p>Key packages used in this vignette:</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Package</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>SingleCellTools</code></td>
+<td>Object creation
+(<code>CreateATACObjects</code>/<code>Filter</code>), QC reporting, and
+reused assay-agnostic annotation/composition/DE functions</td>
+</tr>
+<tr class="even">
+<td><code>Signac</code></td>
+<td>Chromatin assay construction, TF-IDF/LSI, gene activity, motif
+setup</td>
+</tr>
+<tr class="odd">
+<td><code>Seurat</code></td>
+<td>Core data structure, clustering, UMAP, differential expression</td>
+</tr>
+<tr class="even">
+<td><code>harmony</code></td>
+<td>Batch correction across samples on the LSI embedding</td>
+</tr>
+<tr class="odd">
+<td><code>EnsDb.Mmusculus.v79</code></td>
+<td>Mouse gene annotation (hardcoded inside
+<code>CreateATACObjects()</code>)</td>
+</tr>
+<tr class="even">
+<td><code>BSgenome.Mmusculus.UCSC.mm10</code></td>
+<td>Mouse genome sequence (hardcoded inside
+<code>CreateATACObjects()</code>; also used for motif matching)</td>
+</tr>
+<tr class="odd">
+<td><code>JASPAR2020</code> / <code>TFBSTools</code></td>
+<td>Transcription factor binding motif database</td>
+</tr>
+<tr class="even">
+<td><code>chromVAR</code> / <code>motifmatchr</code></td>
+<td>Per-cell motif accessibility scoring</td>
+</tr>
+<tr class="odd">
+<td><code>DESeq2</code> (via <code>PseudobulkDE()</code>)</td>
+<td>Pseudobulk differential accessibility</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>For questions or bug reports, open an issue at <a href="https://github.com/gevensen95/SingleCellTools/issues">github.com/gevensen95/SingleCellTools/issues</a>.</em></p>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

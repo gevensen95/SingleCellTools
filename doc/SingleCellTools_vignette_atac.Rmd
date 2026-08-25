@@ -1,4 +1,11 @@
-# SingleCellTools Vignette: scATAC-seq Workflow
+---
+title: "SingleCellTools Vignette: scATAC-seq Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{SingleCellTools Vignette: scATAC-seq Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
 
 **Package:** `SingleCellTools`
 **Data:** Illustrative — CellRanger-ATAC output directories (`peaks.bed`, `singlecell.csv`,

@@ -1,0 +1,577 @@
+---
+title: "SingleCellTools Vignette: scATAC-seq Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{SingleCellTools Vignette: scATAC-seq Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+**Package:** `SingleCellTools`
+**Data:** Illustrative — CellRanger-ATAC output directories (`peaks.bed`, `singlecell.csv`,
+`fragments.tsv.gz` under an `outs/` subfolder), the same generic-path convention the main
+scRNA-seq vignette uses rather than one specific downloadable dataset. `CreateATACObjects()`
+takes raw fragment files as input, which isn't something a one-line `SeuratData::LoadData()`
+call can provide the way it does for the `ifnb`/`stxBrain` vignettes -- so this walkthrough is
+written against a generic 4-sample, 2-condition design (`Vehicle` x2, `DrugA` x2), matching the
+main vignette's own treatment/condition setup, and every call uses this package's real function
+signatures.
+**Goal:** Walk through a complete scATAC-seq workflow — object creation, QC, dimensionality
+reduction, cross-sample integration, gene activity scoring, motif enrichment, and differential
+accessibility.
+
+> **Mouse (`mm10`) or human (`hg38`).** `CreateATACObjects()`/`CreateATACObjectsFilter()` take a
+> `genome = c("mm10", "hg38")` argument that selects the matching gene annotation
+> (`EnsDb.Mmusculus.v79`/`EnsDb.Hsapiens.v86`) and genome sequence
+> (`BSgenome.Mmusculus.UCSC.mm10`/`BSgenome.Hsapiens.UCSC.hg38`) package -- `"mm10"` is the
+> default. Both genomes' packages are optional (Suggests): only the one matching whichever
+> `genome` you actually request needs to be installed, and you'll get an actionable
+> `BiocManager::install(...)` error naming it if it's missing. For any other organism/build, build
+> the `ChromatinAssay` yourself following Signac's own vignette instead of these two functions;
+> everything from Section 4 onward here applies to any genome once you have a Seurat object
+> carrying an ATAC peak assay, regardless of how it was built.
+
+---
+
+## Table of Contents
+
+1. [Setup](#1-setup)
+2. [Loading — `CreateATACObjects()`](#2-loading--createatacobjects)
+3. [QC and Filtering](#3-qc-and-filtering)
+   - 3.1 [`CreateATACObjectsFilter()`](#31-createatacobjectsfilter)
+   - 3.2 [Alternative: `GenerateQCReport()` / `ApplyQCFilters()`](#32-alternative-generateqcreport--applyqcfilters)
+4. [Per-Sample Normalization and Dimensionality Reduction (LSI)](#4-per-sample-normalization-and-dimensionality-reduction-lsi)
+5. [Merging and Cross-Sample Integration](#5-merging-and-cross-sample-integration)
+6. [Clustering and UMAP](#6-clustering-and-umap)
+7. [Gene Activity Scores and Annotation](#7-gene-activity-scores-and-annotation)
+8. [Motif Enrichment — `chromVAR`](#8-motif-enrichment--chromvar)
+9. [Differential Accessibility Between Conditions](#9-differential-accessibility-between-conditions)
+10. [Composition Analysis Between Conditions](#10-composition-analysis-between-conditions)
+11. [Peak-to-Gene Links (Optional)](#11-peak-to-gene-links-optional)
+12. [Tips Specific to ATAC Data](#12-tips-specific-to-atac-data)
+13. [Session Info](#13-session-info)
+
+---
+
+## 1. Setup
+
+### Install required packages
+
+```r
+# SingleCellTools
+remotes::install_github("gevensen95/SingleCellTools")
+
+# Bioconductor dependencies CreateATACObjects()/CreateATACObjectsFilter() use internally.
+# GenomicRanges/IRanges/GenomeInfoDb/Signac are required regardless of genome; only
+# install the EnsDb/BSgenome pair matching whichever `genome` you'll actually use.
+if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+BiocManager::install(c("Signac", "GenomicRanges", "IRanges", "GenomeInfoDb"))
+BiocManager::install(c("EnsDb.Mmusculus.v79", "BSgenome.Mmusculus.UCSC.mm10"))  # genome = "mm10"
+# BiocManager::install(c("EnsDb.Hsapiens.v86", "BSgenome.Hsapiens.UCSC.hg38"))  # genome = "hg38"
+
+# Cross-sample integration (Section 5)
+install.packages("harmony")
+
+# Motif enrichment (Section 8) -- not required for Sections 1-7
+BiocManager::install(c("JASPAR2020", "TFBSTools", "chromVAR", "motifmatchr"))
+```
+
+### Load libraries
+
+```r
+library(SingleCellTools)
+library(Signac)
+library(Seurat)
+library(GenomicRanges)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+```
+
+---
+
+## 2. Loading — `CreateATACObjects()`
+
+`CreateATACObjects()` expects each element of `data_dirs` to be a standard
+`cellranger-atac count` output folder -- i.e. it looks for `<dir>/outs/peaks.bed`,
+`<dir>/outs/singlecell.csv`, and `<dir>/outs/fragments.tsv.gz` (with its `.tbi` index
+alongside it, required by Signac's fragment-reading functions even though it isn't
+passed explicitly). Point `data_dirs` straight at CellRanger's own output -- no
+renaming or reorganizing needed.
+
+```r
+data_dirs <- c("data/atac/sample1", "data/atac/sample2",
+              "data/atac/sample3", "data/atac/sample4")
+
+atac_list <- CreateATACObjects(
+  data_dirs            = data_dirs,
+  add_treatment        = TRUE,
+  treatment            = c("Vehicle", "Vehicle", "DrugA", "DrugA"),
+  genome               = "mm10",   # default -- pass "hg38" for human data
+  passed_filters_value = 500
+)
+names(atac_list)   # basename(data_dirs) -- "sample1", "sample2", "sample3", "sample4"
+
+# Or, for human data, with custom list names instead of basename(data_dirs):
+atac_list_human <- CreateATACObjects(
+  data_dirs    = c("data/atac/donor1", "data/atac/donor2"),
+  genome       = "hg38",
+  object_names = c("Donor1", "Donor2")
+)
+```
+
+Behind the scenes, this:
+
+1. Reads each sample's `peaks.bed` and builds one **combined peak set** across all
+   `data_dirs` (`GenomicRanges::reduce()` on the union, kept within
+   `[peakwidths_min, peakwidths_max]`, default `[20, 10000]`), so every sample's counts
+   land on the same peak coordinates from the start -- no separate peak-reconciliation
+   step needed later.
+2. Drops peaks on scaffolds/contigs not in the standard mouse chromosomes.
+3. Loads gene annotations from `EnsDb.Mmusculus.v79` and attaches them via
+   `Signac::Annotation()`.
+4. Builds a per-sample `ChromatinAssay` + `Seurat` object (assay name `"ATAC"`) from
+   that sample's own fragments against the shared peak set, keeping only cells with
+   `passed_filters > passed_filters_value` from `singlecell.csv`.
+5. Computes `nucleosome_signal`, `TSS.enrichment`, `pct_reads_in_peaks`, and
+   `blacklist_ratio` per cell.
+6. Prints an unfiltered 5-panel QC boxplot (one panel per metric, grouped by sample)
+   so you can eyeball where reasonable cutoffs might fall before filtering anything.
+
+```r
+# Per-sample cell/peak counts
+sapply(atac_list, dim)
+
+# QC metrics live in metadata, same shape as any Seurat object
+head(atac_list$sample1@meta.data[, c("passed_filters", "peak_region_fragments",
+                                     "pct_reads_in_peaks", "TSS.enrichment",
+                                     "nucleosome_signal", "blacklist_ratio")])
+```
+
+> **On `ConvertToBPCells()`/`on_disk` and ATAC data.** Unlike
+> `CreateRNAObjects()`/`CreateVisiumObjects()`/`LoadXenium2()`,
+> `CreateATACObjects()`/`CreateATACObjectsFilter()` don't have an `on_disk`
+> argument, and calling `ConvertToBPCells()` on the `"ATAC"` assay here errors
+> deliberately rather than attempting it. The `"ATAC"` assay is a Signac
+> `ChromatinAssay`, not a standard Seurat assay -- it carries
+> fragments/ranges/annotation slots that `ConvertToBPCells()`'s generic
+> `Assay5` coercion has no way to preserve, so this is a real, checked
+> limitation rather than an oversight. See
+> [`SingleCellTools_vignette_bpcells.md`](SingleCellTools_vignette_bpcells.md)
+> for what is and isn't covered.
+
+---
+
+## 3. QC and Filtering
+
+### 3.1 `CreateATACObjectsFilter()`
+
+`CreateATACObjectsFilter()` does everything `CreateATACObjects()` does, plus an
+explicit filtering step -- either fixed cutoffs in one call, or an interactive
+prompt-per-metric session. It rebuilds the combined peak set and every object from
+the raw CellRanger output again (it doesn't take `atac_list` as input), so treat it
+as an alternative entry point from Section 2, not a follow-up step on `atac_list`.
+
+```r
+# Fixed cutoffs in one call
+atac_list_filtered <- CreateATACObjectsFilter(
+  data_dirs                 = data_dirs,
+  treatment                 = c("Vehicle", "Vehicle", "DrugA", "DrugA"),
+  filter                    = TRUE,
+  interactive               = FALSE,
+  genome                    = "mm10",   # default -- pass "hg38" for human data
+  peak_region_fragments_min = 3000,
+  peak_region_fragments_max = 100000,
+  pct_reads_in_peaks_min    = 40,
+  blacklist_ratio_max       = 0.025,
+  nucleosome_signal_max     = 4,
+  TSS.enrichment_min        = 2
+)
+
+# Or: interactive mode -- prompts once per metric, offering either a quantile
+# or an absolute threshold, and re-subsets before asking the next question
+atac_list_filtered <- CreateATACObjectsFilter(data_dirs = data_dirs, interactive = TRUE)
+```
+
+If you already built `atac_list` in Section 2 and just want to apply fixed thresholds
+without re-reading fragments from disk (`CreateATACObjectsFilter()`'s peak-building
+and fragment-reading steps are the slow part), subset it directly instead:
+
+```r
+atac_list_filtered <- lapply(atac_list, function(obj) {
+  subset(obj, subset =
+           peak_region_fragments > 3000 & peak_region_fragments < 100000 &
+           pct_reads_in_peaks > 40 & blacklist_ratio < 0.025 &
+           nucleosome_signal < 4 & TSS.enrichment > 2)
+})
+```
+
+### 3.2 Alternative: `GenerateQCReport()` / `ApplyQCFilters()`
+
+`GenerateQCReport()`/`ApplyQCFilters()` (used for RNA/spatial QC elsewhere in this
+package) are modality-agnostic -- they work directly off whatever metadata columns
+you point them at, so they apply to ATAC's `TSS.enrichment`/`nucleosome_signal`/
+`pct_reads_in_peaks` exactly the way they apply to RNA's `nFeature_RNA`/`percent.mt`.
+This path gives you MAD-based suggested cutoffs per sample (rather than picking fixed
+numbers yourself) and a saved cutoffs CSV you can review or edit before applying:
+
+```r
+GenerateQCReport(
+  atac_list,
+  metadata_cols = c("passed_filters", "peak_region_fragments", "pct_reads_in_peaks",
+                    "TSS.enrichment", "nucleosome_signal", "blacklist_ratio"),
+  output_file   = "atac_qc_report.html",
+  title         = "scATAC-seq QC report"
+)
+
+# Review/edit atac_qc_report_cutoffs.csv if needed, then apply
+atac_list_filtered <- ApplyQCFilters(atac_list, cutoffs = "atac_qc_report_cutoffs.csv")
+```
+
+---
+
+## 4. Per-Sample Normalization and Dimensionality Reduction (LSI)
+
+ATAC data is normalized and reduced differently from RNA: term frequency-inverse
+document frequency (TF-IDF) instead of log-normalization, and latent semantic
+indexing (LSI, an SVD on the TF-IDF matrix) instead of PCA. `SingleCellTools` doesn't
+wrap this step -- it's plain Signac, run once per sample before merging so each
+sample's own top features are used going in:
+
+```r
+atac_list_filtered <- lapply(atac_list_filtered, function(obj) {
+  obj <- RunTFIDF(obj)
+  obj <- FindTopFeatures(obj, min.cutoff = "q0")   # keep all peaks; raise for a stricter set
+  obj <- RunSVD(obj)
+  obj
+})
+```
+
+Check whether the first LSI component just tracks sequencing depth (common, and worth
+knowing about before using it for clustering/UMAP):
+
+```r
+DepthCor(atac_list_filtered$sample1)
+```
+
+If component 1 correlates strongly with depth (`|correlation| > ~0.5` is the usual
+rule of thumb), drop it from downstream `dims` -- e.g. use `2:30` instead of `1:30`,
+as this vignette does from here on.
+
+---
+
+## 5. Merging and Cross-Sample Integration
+
+`MergeSeurat()` does **not** support ATAC objects -- its normalization
+(`SCTransform`/`NormalizeData`) and reduction (`RunPCA`) steps are RNA-specific, and
+its `spatial` argument only recognizes `'no'`/`'Visium'`/`'Xenium'`. Merge and
+integrate ATAC samples directly with Signac + `harmony`, following the same
+LSI-then-batch-correct pattern Signac's own multi-sample vignette uses. Because
+`CreateATACObjects()` already put every sample on the same combined peak set, a plain
+`merge()` is enough to combine them -- no separate peak-reconciliation step needed:
+
+```r
+combined <- merge(atac_list_filtered[[1]], atac_list_filtered[-1],
+                  add.cell.ids = names(atac_list_filtered))
+
+combined <- RunTFIDF(combined)
+combined <- FindTopFeatures(combined, min.cutoff = "q0")
+combined <- RunSVD(combined)
+DepthCor(combined)   # re-check on the merged object
+```
+
+Batch-correct across samples on the LSI embedding with `harmony::RunHarmony()` --
+the same direct-`RunHarmony()` approach `MergeSeurat()` uses for RNA/spatial data,
+since current CRAN `harmony` no longer exports the legacy `HarmonyMatrix()` that
+`Seurat::IntegrateLayers(method = "HarmonyIntegration")` depends on:
+
+```r
+combined <- harmony::RunHarmony(
+  combined,
+  group.by.vars  = "orig.ident",
+  reduction.use  = "lsi",
+  dims.use       = 2:30,           # drop LSI-1 if DepthCor() showed strong depth correlation
+  reduction.save = "harmony"
+)
+```
+
+---
+
+## 6. Clustering and UMAP
+
+```r
+combined <- RunUMAP(combined, reduction = "harmony", dims = 2:30)
+combined <- FindNeighbors(combined, reduction = "harmony", dims = 2:30)
+combined <- FindClusters(combined, algorithm = 3, resolution = 0.5)   # SLM -- Signac's recommended algorithm for LSI-based clustering
+
+DimPlot(combined, label = TRUE) + ggtitle("ATAC clusters")
+DimPlot(combined, group.by = "orig.ident") + ggtitle("By sample -- should be interleaved")
+DimPlot(combined, group.by = "treatment", cols = c("Vehicle" = "steelblue", "DrugA" = "tomato"))
+```
+
+---
+
+## 7. Gene Activity Scores and Annotation
+
+Clusters from peak accessibility alone aren't labeled with cell identities yet.
+`Signac::GeneActivity()` estimates per-gene activity by summing accessibility over
+each gene's body + upstream promoter region, giving an RNA-like activity score you
+can annotate the same way you would real expression:
+
+```r
+gene_activities <- GeneActivity(combined)
+combined[["ACTIVITY"]] <- CreateAssayObject(counts = gene_activities)
+
+DefaultAssay(combined) <- "ACTIVITY"
+combined <- NormalizeData(combined, normalization.method = "LogNormalize",
+                          scale.factor = median(combined$nCount_ACTIVITY))
+```
+
+With an RNA-like assay in hand, this package's existing annotation functions apply
+directly -- they only need an assay with sensible feature names, not RNA specifically.
+`MarkerPlot()` (dot plot) and `AnnotateClusters()` (per-cluster UCell scoring) both
+work unchanged on the `"ACTIVITY"` assay:
+
+```r
+lineage_markers <- data.frame(
+  Gene     = c("Cd3e", "Cd3d", "Cd19", "Ms4a1", "Cd14", "Itgam", "Epcam", "Krt8"),
+  CellType = c("T cell", "T cell", "B cell", "B cell",
+              "Myeloid", "Myeloid", "Epithelial", "Epithelial")
+)
+
+MarkerPlot(combined, genes = lineage_markers, assay = "ACTIVITY", cluster = TRUE)
+
+res <- AnnotateClusters(
+  combined,
+  markers            = list(Tcell = c("Cd3e", "Cd3d"), Bcell = c("Cd19", "Ms4a1"),
+                            Myeloid = c("Cd14", "Itgam"), Epithelial = c("Epcam", "Krt8")),
+  cluster_col        = "seurat_clusters",
+  filter_nonspecific = FALSE,
+  min_detection_frac = 0.05,
+  return_scores      = "cluster",
+  new_col            = "cell_type"
+)
+combined <- res$obj
+table(combined$cell_type)
+
+# Feature-density view of gene activity, same as for real expression elsewhere in this package
+DefaultAssay(combined) <- "ACTIVITY"
+PlotFeatureDensity(combined, features = c("Cd3e", "Epcam"), reduction = "umap")
+
+DefaultAssay(combined) <- "ATAC"   # switch back for peak-level work below
+```
+
+---
+
+## 8. Motif Enrichment — `chromVAR`
+
+Gene activity tells you *what genes look accessible*; motif enrichment (via
+`chromVAR`) tells you *which transcription factors' binding sites look accessible*,
+per cell -- useful for spotting a regulatory program driving a cluster or condition
+rather than a single gene. This is plain Signac/chromVAR, not wrapped by
+`SingleCellTools`:
+
+```r
+pfm <- TFBSTools::getMatrixSet(
+  x    = JASPAR2020::JASPAR2020,
+  opts = list(collection = "CORE", tax_group = "vertebrates")
+)
+
+combined <- AddMotifs(combined, genome = BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10,
+                     pfm = pfm)
+combined <- RunChromVAR(combined, genome = BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10)
+
+DefaultAssay(combined) <- "chromvar"
+# Example: CTCF motif accessibility per cluster (swap in the JASPAR ID you care about)
+FeaturePlot(combined, features = "MA0139.1")
+VlnPlot(combined, features = "MA0139.1", group.by = "cell_type")
+
+DefaultAssay(combined) <- "ATAC"   # switch back for the rest of this vignette
+```
+
+`AddMotifs()`'s querying vertebrate-wide motifs (rather than restricting to one
+species) is standard practice here -- DNA-binding motifs are far more conserved
+across species than the genes encoding the TFs themselves, so this isn't
+mouse-specific despite our data being mouse.
+
+---
+
+## 9. Differential Accessibility Between Conditions
+
+### Per-cell (fast, but pools cells like any per-cell test)
+
+Signac's recommended test for accessibility is logistic regression (`test.use =
+"LR"`), controlling for sequencing depth as a latent variable -- the standard
+approach for binary-ish, sparse peak data:
+
+```r
+Idents(combined) <- combined$treatment
+
+da_peaks <- FindMarkers(
+  combined,
+  ident.1     = "DrugA",
+  ident.2     = "Vehicle",
+  test.use    = "LR",
+  latent.vars = "nCount_ATAC",
+  min.pct     = 0.05
+)
+
+# Nearest gene for the top differential peaks
+ClosestFeature(combined, regions = rownames(da_peaks)[1:10])
+```
+
+The same motif-level test works directly on the `chromvar` assay for differential
+motif *activity* rather than differential peak accessibility:
+
+```r
+DefaultAssay(combined) <- "chromvar"
+da_motifs <- FindMarkers(combined, ident.1 = "DrugA", ident.2 = "Vehicle",
+                         test.use = "LR", latent.vars = "nCount_ATAC")
+DefaultAssay(combined) <- "ATAC"
+```
+
+Like any per-cell test, `FindMarkers()` here treats every cell as an independent
+replicate rather than every sample -- the same pseudoreplication concern flagged for
+`CompositionAnalysis(test = ...)` elsewhere in this package's vignettes applies to
+peak/motif accessibility too.
+
+### Pseudobulk (the sample-respecting alternative)
+
+`PseudobulkDE()` is assay-agnostic -- it aggregates whatever assay you point it at
+via `Seurat::AggregateExpression()` and runs `DESeq2` on the per-sample totals, which
+works on a peak-count matrix exactly as well as it does on a gene-count matrix. With
+2 samples per condition here, this is the test that actually reflects the number of
+biological replicates:
+
+```r
+pb_atac <- PseudobulkDE(
+  combined,
+  sample_col    = "orig.ident",
+  condition_col = "treatment",
+  ident_1       = "DrugA",
+  ident_2       = "Vehicle",
+  assay         = "ATAC"
+)
+pb_atac$results                       # DESeq2 results, one row per peak
+subset(pb_atac$results, padj < 0.05)
+```
+
+---
+
+## 10. Composition Analysis Between Conditions
+
+Whether the cluster/cell-type mix itself shifted between conditions uses the exact
+same functions as the RNA/spatial vignettes -- `CompositionAnalysis()`/
+`CompositionEstimationPlot()` only need a `group_col`/`sample_col`/`condition_col` on
+any Seurat object, ATAC included:
+
+```r
+comp <- CompositionAnalysis(
+  combined,
+  group_col     = "cell_type",
+  sample_col    = "orig.ident",
+  condition_col = "treatment",
+  test          = "chisq"
+)
+comp$proportions
+```
+
+As with every `test = ...` call in this package's other vignettes: this pools cells
+across samples per condition, so it emits a `warning()` and shouldn't be read as a
+valid replicate-level p-value with only 2 samples per condition here.
+`CompositionEstimationPlot()` is the sample-respecting complement -- one point per
+`orig.ident` (not per cell), plus a bootstrap 95% CI on the effect size, rather than
+a p-value:
+
+```r
+CompositionEstimationPlot(comp, idx = c("Vehicle", "DrugA"))
+```
+
+See the main vignette's 3.11 section for a full walkthrough of how to read a
+`dabestr` estimation plot (the two-panel layout, and what each `effect` option
+measures) -- the same plot type is used throughout this package.
+
+---
+
+## 11. Peak-to-Gene Links (Optional)
+
+`Signac::LinkPeaks()` correlates peak accessibility with nearby gene expression
+across cells to nominate candidate regulatory links -- it needs a matched RNA assay
+on the same cells (e.g. a multiome dataset), which this generic ATAC-only walkthrough
+doesn't assume you have. If you do:
+
+```r
+combined <- RegionStats(combined, genome = BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10)
+combined <- LinkPeaks(combined, peak.assay = "ATAC", expression.assay = "RNA")
+CoveragePlot(combined, region = "Epcam", extend.upstream = 5000, extend.downstream = 5000)
+```
+
+---
+
+## 12. Tips Specific to ATAC Data
+
+**`CreateATACObjects()`/`CreateATACObjectsFilter()` support `genome = "mm10"` (default)
+or `"hg38"`.** Each requires only the matching `EnsDb`/`BSgenome` package pair to be
+installed (optional Suggests dependencies) -- see the note at the top of this vignette.
+For any other organism/build, build the `ChromatinAssay` yourself following Signac's
+own vignette instead of these two functions.
+
+**Pass `object_names` if `basename(data_dirs)` isn't a good sample label.** Both
+functions default to naming the returned list from `basename(data_dirs)`; override it
+with `object_names = c(...)` (same length as `data_dirs`) when your folder names aren't
+what you want as `orig.ident`/list names downstream.
+
+**The fragments file needs its `.tbi` index alongside it.** `CreateFragmentObject()`
+(called internally) expects `fragments.tsv.gz.tbi` in the same directory as
+`fragments.tsv.gz`, even though the index path isn't passed explicitly -- this is
+standard `cellranger-atac` output, so it's normally already there.
+
+**Check `DepthCor()` before trusting LSI component 1.** It's routinely dominated by
+sequencing depth rather than biological signal; dropping it (`dims = 2:30` instead of
+`1:30`) is the Signac-recommended default, not a special case.
+
+**`FindTopFeatures(min.cutoff = "q0")` keeps every peak; raise it for a stricter,
+faster-to-compute feature set** (e.g. `"q75"` keeps only the top 25% most commonly
+used peaks) -- useful on very large peak sets where `RunSVD()` becomes slow.
+
+**`algorithm = 3` (SLM) in `FindClusters()`** is Signac's recommended clustering
+algorithm for LSI-based reductions, rather than Seurat's RNA default (Louvain,
+`algorithm = 1`).
+
+**Reuse this package's assay-agnostic functions rather than reimplementing them for
+ATAC.** `MarkerPlot()`, `AnnotateClusters()`, `PlotFeatureDensity()`,
+`CompositionAnalysis()`/`CompositionEstimationPlot()`, and `PseudobulkDE()` all work
+unchanged on a `GeneActivity()`-derived assay or the peak assay directly -- there's no
+ATAC-specific annotation/composition/DE function in this package because none of the
+existing ones needed to be ATAC-specific in the first place.
+
+**`GenerateQCReport()`/`ApplyQCFilters()` work on ATAC metadata columns too.** They
+don't hardcode RNA metric names -- point `metadata_cols` at whatever QC columns your
+object actually has.
+
+---
+
+## 13. Session Info
+
+```r
+sessionInfo()
+```
+
+Key packages used in this vignette:
+
+| Package | Role |
+|---|---|
+| `SingleCellTools` | Object creation (`CreateATACObjects`/`Filter`), QC reporting, and reused assay-agnostic annotation/composition/DE functions |
+| `Signac` | Chromatin assay construction, TF-IDF/LSI, gene activity, motif setup |
+| `Seurat` | Core data structure, clustering, UMAP, differential expression |
+| `harmony` | Batch correction across samples on the LSI embedding |
+| `EnsDb.Mmusculus.v79` | Mouse gene annotation (hardcoded inside `CreateATACObjects()`) |
+| `BSgenome.Mmusculus.UCSC.mm10` | Mouse genome sequence (hardcoded inside `CreateATACObjects()`; also used for motif matching) |
+| `JASPAR2020` / `TFBSTools` | Transcription factor binding motif database |
+| `chromVAR` / `motifmatchr` | Per-cell motif accessibility scoring |
+| `DESeq2` (via `PseudobulkDE()`) | Pseudobulk differential accessibility |
+
+---
+
+*For questions or bug reports, open an issue at
+[github.com/gevensen95/SingleCellTools/issues](https://github.com/gevensen95/SingleCellTools/issues).*

@@ -8,3 +8,5 @@
 ^omnipathr-log$
 ^dev$
 ^SingleCellTools_vignette_.*\.md$
+^doc$
+^Meta$

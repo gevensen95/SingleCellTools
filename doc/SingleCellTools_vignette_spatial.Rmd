@@ -1,4 +1,11 @@
-# SingleCellTools Vignette: Spatial Transcriptomics with Mouse Brain Visium Data
+---
+title: "SingleCellTools Vignette: Spatial Transcriptomics with Mouse Brain Visium Data"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{SingleCellTools Vignette: Spatial Transcriptomics with Mouse Brain Visium Data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
 
 **Package:** `SingleCellTools`  
 **Data:** `stxBrain` — 10x Genomics Visium mouse brain sections, available via `SeuratData`. We use all four serial sections it ships (`anterior1`, `anterior2`, `posterior1`, `posterior2`) so that anterior-vs-posterior brain region has two sections each, which is enough to run a real `NicheCoExpress()` comparison later in the vignette.  

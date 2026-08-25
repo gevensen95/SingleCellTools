@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/R-%3E%3D%202.10-276DC3?logo=r" alt="R >= 2.10" />
   <img src="https://img.shields.io/badge/Seurat-v5-ff69b4" alt="Seurat v5" />
   <img src="https://img.shields.io/badge/lifecycle-experimental-orange" alt="Lifecycle: experimental" />
-  <a href="vignettes/SingleCellTools_vignette.Rmd">
+  <a href="doc/SingleCellTools_vignette.md">
     <img src="https://img.shields.io/badge/docs-vignette-brightgreen" alt="Vignette" />
   </a>
 </p>
@@ -53,11 +53,12 @@ Key things it does:
 
 ## Documentation
 
-- **[Vignette & function reference](vignettes/SingleCellTools_vignette.Rmd)** — covers every function group with worked examples, parameter tables, and tips for common pitfalls. Also installed as a real package vignette (`vignette("SingleCellTools_vignette", package = "SingleCellTools")` after installing with `build_vignettes = TRUE`).
-- **[ifnb tutorial](SingleCellTools_vignette_ifnb.md)** — end-to-end walkthrough using the built-in `ifnb` PBMC dataset from `SeuratData`; no raw data download required.
-- **[Spatial tutorial](SingleCellTools_vignette_spatial.md)** — Visium workflow (edge detection, integration, annotation, niche analysis) using the public `stxBrain` mouse brain dataset from `SeuratData`.
-- **[scATAC-seq tutorial](SingleCellTools_vignette_atac.md)** — object creation, QC, LSI, cross-sample integration, gene activity scoring, motif enrichment, and differential accessibility. Supports mouse (`mm10`, default) or human (`hg38`) via `CreateATACObjects()`/`CreateATACObjectsFilter()`'s `genome` argument.
-- **[Working with BPCells](SingleCellTools_vignette_bpcells.md)** — moving large single-cell/spatial datasets to on-disk matrices via `BPCells`: `ConvertToBPCells()`, the `on_disk` argument on `CreateRNAObjects()`/`CreateVisiumObjects()`/`LoadXenium2()`, and what still needs to stay in memory either way.
+- **[Vignette & function reference](doc/SingleCellTools_vignette.md)** — covers every function group with worked examples, parameter tables, and tips for common pitfalls. Also installed as a real package vignette (`vignette("SingleCellTools_vignette", package = "SingleCellTools")` after installing with `build_vignettes = TRUE`).
+- **[QC vignette](doc/SingleCellTools_QC_vignette.md)** — quality control end to end: single-cell in part one (report → edit cutoffs → apply → verify, doublets, batch effects, cell cycle), spatial in part two (object inspection, edge and hole detection, spatial concordance, image-safe subsetting).
+- **[ifnb tutorial](doc/SingleCellTools_vignette_ifnb.md)** — end-to-end walkthrough using the built-in `ifnb` PBMC dataset from `SeuratData`; no raw data download required.
+- **[Spatial tutorial](doc/SingleCellTools_vignette_spatial.md)** — Visium workflow (edge detection, integration, annotation, niche analysis) using the public `stxBrain` mouse brain dataset from `SeuratData`.
+- **[scATAC-seq tutorial](doc/SingleCellTools_vignette_atac.md)** — object creation, QC, LSI, cross-sample integration, gene activity scoring, motif enrichment, and differential accessibility. Supports mouse (`mm10`, default) or human (`hg38`) via `CreateATACObjects()`/`CreateATACObjectsFilter()`'s `genome` argument.
+- **[Working with BPCells](doc/SingleCellTools_vignette_bpcells.md)** — moving large single-cell/spatial datasets to on-disk matrices via `BPCells`: `ConvertToBPCells()`, the `on_disk` argument on `CreateRNAObjects()`/`CreateVisiumObjects()`/`LoadXenium2()`, and what still needs to stay in memory either way.
 
 ---
 
