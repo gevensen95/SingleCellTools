@@ -297,6 +297,141 @@ test_that("MarkerPlot messages a suggested ggsave() call when save_path isn't se
   )
 })
 
+# ============================================================================
+# TopMarkerPlot() -- FindAllMarkers -> top N per cluster -> MarkerPlot()
+# ============================================================================
+
+# A fabricated FindAllMarkers()-shaped table over real genes of `obj`. Most
+# tests below use this rather than calling FindAllMarkers(), which is slow and
+# finds nothing on the uniform-Poisson fixture; the ranking / de-duplication /
+# label logic is what TopMarkerPlot() actually owns, and it is fully
+# exercisable from a supplied table. The FindAllMarkers path gets its own
+# signal-bearing fixture at the end.
+.fake_markers <- function(obj, n_clusters = 3, per = 5) {
+  g <- rownames(obj)
+  stopifnot(length(g) >= n_clusters * per)
+  do.call(rbind, lapply(seq_len(n_clusters) - 1L, function(k) {
+    data.frame(gene       = g[k * per + seq_len(per)],
+               cluster    = as.character(k),
+               avg_log2FC = seq(3, 1, length.out = per),
+               p_val_adj  = 1e-5,
+               stringsAsFactors = FALSE)
+  }))
+}
+
+test_that("TopMarkerPlot returns a ggplot and attaches the marker tables", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 30, n_cells = 90, n_clusters = 3)
+  mk  <- .fake_markers(obj, n_clusters = 3, per = 5)
+
+  p <- suppressMessages(TopMarkerPlot(obj, n = 3, markers = mk))
+  expect_s3_class(p, "ggplot")
+
+  top <- attr(p, "top_markers")
+  expect_equal(nrow(top), 9)                      # 3 clusters x top 3
+  expect_setequal(unique(top$cluster), c("0", "1", "2"))
+  expect_identical(attr(p, "markers"), mk)        # full table passed through
+})
+
+test_that("TopMarkerPlot assigns a gene topping two clusters to its best one", {
+  # Duplicated genes would render as repeated, identical dot-plot rows.
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 30, n_cells = 90, n_clusters = 3)
+  mk  <- .fake_markers(obj, n_clusters = 3, per = 5)
+
+  shared <- mk$gene[1]                            # cluster 0's best gene
+  mk <- rbind(mk, data.frame(gene = shared, cluster = "2",
+                             avg_log2FC = 99, p_val_adj = 1e-9,
+                             stringsAsFactors = FALSE))
+
+  p   <- suppressMessages(TopMarkerPlot(obj, n = 5, markers = mk))
+  top <- attr(p, "top_markers")
+  expect_equal(sum(top$gene == shared), 1L)
+  expect_equal(top$cluster[top$gene == shared], "2")  # the higher log2FC wins
+})
+
+test_that("TopMarkerPlot zero-pads numeric cluster labels past 9", {
+  # Regression: MarkerPlot() orders its annotation groups ALPHABETICALLY
+  # (order(Details) / table(Details)), so unpadded numeric IDs put cluster 10
+  # between 1 and 2. Padding makes alphabetical order match numeric order.
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 80, n_cells = 240, n_clusters = 12)
+  mk  <- .fake_markers(obj, n_clusters = 12, per = 5)
+
+  p   <- suppressMessages(TopMarkerPlot(obj, n = 2, markers = mk))
+  labs <- sort(unique(attr(p, "top_markers")$cluster))
+  expect_identical(labs, formatC(0:11, width = 2, flag = "0"))
+  expect_identical(labs, labs[order(labs)])       # alphabetical == numeric
+
+  # Fewer than 10 clusters needs no padding -- labels stay as-is.
+  obj3 <- .make_small_seurat(seed = 1, n_genes = 30, n_cells = 90, n_clusters = 3)
+  p3   <- suppressMessages(TopMarkerPlot(obj3, n = 2,
+                                         markers = .fake_markers(obj3, 3, 5)))
+  expect_setequal(unique(attr(p3, "top_markers")$cluster), c("0", "1", "2"))
+})
+
+test_that("TopMarkerPlot validates inputs and reports an empty result clearly", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 30, n_cells = 90, n_clusters = 3)
+  mk  <- .fake_markers(obj, n_clusters = 3, per = 5)
+
+  expect_error(TopMarkerPlot(list(1)), "Seurat object")
+  expect_error(TopMarkerPlot(obj, n = 0), "positive number")
+  expect_error(TopMarkerPlot(obj, group_by = "nope"), "not found in metadata")
+  expect_error(TopMarkerPlot(obj, markers = data.frame(a = 1)),
+               "missing column")
+  expect_error(suppressMessages(TopMarkerPlot(obj, markers = mk, max_padj = 0)),
+               "No markers passed")
+})
+
+test_that("TopMarkerPlot group_by relabels clusters and restores Idents", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat(seed = 1, n_genes = 30, n_cells = 90,
+                            n_clusters = 3, n_celltypes = 3)
+  before <- Seurat::Idents(obj)
+
+  # Label the fabricated markers with this fixture's actual celltype values
+  # so the annotation groups correspond to the identities being plotted.
+  ct <- sort(unique(as.character(obj$celltype)))
+  mk <- .fake_markers(obj, n_clusters = length(ct), per = 5)
+  mk$cluster <- ct[as.integer(mk$cluster) + 1L]
+
+  p <- suppressMessages(TopMarkerPlot(obj, n = 2, markers = mk,
+                                      group_by = "celltype"))
+  expect_setequal(unique(attr(p, "top_markers")$cluster), ct)
+  expect_identical(Seurat::Idents(obj), before)   # caller's object untouched
+})
+
+test_that("TopMarkerPlot runs FindAllMarkers end-to-end when markers = NULL", {
+  # The only test that exercises the FindAllMarkers path, so it needs a
+  # fixture with real per-cluster signal -- uniform Poisson counts yield no
+  # markers and the call would find nothing to plot.
+  .skip_if_missing("Seurat", "SeuratObject")
+  testthat::skip_on_cran()
+  set.seed(1)
+  ng <- 60; nc <- 180; ngrp <- 3
+  grp <- rep(seq_len(ngrp), length.out = nc)
+  lam <- matrix(0.6, ng, nc)
+  for (g in seq_len(ngrp)) lam[((g - 1) * 8 + 1):(g * 8), grp == g] <- 8
+  lam <- sweep(lam, 2, stats::rlnorm(nc, 0, 0.3), "*")
+  m <- matrix(stats::rpois(ng * nc, lam), ng,
+              dimnames = list(paste0("Gene", seq_len(ng)),
+                              paste0("c", seq_len(nc))))
+  storage.mode(m) <- "double"
+  obj <- suppressWarnings(
+    SeuratObject::CreateSeuratObject(counts = methods::as(m, "CsparseMatrix")))
+  obj <- Seurat::NormalizeData(obj, verbose = FALSE)
+  Seurat::Idents(obj) <- factor(grp - 1L)
+
+  p <- suppressWarnings(suppressMessages(TopMarkerPlot(obj, n = 3)))
+  expect_s3_class(p, "ggplot")
+  top <- attr(p, "top_markers")
+  expect_gt(nrow(top), 0)
+  expect_false(anyDuplicated(top$gene) > 0)
+  expect_true(all(top$p_val_adj < 0.05))
+})
+
+
 test_that("MarkerPctPlot returns a ggplot in both tile and dot styles", {
   .skip_if_missing("Seurat", "SeuratObject")
   obj <- .make_small_seurat(seed = 1, n_genes = 20, n_cells = 60, n_clusters = 3)
