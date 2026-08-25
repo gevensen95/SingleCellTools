@@ -1,4 +1,11 @@
-# SingleCellTools Vignette: PBMC Integration with the ifnb Dataset
+---
+title: "SingleCellTools Vignette: PBMC Integration with the ifnb Dataset"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{SingleCellTools Vignette: PBMC Integration with the ifnb Dataset}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
 
 **Package:** `SingleCellTools`  
 **Data:** `ifnb` — 13,999 human PBMCs (control vs. IFN-β stimulated), from `SeuratData`  

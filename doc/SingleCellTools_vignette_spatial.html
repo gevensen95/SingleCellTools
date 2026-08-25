@@ -1,0 +1,1986 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>SingleCellTools Vignette: Spatial Transcriptomics with Mouse Brain Visium Data</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">SingleCellTools Vignette: Spatial
+Transcriptomics with Mouse Brain Visium Data</h1>
+
+
+
+<p><strong>Package:</strong> <code>SingleCellTools</code><br />
+<strong>Data:</strong> <code>stxBrain</code> — 10x Genomics Visium mouse
+brain sections, available via <code>SeuratData</code>. We use all four
+serial sections it ships (<code>anterior1</code>,
+<code>anterior2</code>, <code>posterior1</code>,
+<code>posterior2</code>) so that anterior-vs-posterior brain region has
+two sections each, which is enough to run a real
+<code>NicheCoExpress()</code> comparison later in the vignette.<br />
+<strong>Goal:</strong> Walk through a complete Visium workflow — edge
+detection, integration, annotation, niche analysis — using freely
+available public data.</p>
+<hr />
+<div id="table-of-contents" class="section level2">
+<h2>Table of Contents</h2>
+<ol style="list-style-type: decimal">
+<li><a href="#id_1-setup">Setup</a></li>
+<li><a href="#id_2-load-the-data">Load the Data</a></li>
+<li><a href="#id_3-qc-and-percent-mitochondrial-reads">QC and Percent
+Mitochondrial Reads</a></li>
+<li><a href="#id_4-edge--hole-detection--detect_fov_edges--detect_tissue_holes">Edge
+&amp; Hole Detection — <code>detect_fov_edges()</code> /
+<code>detect_tissue_holes()</code></a></li>
+<li><a href="#id_5-merge-and-integrate--mergeseurat">Merge and Integrate
+— <code>MergeSeurat()</code></a></li>
+<li><a href="#id_6-annotate-spatial-domains">Annotate Spatial
+Domains</a>
+<ul>
+<li>6.1 <a href="#id_61-marker-dot-plots--markerplot--markerpctplot">Marker Dot
+Plots — <code>MarkerPlot()</code> /
+<code>MarkerPctPlot()</code></a></li>
+<li>6.2 <a href="#id_62-heatmap-view--markerheatmap">Heatmap View —
+<code>MarkerHeatmap()</code></a></li>
+<li>6.3 <a href="#id_63-cluster-level-marker-scoring--annotateclusters">Cluster-level
+Marker Scoring — <code>AnnotateClusters()</code></a></li>
+</ul></li>
+<li><a href="#id_7-visium-deconvolution--runrctd">Visium Deconvolution —
+<code>RunRCTD()</code></a>
+<ul>
+<li>7.1 <a href="#id_71-choosing-a-mode">Choosing a mode</a></li>
+<li>7.2 <a href="#id_72-multiple-samples">Multiple samples</a></li>
+<li>7.3 <a href="#id_73-feeding-rctd-output-into-compositionniche-tools">Feeding
+RCTD output into composition/niche tools</a></li>
+<li>7.4 <a href="#id_74-qualityconfidence-fields">Quality/confidence
+fields</a></li>
+<li>7.5 <a href="#id_75-visualizing-the-full-mixture--spatialcompositionplot">Visualizing
+the full mixture — <code>SpatialCompositionPlot()</code></a></li>
+<li>7.6 <a href="#id_76-cluster-level-composition--summarizerctdbycluster">Cluster-level
+composition — <code>SummarizeRCTDByCluster()</code></a></li>
+</ul></li>
+<li><a href="#id_8-feature-density-on-the-tissue--plotfeaturedensity">Feature
+Density on the Tissue — <code>PlotFeatureDensity()</code></a></li>
+<li><a href="#id_9-gene-positivity--addgenepositivity--plotgenepositivity">Gene
+Positivity — <code>AddGenePositivity()</code> /
+<code>PlotGenePositivity()</code></a>
+<ul>
+<li>9.1 <a href="#id_91-genepositivityanalysis-and-genepositivityestimationplot"><code>GenePositivityAnalysis()</code>
+and <code>GenePositivityEstimationPlot()</code></a></li>
+</ul></li>
+<li><a href="#id_10-spatial-niche-analysis--buildmultiplenicheassays">Spatial
+Niche Analysis — <code>BuildMultipleNicheAssays()</code></a>
+<ul>
+<li>10.1 <a href="#id_101-an-alternative-spatial-domain-segmentation-via-runbanksywrapper">An
+Alternative: Spatial Domain Segmentation via
+<code>RunBanksyWrapper()</code></a></li>
+</ul></li>
+<li><a href="#id_11-neighborhood-enrichment--neighborhoodenrichment">Neighborhood
+Enrichment — <code>NeighborhoodEnrichment()</code></a>
+<ul>
+<li>11.1 <a href="#id_111-validating-a-spatial-label--spatialconcordance">Validating
+a spatial label — <code>SpatialConcordance()</code></a></li>
+</ul></li>
+<li><a href="#id_12-niche-co-expression--nichecoexpress">Niche
+Co-expression — <code>NicheCoExpress()</code></a>
+<ul>
+<li>12.1 <a href="#id_121-estimation-plot--nichecoexpressestimationplot">Estimation
+Plot — <code>NicheCoExpressEstimationPlot()</code></a></li>
+</ul></li>
+<li><a href="#id_13-single-cell-spatial-xenium--cosmx--detect_fov_edges--detect_tissue_holes">Single-cell
+Spatial (Xenium / CosMx) — <code>detect_fov_edges()</code> /
+<code>detect_tissue_holes()</code></a>
+<ul>
+<li>13.1 <a href="#id_131-combining-and-managing-fovs--combine_fovs--setimageboundary">Combining
+and Managing FOVs — <code>combine_fovs()</code> /
+<code>SetImageBoundary()</code></a></li>
+</ul></li>
+<li><a href="#id_14-subsetting-spatial-objects--subsetspatial">Subsetting
+Spatial Objects — <code>SubsetSpatial()</code></a></li>
+<li><a href="#id_15-tips-specific-to-spatial-data">Tips Specific to
+Spatial Data</a></li>
+<li><a href="#id_16-session-info">Session Info</a></li>
+</ol>
+<hr />
+</div>
+<div id="setup" class="section level2">
+<h2>1. Setup</h2>
+<div id="install-required-packages" class="section level3">
+<h3>Install required packages</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="co"># SingleCellTools</span></span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>remotes<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;gevensen95/SingleCellTools&quot;</span>)</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="co"># Bioconductor dependencies</span></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;BiocManager&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a>  <span class="fu">install.packages</span>(<span class="st">&quot;BiocManager&quot;</span>)</span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a>BiocManager<span class="sc">::</span><span class="fu">install</span>(<span class="fu">c</span>(<span class="st">&quot;glmGamPoi&quot;</span>, <span class="st">&quot;UCell&quot;</span>))</span>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" tabindex="-1"></a><span class="co"># SeuratData — provides the stxBrain dataset</span></span>
+<span id="cb1-10"><a href="#cb1-10" tabindex="-1"></a>remotes<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;satijalab/seurat-data&quot;</span>)</span>
+<span id="cb1-11"><a href="#cb1-11" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" tabindex="-1"></a><span class="co"># ClusterR is needed for BuildMultipleNicheAssays</span></span>
+<span id="cb1-13"><a href="#cb1-13" tabindex="-1"></a><span class="fu">install.packages</span>(<span class="st">&quot;ClusterR&quot;</span>)</span></code></pre></div>
+</div>
+<div id="install-and-cache-the-dataset" class="section level3">
+<h3>Install and cache the dataset</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">library</span>(SeuratData)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a><span class="fu">InstallData</span>(<span class="st">&quot;stxBrain&quot;</span>)   <span class="co"># downloads ~200 MB once; cached for future sessions</span></span></code></pre></div>
+</div>
+<div id="load-libraries" class="section level3">
+<h3>Load libraries</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="fu">library</span>(SingleCellTools)</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="fu">library</span>(Seurat)</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="fu">library</span>(SeuratData)</span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="fu">library</span>(patchwork)</span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="load-the-data" class="section level2">
+<h2>2. Load the Data</h2>
+<p><code>stxBrain</code> ships four serial coronal mouse brain Visium
+sections: two adjacent <code>anterior</code> sections and two adjacent
+<code>posterior</code> sections. Earlier drafts of this vignette only
+loaded one section per region
+(<code>anterior1</code>/<code>posterior1</code>), which is plenty for
+integration but leaves no way to demonstrate a real
+<code>NicheCoExpress()</code> comparison later, since that function
+needs at least 2 samples <em>per condition</em>. Loading all four
+sections and treating anterior-vs-posterior as the comparison of
+interest gives us exactly that: 2 samples per side, using real public
+data rather than anything synthetic.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="co"># Load all four sections</span></span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>brain_ant1 <span class="ot">&lt;-</span> <span class="fu">LoadData</span>(<span class="st">&quot;stxBrain&quot;</span>, <span class="at">type =</span> <span class="st">&quot;anterior1&quot;</span>)</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>brain_ant2 <span class="ot">&lt;-</span> <span class="fu">LoadData</span>(<span class="st">&quot;stxBrain&quot;</span>, <span class="at">type =</span> <span class="st">&quot;anterior2&quot;</span>)</span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>brain_pos1 <span class="ot">&lt;-</span> <span class="fu">LoadData</span>(<span class="st">&quot;stxBrain&quot;</span>, <span class="at">type =</span> <span class="st">&quot;posterior1&quot;</span>)</span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>brain_pos2 <span class="ot">&lt;-</span> <span class="fu">LoadData</span>(<span class="st">&quot;stxBrain&quot;</span>, <span class="at">type =</span> <span class="st">&quot;posterior2&quot;</span>)</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>brain_list <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a>  <span class="at">anterior1  =</span> brain_ant1,</span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>  <span class="at">anterior2  =</span> brain_ant2,</span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a>  <span class="at">posterior1 =</span> brain_pos1,</span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a>  <span class="at">posterior2 =</span> brain_pos2</span>
+<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a>)</span>
+<span id="cb4-13"><a href="#cb4-13" tabindex="-1"></a></span>
+<span id="cb4-14"><a href="#cb4-14" tabindex="-1"></a><span class="co"># Quick overview</span></span>
+<span id="cb4-15"><a href="#cb4-15" tabindex="-1"></a><span class="fu">lapply</span>(brain_list, <span class="cf">function</span>(x) <span class="fu">c</span>(<span class="at">features =</span> <span class="fu">nrow</span>(x), <span class="at">spots =</span> <span class="fu">ncol</span>(x)))</span>
+<span id="cb4-16"><a href="#cb4-16" tabindex="-1"></a><span class="co">#&gt; $anterior1</span></span>
+<span id="cb4-17"><a href="#cb4-17" tabindex="-1"></a><span class="co">#&gt; features    spots</span></span>
+<span id="cb4-18"><a href="#cb4-18" tabindex="-1"></a><span class="co">#&gt;    31053     2696</span></span>
+<span id="cb4-19"><a href="#cb4-19" tabindex="-1"></a><span class="co">#&gt; $anterior2</span></span>
+<span id="cb4-20"><a href="#cb4-20" tabindex="-1"></a><span class="co">#&gt; features    spots</span></span>
+<span id="cb4-21"><a href="#cb4-21" tabindex="-1"></a><span class="co">#&gt;    31053     2825</span></span>
+<span id="cb4-22"><a href="#cb4-22" tabindex="-1"></a><span class="co">#&gt; $posterior1</span></span>
+<span id="cb4-23"><a href="#cb4-23" tabindex="-1"></a><span class="co">#&gt; features    spots</span></span>
+<span id="cb4-24"><a href="#cb4-24" tabindex="-1"></a><span class="co">#&gt;    31053     3353</span></span>
+<span id="cb4-25"><a href="#cb4-25" tabindex="-1"></a><span class="co">#&gt; $posterior2</span></span>
+<span id="cb4-26"><a href="#cb4-26" tabindex="-1"></a><span class="co">#&gt; features    spots</span></span>
+<span id="cb4-27"><a href="#cb4-27" tabindex="-1"></a><span class="co">#&gt;    31053     3289</span></span></code></pre></div>
+<blockquote>
+<p><strong>A note on Visium resolution.</strong> Each spot in a Visium
+capture area is ~55 µm in diameter — in brain tissue this typically
+captures the expression of 2–10 cells simultaneously. Clustering on
+Visium data therefore identifies <strong>spatial domains</strong> (brain
+regions with a coherent transcriptional signature) rather than
+individual cell types. Deconvolution methods (e.g., RCTD, SPOTlight) can
+estimate cell-type composition per spot, but are outside the scope of
+this vignette.</p>
+</blockquote>
+<blockquote>
+<p><strong>A note on what “region” means here.</strong> Treating
+anterior-vs-posterior as a <code>NicheCoExpress()</code> condition later
+in this vignette is a real, honest use of public data — but it’s an
+anatomical/spatial grouping, not an experimental treatment. It answers
+“does this gene pair co-express differently between anterior and
+posterior cortex,” which is a legitimate biological question, but don’t
+copy this pattern and assume it validates for treatment-vs-control
+designs. For that, swap in your own
+<code>sample_col</code>/<code>condition_col</code> from a dataset with
+real biological replicates per treatment arm.</p>
+</blockquote>
+<blockquote>
+<p><strong>A note on memory for real (non-<code>SeuratData</code>)
+Visium runs.</strong> This vignette loads <code>stxBrain</code> via
+<code>SeuratData::LoadData()</code>, which is small enough that memory
+is a non-issue. When you’re instead reading your own samples from raw
+Space Ranger output with <code>CreateVisiumObjects()</code>, pass
+<code>on_disk = TRUE</code> to move each object’s counts layer to an
+on-disk <code>BPCells</code> matrix once the samples are built –
+worthwhile for many-sample runs, and close to essential for Visium HD at
+<code>hd_bin_size = &quot;002um&quot;</code> (500K+ bins/section). See <a href="SingleCellTools_vignette_bpcells.md"><code>SingleCellTools_vignette_bpcells.md</code></a>.</p>
+<p><code>image_backend = &quot;deferred&quot;</code> attaches only the small
+lowres image to each sample and stashes the hires PNG’s path instead of
+decoding it up front. When you actually need full-resolution detail for
+a specific sample (a publication figure, fine registration), call
+<code>GetHiresVisiumImage()</code> on demand:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="co"># One-off: get the decoded image array without touching the object</span></span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>hires_arr <span class="ot">&lt;-</span> <span class="fu">GetHiresVisiumImage</span>(brain_ant1)</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co"># Or permanently swap the object&#39;s attached image to full resolution</span></span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a>brain_ant1 <span class="ot">&lt;-</span> <span class="fu">GetHiresVisiumImage</span>(brain_ant1, <span class="at">attach =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
+</blockquote>
+<p>Visualize the raw tissue sections to confirm the data loaded
+correctly (shown for <code>anterior1</code>; the same call works for any
+of the four):</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="fu">SpatialFeaturePlot</span>(brain_list<span class="sc">$</span>anterior1, <span class="at">features =</span> <span class="st">&quot;nCount_Spatial&quot;</span>) <span class="sc">+</span></span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;Anterior 1 — total UMI per spot&quot;</span>)</span></code></pre></div>
+<hr />
+</div>
+<div id="qc-and-percent-mitochondrial-reads" class="section level2">
+<h2>3. QC and Percent Mitochondrial Reads</h2>
+<p>With four sections it’s cleaner to loop rather than repeat each call
+four times:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="co"># Mouse mitochondrial genes: &quot;^mt-&quot; (lowercase)</span></span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>brain_list <span class="ot">&lt;-</span> <span class="fu">lapply</span>(brain_list, <span class="cf">function</span>(obj) {</span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>  obj[[<span class="st">&quot;percent.mt&quot;</span>]] <span class="ot">&lt;-</span> <span class="fu">PercentageFeatureSet</span>(obj, <span class="at">pattern =</span> <span class="st">&quot;^mt-&quot;</span>)</span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>  obj</span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a>})</span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a></span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a><span class="co"># QC distributions -- shown for anterior1; inspect each section the same way</span></span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a><span class="fu">VlnPlot</span>(brain_list<span class="sc">$</span>anterior1,</span>
+<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a>        <span class="at">features =</span> <span class="fu">c</span>(<span class="st">&quot;nCount_Spatial&quot;</span>, <span class="st">&quot;nFeature_Spatial&quot;</span>, <span class="st">&quot;percent.mt&quot;</span>),</span>
+<span id="cb7-10"><a href="#cb7-10" tabindex="-1"></a>        <span class="at">pt.size  =</span> <span class="fl">0.1</span>) <span class="sc">&amp;</span></span>
+<span id="cb7-11"><a href="#cb7-11" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text.x =</span> <span class="fu">element_blank</span>())</span></code></pre></div>
+<p>Spatial scatter to see if low-quality spots are spatially clustered
+(often they are, at tissue edges or tears):</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="fu">SpatialFeaturePlot</span>(brain_list<span class="sc">$</span>anterior1, <span class="at">features =</span> <span class="st">&quot;percent.mt&quot;</span>) <span class="sc">+</span></span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>  <span class="fu">scale_fill_gradientn</span>(<span class="at">colors =</span> <span class="fu">c</span>(<span class="st">&quot;grey90&quot;</span>, <span class="st">&quot;red3&quot;</span>)) <span class="sc">+</span></span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;Percent mitochondrial reads — anterior 1&quot;</span>)</span></code></pre></div>
+<p>Apply filters to every section. Visium thresholds are typically
+looser than single-cell because spots have higher total counts:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a>brain_list <span class="ot">&lt;-</span> <span class="fu">lapply</span>(brain_list, <span class="cf">function</span>(obj) {</span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a>  <span class="fu">subset</span>(obj,</span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a>    nFeature_Spatial <span class="sc">&gt;</span> <span class="dv">200</span>  <span class="sc">&amp;</span></span>
+<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a>    nFeature_Spatial <span class="sc">&lt;</span> <span class="dv">8000</span> <span class="sc">&amp;</span></span>
+<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a>    percent.mt <span class="sc">&lt;</span> <span class="dv">25</span></span>
+<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a>  )</span>
+<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a>})</span>
+<span id="cb9-8"><a href="#cb9-8" tabindex="-1"></a></span>
+<span id="cb9-9"><a href="#cb9-9" tabindex="-1"></a><span class="fu">sapply</span>(brain_list, ncol)</span>
+<span id="cb9-10"><a href="#cb9-10" tabindex="-1"></a><span class="co">#&gt;  anterior1  anterior2 posterior1 posterior2</span></span>
+<span id="cb9-11"><a href="#cb9-11" tabindex="-1"></a><span class="co">#&gt;       2611       2739       3244       3172</span></span></code></pre></div>
+<hr />
+</div>
+<div id="edge-hole-detection-detect_fov_edges-detect_tissue_holes" class="section level2">
+<h2>4. Edge &amp; Hole Detection — <code>detect_fov_edges()</code> /
+<code>detect_tissue_holes()</code></h2>
+<p>Spots at the capture-area boundary have systematically lower UMI
+counts and higher noise; spots bordering internal tissue tears or holes
+have the same problem. <code>detect_fov_edges()</code> flags the former
+(outer boundary), <code>detect_tissue_holes()</code> flags the latter
+(internal gaps) — both work on any spatial modality since they pull
+coordinates via <code>Seurat::GetTissueCoordinates()</code> rather than
+assuming a hex-grid layout.</p>
+<blockquote>
+<p><strong><code>detect_fov_edges()</code>
+vs. <code>EdgeDetectionVisium()</code>.</strong> SingleCellTools also
+ships <code>EdgeDetectionVisium()</code>, which flags a spot as an edge
+if it has too few neighbors within a radius — a good fit for Visium’s
+fixed hex-grid spacing (every interior spot has exactly 6 neighbors).
+<code>detect_fov_edges()</code>’s default <code>method = &quot;bbox&quot;</code>,
+used below, instead flags spots close to the axis-aligned bounding box
+of the tissue — fast and simple, but it assumes the tissue is roughly
+convex within each section. A coronal brain section is convex enough for
+this to work well; a tissue with a very irregular or crescent-shaped
+outline may need <code>method = &quot;angular&quot;</code> (also available on
+<code>detect_fov_edges()</code>) or <code>EdgeDetectionVisium()</code>’s
+neighbor-count approach instead. Neither method is a strict upgrade over
+the other — pick based on tissue shape.</p>
+</blockquote>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a>brain_list <span class="ot">&lt;-</span> <span class="fu">lapply</span>(brain_list, <span class="cf">function</span>(obj) {</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a>  obj <span class="ot">&lt;-</span> <span class="fu">detect_fov_edges</span>(obj,</span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a>                          <span class="at">method       =</span> <span class="st">&quot;bbox&quot;</span>,</span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a>                          <span class="at">bbox_factor  =</span> <span class="dv">2</span>,</span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>                          <span class="at">n_iterations =</span> <span class="dv">2</span>,</span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>                          <span class="at">label_col    =</span> <span class="st">&quot;edge_layer&quot;</span>)</span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a>  obj <span class="ot">&lt;-</span> <span class="fu">detect_tissue_holes</span>(obj,</span>
+<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a>                             <span class="at">min_hole_size =</span> <span class="dv">4</span>,</span>
+<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a>                             <span class="at">n_iterations  =</span> <span class="dv">2</span>,</span>
+<span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a>                             <span class="at">label_col     =</span> <span class="st">&quot;hole_layer&quot;</span>)</span>
+<span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a>  obj</span>
+<span id="cb10-12"><a href="#cb10-12" tabindex="-1"></a>})</span>
+<span id="cb10-13"><a href="#cb10-13" tabindex="-1"></a></span>
+<span id="cb10-14"><a href="#cb10-14" tabindex="-1"></a><span class="co"># 0 = interior, 1 = outermost ring/layer, 2 = next ring/layer, ... (anterior1 shown)</span></span>
+<span id="cb10-15"><a href="#cb10-15" tabindex="-1"></a><span class="fu">table</span>(brain_list<span class="sc">$</span>anterior1<span class="sc">$</span>edge_layer)</span>
+<span id="cb10-16"><a href="#cb10-16" tabindex="-1"></a><span class="fu">table</span>(brain_list<span class="sc">$</span>anterior1<span class="sc">$</span>hole_layer)</span></code></pre></div>
+<p>Visualize both layers before committing to a cutoff:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="fu">SpatialDimPlot</span>(brain_list<span class="sc">$</span>anterior1, <span class="at">group.by =</span> <span class="st">&quot;edge_layer&quot;</span>) <span class="sc">+</span></span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;Edge layers — anterior 1&quot;</span>)</span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a></span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a><span class="fu">SpatialDimPlot</span>(brain_list<span class="sc">$</span>anterior1, <span class="at">group.by =</span> <span class="st">&quot;hole_layer&quot;</span>) <span class="sc">+</span></span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;Hole layers — anterior 1&quot;</span>)</span></code></pre></div>
+<blockquote>
+<p><strong>Marker-gene exclusion for biologically meaningful
+gaps.</strong> If a “hole” is real anatomy rather than a tear (a
+ventricle, a large vessel, a central vein), pass
+<code>exclude_gene</code> to <code>detect_tissue_holes()</code> so bins
+bordered by high expression of that gene are skipped rather than flagged
+— see Section 13 for a worked example with <code>Glul</code> in liver
+tissue. Not needed for this mouse brain dataset, but worth knowing about
+before you discard real anatomical structures in your own tissue.</p>
+</blockquote>
+<p>If both layers look right, keep only interior spots
+(<code>layer == 0</code> in both — mirroring exactly how Section 13
+combines the same two columns for Xenium data):</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a>brain_list <span class="ot">&lt;-</span> <span class="fu">lapply</span>(brain_list, <span class="cf">function</span>(obj) {</span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>  <span class="fu">subset</span>(obj, edge_layer <span class="sc">==</span> <span class="dv">0</span> <span class="sc">&amp;</span> hole_layer <span class="sc">==</span> <span class="dv">0</span>)</span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a>})</span>
+<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a></span>
+<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a><span class="fu">sapply</span>(brain_list, ncol)</span>
+<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a><span class="co">#&gt;  anterior1  anterior2 posterior1 posterior2</span></span>
+<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a><span class="co">#&gt;       2558       2685       3181       3115</span></span></code></pre></div>
+<blockquote>
+<p><strong>Choosing <code>n_iterations</code>, <code>bbox_factor</code>,
+and <code>min_hole_size</code>.</strong> <code>n_iterations = 2</code>
+peels back two rings/layers on each function; raise it for noisier
+tissue edges. <code>bbox_factor</code> (edge detection) and
+<code>min_hole_size</code> (hole detection, in grid bins) both trade off
+aggressiveness vs. over-trimming — validate by comparing UMI
+distributions of kept vs. flagged spots before committing, the same way
+you would with <code>EdgeDetectionVisium()</code>’s
+<code>Filter</code>/<code>Filter4</code> columns.</p>
+</blockquote>
+<hr />
+</div>
+<div id="merge-and-integrate-mergeseurat" class="section level2">
+<h2>5. Merge and Integrate — <code>MergeSeurat()</code></h2>
+<p>With four clean, filtered sections, we are ready to merge and
+integrate. Pass <code>spatial = &quot;Visium&quot;</code> so
+<code>MergeSeurat()</code> handles the Spatial assay correctly and keeps
+images in sync. <code>MergeSeurat()</code> takes the named list
+directly.</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">MergeSeurat</span>(</span>
+<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a>  <span class="at">seurat_objects =</span> brain_list,</span>
+<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a>  <span class="co"># Normalization</span></span>
+<span id="cb13-5"><a href="#cb13-5" tabindex="-1"></a>  <span class="at">use_SCT    =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb13-6"><a href="#cb13-6" tabindex="-1"></a>  <span class="at">to_regress =</span> <span class="st">&quot;percent.mt&quot;</span>,</span>
+<span id="cb13-7"><a href="#cb13-7" tabindex="-1"></a></span>
+<span id="cb13-8"><a href="#cb13-8" tabindex="-1"></a>  <span class="co"># Dimensionality</span></span>
+<span id="cb13-9"><a href="#cb13-9" tabindex="-1"></a>  <span class="at">max_dims =</span> <span class="dv">30</span>,</span>
+<span id="cb13-10"><a href="#cb13-10" tabindex="-1"></a></span>
+<span id="cb13-11"><a href="#cb13-11" tabindex="-1"></a>  <span class="co"># Integration</span></span>
+<span id="cb13-12"><a href="#cb13-12" tabindex="-1"></a>  <span class="at">spatial        =</span> <span class="st">&quot;Visium&quot;</span>,</span>
+<span id="cb13-13"><a href="#cb13-13" tabindex="-1"></a>  <span class="at">integration    =</span> <span class="st">&quot;HarmonyIntegration&quot;</span>,</span>
+<span id="cb13-14"><a href="#cb13-14" tabindex="-1"></a>  <span class="at">new_reduction  =</span> <span class="st">&quot;harmony&quot;</span>,</span>
+<span id="cb13-15"><a href="#cb13-15" tabindex="-1"></a></span>
+<span id="cb13-16"><a href="#cb13-16" tabindex="-1"></a>  <span class="co"># Clustering — slightly higher resolution for spatial data</span></span>
+<span id="cb13-17"><a href="#cb13-17" tabindex="-1"></a>  <span class="at">cluster_resolution =</span> <span class="fl">0.5</span>,</span>
+<span id="cb13-18"><a href="#cb13-18" tabindex="-1"></a></span>
+<span id="cb13-19"><a href="#cb13-19" tabindex="-1"></a>  <span class="co"># Output</span></span>
+<span id="cb13-20"><a href="#cb13-20" tabindex="-1"></a>  <span class="at">save_rds_file =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb13-21"><a href="#cb13-21" tabindex="-1"></a>  <span class="at">file_name     =</span> <span class="st">&quot;brain_visium&quot;</span>,</span>
+<span id="cb13-22"><a href="#cb13-22" tabindex="-1"></a>  <span class="at">markers       =</span> <span class="cn">TRUE</span></span>
+<span id="cb13-23"><a href="#cb13-23" tabindex="-1"></a>)</span>
+<span id="cb13-24"><a href="#cb13-24" tabindex="-1"></a></span>
+<span id="cb13-25"><a href="#cb13-25" tabindex="-1"></a><span class="co"># The list names become orig.ident; derive the anterior/posterior region label</span></span>
+<span id="cb13-26"><a href="#cb13-26" tabindex="-1"></a><span class="co"># from that. This is the &quot;condition&quot; NicheCoExpress() will compare in Section 12 --</span></span>
+<span id="cb13-27"><a href="#cb13-27" tabindex="-1"></a><span class="co"># see the note in Section 2 on what that comparison does and doesn&#39;t demonstrate.</span></span>
+<span id="cb13-28"><a href="#cb13-28" tabindex="-1"></a>integrated<span class="sc">$</span>region <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(<span class="fu">grepl</span>(<span class="st">&quot;^anterior&quot;</span>, integrated<span class="sc">$</span>orig.ident),</span>
+<span id="cb13-29"><a href="#cb13-29" tabindex="-1"></a>                            <span class="st">&quot;anterior&quot;</span>, <span class="st">&quot;posterior&quot;</span>)</span>
+<span id="cb13-30"><a href="#cb13-30" tabindex="-1"></a><span class="fu">table</span>(integrated<span class="sc">$</span>orig.ident, integrated<span class="sc">$</span>region)</span></code></pre></div>
+<p>After the run your working directory contains: -
+<code>brain_visium_merged_seurat_objects.rds</code> -
+<code>dimplot_seurat_clusters.pdf</code> — UMAP colored by cluster -
+<code>markers_all.csv</code> and <code>marker_plot.pdf</code></p>
+<div id="inspect-the-integration" class="section level3">
+<h3>Inspect the integration</h3>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="co"># UMAP by section — good integration means all four sections overlap</span></span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a><span class="fu">DimPlot</span>(integrated, <span class="at">group.by =</span> <span class="st">&quot;orig.ident&quot;</span>,</span>
+<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a>        <span class="at">cols =</span> <span class="fu">c</span>(<span class="st">&quot;anterior1&quot;</span>  <span class="ot">=</span> <span class="st">&quot;steelblue&quot;</span>, <span class="st">&quot;anterior2&quot;</span>  <span class="ot">=</span> <span class="st">&quot;dodgerblue&quot;</span>,</span>
+<span id="cb14-4"><a href="#cb14-4" tabindex="-1"></a>                 <span class="st">&quot;posterior1&quot;</span> <span class="ot">=</span> <span class="st">&quot;tomato&quot;</span>,     <span class="st">&quot;posterior2&quot;</span> <span class="ot">=</span> <span class="st">&quot;firebrick&quot;</span>)) <span class="sc">+</span></span>
+<span id="cb14-5"><a href="#cb14-5" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;By section — should be interleaved&quot;</span>)</span>
+<span id="cb14-6"><a href="#cb14-6" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" tabindex="-1"></a><span class="co"># UMAP by region — the coarser anterior/posterior grouping used later</span></span>
+<span id="cb14-8"><a href="#cb14-8" tabindex="-1"></a><span class="fu">DimPlot</span>(integrated, <span class="at">group.by =</span> <span class="st">&quot;region&quot;</span>,</span>
+<span id="cb14-9"><a href="#cb14-9" tabindex="-1"></a>        <span class="at">cols =</span> <span class="fu">c</span>(<span class="st">&quot;anterior&quot;</span> <span class="ot">=</span> <span class="st">&quot;steelblue&quot;</span>, <span class="st">&quot;posterior&quot;</span> <span class="ot">=</span> <span class="st">&quot;tomato&quot;</span>)) <span class="sc">+</span></span>
+<span id="cb14-10"><a href="#cb14-10" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;By region&quot;</span>)</span>
+<span id="cb14-11"><a href="#cb14-11" tabindex="-1"></a></span>
+<span id="cb14-12"><a href="#cb14-12" tabindex="-1"></a><span class="fu">DimPlot</span>(integrated, <span class="at">label =</span> <span class="cn">TRUE</span>, <span class="at">repel =</span> <span class="cn">TRUE</span>) <span class="sc">+</span></span>
+<span id="cb14-13"><a href="#cb14-13" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;Seurat clusters&quot;</span>)</span>
+<span id="cb14-14"><a href="#cb14-14" tabindex="-1"></a></span>
+<span id="cb14-15"><a href="#cb14-15" tabindex="-1"></a><span class="co"># Spatial view of clusters on each section</span></span>
+<span id="cb14-16"><a href="#cb14-16" tabindex="-1"></a><span class="fu">SpatialDimPlot</span>(integrated, <span class="at">label =</span> <span class="cn">FALSE</span>) <span class="sc">+</span></span>
+<span id="cb14-17"><a href="#cb14-17" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;Clusters mapped back to tissue&quot;</span>)</span></code></pre></div>
+</div>
+<div id="reliable-point-rendering-spatialdimplotfixed-spatialfeatureplotfixed" class="section level3">
+<h3>Reliable point rendering — <code>SpatialDimPlotFixed()</code> /
+<code>SpatialFeaturePlotFixed()</code></h3>
+<p><code>Seurat::SpatialDimPlot()</code>/<code>SpatialFeaturePlot()</code>
+draw the tissue image and spots together inside a custom
+<code>GeomSpatial</code> geom, and <code>pt.size.factor</code> has real,
+documented regressions in recent Seurat releases where it silently has
+no effect on rendered spot size (see <a href="https://github.com/satijalab/seurat/issues/9491">satijalab/seurat#9491</a>
+and <a href="https://github.com/satijalab/seurat/issues/6179">#6179</a>)
+— spots can render tiny regardless of what you pass. If you hit that,
+<code>SpatialDimPlotFixed()</code> and
+<code>SpatialFeaturePlotFixed()</code> are drop-in <code>ggplot2</code>
+replacements built on an ordinary <code>geom_point(size = ...)</code>
+layer instead, so point size is guaranteed to respond:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a><span class="fu">SpatialDimPlotFixed</span>(integrated, <span class="at">group.by =</span> <span class="st">&quot;seurat_clusters&quot;</span>, <span class="at">pt.size =</span> <span class="dv">3</span>) <span class="sc">+</span></span>
+<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;Clusters mapped back to tissue&quot;</span>)</span>
+<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a></span>
+<span id="cb15-4"><a href="#cb15-4" tabindex="-1"></a><span class="co"># Multi-sample: one panel per image, shared/collected legend</span></span>
+<span id="cb15-5"><a href="#cb15-5" tabindex="-1"></a><span class="fu">SpatialDimPlotFixed</span>(integrated, <span class="at">group.by =</span> <span class="st">&quot;seurat_clusters&quot;</span>, <span class="at">pt.size =</span> <span class="dv">2</span>)</span>
+<span id="cb15-6"><a href="#cb15-6" tabindex="-1"></a></span>
+<span id="cb15-7"><a href="#cb15-7" tabindex="-1"></a><span class="co"># Continuous features (genes, module scores) work the same way</span></span>
+<span id="cb15-8"><a href="#cb15-8" tabindex="-1"></a><span class="fu">SpatialFeaturePlotFixed</span>(integrated, <span class="at">features =</span> <span class="st">&quot;Mbp&quot;</span>, <span class="at">pt.size =</span> <span class="dv">2</span>)</span></code></pre></div>
+<p>Both accept <code>crop</code> (zoom to the spot bounding box, default
+<code>TRUE</code>), <code>image.alpha</code> (dim the tissue image), and
+<code>combine = FALSE</code> to get a list of per-panel
+<code>ggplot</code> objects back instead of a single combined
+<code>patchwork</code> object. These are plain <code>ggplot2</code>
+objects, so anything you’d do with <code>SpatialDimPlot()</code>’s
+output — theming, <code>+ ggtitle(...)</code>, saving via
+<code>ggsave()</code> — works the same way. Use the fixed versions
+whenever <code>SpatialDimPlot()</code>/<code>SpatialFeaturePlot()</code>
+spot size looks wrong; otherwise Seurat’s own functions are equally fine
+to keep using.</p>
+<hr />
+</div>
+</div>
+<div id="annotate-spatial-domains" class="section level2">
+<h2>6. Annotate Spatial Domains</h2>
+<div id="marker-dot-plots-markerplot-markerpctplot" class="section level3">
+<h3>6.1 Marker Dot Plots — <code>MarkerPlot()</code> /
+<code>MarkerPctPlot()</code></h3>
+<p>We now assign neuroanatomical labels to clusters using canonical
+mouse brain cell-type and region markers. <code>MarkerPlot()</code>
+groups genes by annotation, clusters identities by expression
+correlation, and automatically drops genes with zero or uniform
+expression.</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a>brain_markers <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb16-2"><a href="#cb16-2" tabindex="-1"></a>  <span class="at">Gene =</span> <span class="fu">c</span>(</span>
+<span id="cb16-3"><a href="#cb16-3" tabindex="-1"></a>    <span class="co"># Neurons (pan)</span></span>
+<span id="cb16-4"><a href="#cb16-4" tabindex="-1"></a>    <span class="st">&quot;Snap25&quot;</span>, <span class="st">&quot;Syt1&quot;</span>,   <span class="st">&quot;Rbfox3&quot;</span>,</span>
+<span id="cb16-5"><a href="#cb16-5" tabindex="-1"></a>    <span class="co"># Excitatory neurons</span></span>
+<span id="cb16-6"><a href="#cb16-6" tabindex="-1"></a>    <span class="st">&quot;Slc17a7&quot;</span>, <span class="st">&quot;Camk2a&quot;</span>, <span class="st">&quot;Grin2a&quot;</span>,</span>
+<span id="cb16-7"><a href="#cb16-7" tabindex="-1"></a>    <span class="co"># Inhibitory neurons</span></span>
+<span id="cb16-8"><a href="#cb16-8" tabindex="-1"></a>    <span class="st">&quot;Gad1&quot;</span>,   <span class="st">&quot;Gad2&quot;</span>,   <span class="st">&quot;Slc32a1&quot;</span>,</span>
+<span id="cb16-9"><a href="#cb16-9" tabindex="-1"></a>    <span class="co"># Astrocytes</span></span>
+<span id="cb16-10"><a href="#cb16-10" tabindex="-1"></a>    <span class="st">&quot;Gfap&quot;</span>,   <span class="st">&quot;Aqp4&quot;</span>,   <span class="st">&quot;Aldh1l1&quot;</span>,</span>
+<span id="cb16-11"><a href="#cb16-11" tabindex="-1"></a>    <span class="co"># Oligodendrocytes</span></span>
+<span id="cb16-12"><a href="#cb16-12" tabindex="-1"></a>    <span class="st">&quot;Mbp&quot;</span>,    <span class="st">&quot;Mog&quot;</span>,    <span class="st">&quot;Plp1&quot;</span>,</span>
+<span id="cb16-13"><a href="#cb16-13" tabindex="-1"></a>    <span class="co"># OPCs</span></span>
+<span id="cb16-14"><a href="#cb16-14" tabindex="-1"></a>    <span class="st">&quot;Pdgfra&quot;</span>, <span class="st">&quot;Cspg4&quot;</span>,</span>
+<span id="cb16-15"><a href="#cb16-15" tabindex="-1"></a>    <span class="co"># Microglia</span></span>
+<span id="cb16-16"><a href="#cb16-16" tabindex="-1"></a>    <span class="st">&quot;Cx3cr1&quot;</span>, <span class="st">&quot;P2ry12&quot;</span>, <span class="st">&quot;Tmem119&quot;</span>,</span>
+<span id="cb16-17"><a href="#cb16-17" tabindex="-1"></a>    <span class="co"># Endothelial</span></span>
+<span id="cb16-18"><a href="#cb16-18" tabindex="-1"></a>    <span class="st">&quot;Cldn5&quot;</span>,  <span class="st">&quot;Pecam1&quot;</span>,</span>
+<span id="cb16-19"><a href="#cb16-19" tabindex="-1"></a>    <span class="co"># Choroid plexus</span></span>
+<span id="cb16-20"><a href="#cb16-20" tabindex="-1"></a>    <span class="st">&quot;Ttr&quot;</span>,    <span class="st">&quot;Folr1&quot;</span></span>
+<span id="cb16-21"><a href="#cb16-21" tabindex="-1"></a>  ),</span>
+<span id="cb16-22"><a href="#cb16-22" tabindex="-1"></a>  <span class="at">CellType =</span> <span class="fu">c</span>(</span>
+<span id="cb16-23"><a href="#cb16-23" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;Neuron&quot;</span>,           <span class="dv">3</span>),</span>
+<span id="cb16-24"><a href="#cb16-24" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;Excitatory&quot;</span>,       <span class="dv">3</span>),</span>
+<span id="cb16-25"><a href="#cb16-25" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;Inhibitory&quot;</span>,       <span class="dv">3</span>),</span>
+<span id="cb16-26"><a href="#cb16-26" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;Astrocyte&quot;</span>,        <span class="dv">3</span>),</span>
+<span id="cb16-27"><a href="#cb16-27" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;Oligodendrocyte&quot;</span>,  <span class="dv">3</span>),</span>
+<span id="cb16-28"><a href="#cb16-28" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;OPC&quot;</span>,              <span class="dv">2</span>),</span>
+<span id="cb16-29"><a href="#cb16-29" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;Microglia&quot;</span>,        <span class="dv">3</span>),</span>
+<span id="cb16-30"><a href="#cb16-30" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;Endothelial&quot;</span>,      <span class="dv">2</span>),</span>
+<span id="cb16-31"><a href="#cb16-31" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;Choroid plexus&quot;</span>,   <span class="dv">2</span>)</span>
+<span id="cb16-32"><a href="#cb16-32" tabindex="-1"></a>  )</span>
+<span id="cb16-33"><a href="#cb16-33" tabindex="-1"></a>)</span>
+<span id="cb16-34"><a href="#cb16-34" tabindex="-1"></a></span>
+<span id="cb16-35"><a href="#cb16-35" tabindex="-1"></a><span class="fu">DefaultAssay</span>(integrated) <span class="ot">&lt;-</span> <span class="st">&quot;SCT&quot;</span></span>
+<span id="cb16-36"><a href="#cb16-36" tabindex="-1"></a></span>
+<span id="cb16-37"><a href="#cb16-37" tabindex="-1"></a>p <span class="ot">&lt;-</span> <span class="fu">MarkerPlot</span>(</span>
+<span id="cb16-38"><a href="#cb16-38" tabindex="-1"></a>  <span class="at">obj              =</span> integrated,</span>
+<span id="cb16-39"><a href="#cb16-39" tabindex="-1"></a>  <span class="at">genes            =</span> brain_markers,</span>
+<span id="cb16-40"><a href="#cb16-40" tabindex="-1"></a>  <span class="at">assay            =</span> <span class="st">&quot;SCT&quot;</span>,</span>
+<span id="cb16-41"><a href="#cb16-41" tabindex="-1"></a>  <span class="at">cluster          =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb16-42"><a href="#cb16-42" tabindex="-1"></a>  <span class="at">show.annotations =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb16-43"><a href="#cb16-43" tabindex="-1"></a>  <span class="at">maxsize          =</span> <span class="dv">5</span>,</span>
+<span id="cb16-44"><a href="#cb16-44" tabindex="-1"></a>  <span class="at">label.fontsize   =</span> <span class="dv">3</span>,</span>
+<span id="cb16-45"><a href="#cb16-45" tabindex="-1"></a>  <span class="at">margin_factor    =</span> <span class="fl">0.6</span>   <span class="co"># increase if right-edge labels are clipped</span></span>
+<span id="cb16-46"><a href="#cb16-46" tabindex="-1"></a>)</span>
+<span id="cb16-47"><a href="#cb16-47" tabindex="-1"></a><span class="fu">print</span>(p)</span>
+<span id="cb16-48"><a href="#cb16-48" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="st">&quot;markerplot_brain.pdf&quot;</span>, p, <span class="at">width =</span> <span class="dv">14</span>, <span class="at">height =</span> <span class="dv">10</span>)</span></code></pre></div>
+<p><strong>Auto-sizing for large panels.</strong> The example above sets
+<code>label.fontsize</code> explicitly. Leave it (and
+<code>axis_text_size</code>) at their <code>NULL</code> default instead
+and <code>MarkerPlot()</code> scales both, plus a suggested figure size,
+down as the gene count grows — a real concern once you’re annotating
+dozens of neuroanatomical subtypes instead of the ~9 broad classes
+above. <code>save_path</code> saves directly at that computed size
+instead of a separate <code>ggsave()</code> call:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" tabindex="-1"></a><span class="fu">MarkerPlot</span>(integrated, brain_markers, <span class="at">save_path =</span> <span class="st">&quot;markerplot_brain.pdf&quot;</span>)</span></code></pre></div>
+</div>
+<div id="assign-neuroanatomical-labels" class="section level3">
+<h3>Assign neuroanatomical labels</h3>
+<p>After reviewing the dot plot, relabel clusters with their anatomical
+identity. Your cluster–label mapping will differ from the example below
+depending on resolution and the specific integration run — use your
+marker plot as the guide.</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a><span class="co"># Example mapping — adjust to match what you observe</span></span>
+<span id="cb18-2"><a href="#cb18-2" tabindex="-1"></a>region_labels <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb18-3"><a href="#cb18-3" tabindex="-1"></a>  <span class="st">&quot;0&quot;</span>  <span class="ot">=</span> <span class="st">&quot;Oligodendrocyte&quot;</span>,</span>
+<span id="cb18-4"><a href="#cb18-4" tabindex="-1"></a>  <span class="st">&quot;1&quot;</span>  <span class="ot">=</span> <span class="st">&quot;Excitatory neuron&quot;</span>,</span>
+<span id="cb18-5"><a href="#cb18-5" tabindex="-1"></a>  <span class="st">&quot;2&quot;</span>  <span class="ot">=</span> <span class="st">&quot;Excitatory neuron&quot;</span>,</span>
+<span id="cb18-6"><a href="#cb18-6" tabindex="-1"></a>  <span class="st">&quot;3&quot;</span>  <span class="ot">=</span> <span class="st">&quot;Inhibitory neuron&quot;</span>,</span>
+<span id="cb18-7"><a href="#cb18-7" tabindex="-1"></a>  <span class="st">&quot;4&quot;</span>  <span class="ot">=</span> <span class="st">&quot;Astrocyte&quot;</span>,</span>
+<span id="cb18-8"><a href="#cb18-8" tabindex="-1"></a>  <span class="st">&quot;5&quot;</span>  <span class="ot">=</span> <span class="st">&quot;Excitatory neuron&quot;</span>,</span>
+<span id="cb18-9"><a href="#cb18-9" tabindex="-1"></a>  <span class="st">&quot;6&quot;</span>  <span class="ot">=</span> <span class="st">&quot;Microglia&quot;</span>,</span>
+<span id="cb18-10"><a href="#cb18-10" tabindex="-1"></a>  <span class="st">&quot;7&quot;</span>  <span class="ot">=</span> <span class="st">&quot;OPC&quot;</span>,</span>
+<span id="cb18-11"><a href="#cb18-11" tabindex="-1"></a>  <span class="st">&quot;8&quot;</span>  <span class="ot">=</span> <span class="st">&quot;Endothelial&quot;</span>,</span>
+<span id="cb18-12"><a href="#cb18-12" tabindex="-1"></a>  <span class="st">&quot;9&quot;</span>  <span class="ot">=</span> <span class="st">&quot;Choroid plexus&quot;</span>,</span>
+<span id="cb18-13"><a href="#cb18-13" tabindex="-1"></a>  <span class="st">&quot;10&quot;</span> <span class="ot">=</span> <span class="st">&quot;Inhibitory neuron&quot;</span></span>
+<span id="cb18-14"><a href="#cb18-14" tabindex="-1"></a>)</span>
+<span id="cb18-15"><a href="#cb18-15" tabindex="-1"></a></span>
+<span id="cb18-16"><a href="#cb18-16" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">RenameIdents</span>(integrated, region_labels)</span>
+<span id="cb18-17"><a href="#cb18-17" tabindex="-1"></a>integrated<span class="sc">$</span>spatial_domain <span class="ot">&lt;-</span> <span class="fu">Idents</span>(integrated)</span>
+<span id="cb18-18"><a href="#cb18-18" tabindex="-1"></a></span>
+<span id="cb18-19"><a href="#cb18-19" tabindex="-1"></a><span class="co"># Visualize labeled domains on tissue</span></span>
+<span id="cb18-20"><a href="#cb18-20" tabindex="-1"></a><span class="co"># (swap in SpatialDimPlotFixed() here if spot size looks wrong -- see the</span></span>
+<span id="cb18-21"><a href="#cb18-21" tabindex="-1"></a><span class="co"># note at the end of Section 5)</span></span>
+<span id="cb18-22"><a href="#cb18-22" tabindex="-1"></a><span class="fu">SpatialDimPlot</span>(integrated, <span class="at">group.by =</span> <span class="st">&quot;spatial_domain&quot;</span>, <span class="at">label =</span> <span class="cn">FALSE</span>) <span class="sc">+</span></span>
+<span id="cb18-23"><a href="#cb18-23" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;Annotated spatial domains&quot;</span>)</span>
+<span id="cb18-24"><a href="#cb18-24" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="st">&quot;spatial_domains_brain.pdf&quot;</span>, <span class="at">width =</span> <span class="dv">14</span>, <span class="at">height =</span> <span class="dv">7</span>)</span></code></pre></div>
+<hr />
+</div>
+<div id="heatmap-view-markerheatmap" class="section level3">
+<h3>6.2 Heatmap View — <code>MarkerHeatmap()</code></h3>
+<p><code>MarkerHeatmap()</code> is a complementary view to the dot plot
+above: it runs (or accepts an existing) <code>FindAllMarkers()</code>
+table, picks the top markers per cluster, and z-scores their expression
+across clusters as a heatmap. On Visium specifically, reach for
+<code>pseudobulk = TRUE</code>: spots typically carry only a few hundred
+to a few thousand UMIs, so the default per-cell-averaged path is more
+exposed to per-spot sampling noise than it would be on higher-depth
+single-cell data. <code>pseudobulk = TRUE</code> sums raw counts per
+cluster first and normalizes once, collapsing that noise before it ever
+reaches the z-score:</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" tabindex="-1"></a><span class="fu">MarkerHeatmap</span>(integrated, <span class="at">pseudobulk =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb19-2"><a href="#cb19-2" tabindex="-1"></a></span>
+<span id="cb19-3"><a href="#cb19-3" tabindex="-1"></a><span class="co"># Reuse an existing FindAllMarkers()-style table instead of recomputing it</span></span>
+<span id="cb19-4"><a href="#cb19-4" tabindex="-1"></a><span class="fu">MarkerHeatmap</span>(integrated, <span class="at">markers =</span> cluster_markers, <span class="at">n =</span> <span class="dv">8</span>, <span class="at">pseudobulk =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb19-5"><a href="#cb19-5" tabindex="-1"></a></span>
+<span id="cb19-6"><a href="#cb19-6" tabindex="-1"></a><span class="co"># Or skip marker selection entirely and plot a curated panel directly</span></span>
+<span id="cb19-7"><a href="#cb19-7" tabindex="-1"></a><span class="fu">MarkerHeatmap</span>(integrated, <span class="at">genes =</span> <span class="fu">c</span>(<span class="st">&quot;Slc17a7&quot;</span>, <span class="st">&quot;Gad1&quot;</span>, <span class="st">&quot;Gfap&quot;</span>, <span class="st">&quot;Mbp&quot;</span>, <span class="st">&quot;Pecam1&quot;</span>, <span class="st">&quot;Cx3cr1&quot;</span>),</span>
+<span id="cb19-8"><a href="#cb19-8" tabindex="-1"></a>             <span class="at">pseudobulk =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
+<p>Note this still z-scores across clusters either way
+(<code>scale_rows = TRUE</code> by default) — pseudobulking reduces
+stochastic per-spot noise, but it’s the z-scoring step that actually
+protects against a broadly/ambiently expressed gene (e.g. hepatocyte
+transcripts in liver — see §7.6) dominating every cluster’s raw
+magnitude, the same principle behind
+<code>RCTDCompositionHeatmap()</code>.</p>
+<p><code>genes</code> and <code>markers</code> are mutually exclusive —
+pass one or the other. <code>genes</code> is useful when you already
+know the panel you want plotted (e.g. the same curated marker list used
+for <code>MarkerPlot()</code>/<code>MarkerPctPlot()</code>) and don’t
+need a data-driven top-N selection; any requested gene absent from the
+assay is dropped with a message rather than erroring the whole call.</p>
+<hr />
+</div>
+<div id="cluster-level-marker-scoring-annotateclusters" class="section level3">
+<h3>6.3 Cluster-level Marker Scoring —
+<code>AnnotateClusters()</code></h3>
+<p>For Visium, use <code>AnnotateClusters()</code> with
+Visium-appropriate defaults — the winner-takes-all limitation applies
+here (each spot mixes cell types), so
+<code>return_scores = &quot;cluster&quot;</code> is often more informative than
+the winner label alone.</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" tabindex="-1"></a>brain_markers <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb20-2"><a href="#cb20-2" tabindex="-1"></a>  <span class="at">Neuron_Ex   =</span> <span class="fu">c</span>(<span class="st">&quot;Slc17a7&quot;</span>, <span class="st">&quot;Camk2a&quot;</span>),      <span class="co"># excitatory</span></span>
+<span id="cb20-3"><a href="#cb20-3" tabindex="-1"></a>  <span class="at">Neuron_In   =</span> <span class="fu">c</span>(<span class="st">&quot;Gad1&quot;</span>, <span class="st">&quot;Gad2&quot;</span>),           <span class="co"># inhibitory</span></span>
+<span id="cb20-4"><a href="#cb20-4" tabindex="-1"></a>  <span class="at">Astrocyte   =</span> <span class="fu">c</span>(<span class="st">&quot;Gfap&quot;</span>, <span class="st">&quot;Aqp4&quot;</span>),</span>
+<span id="cb20-5"><a href="#cb20-5" tabindex="-1"></a>  <span class="at">Oligo       =</span> <span class="fu">c</span>(<span class="st">&quot;Mbp&quot;</span>, <span class="st">&quot;Mog&quot;</span>, <span class="st">&quot;Plp1&quot;</span>),</span>
+<span id="cb20-6"><a href="#cb20-6" tabindex="-1"></a>  <span class="at">Endothelial =</span> <span class="fu">c</span>(<span class="st">&quot;Pecam1&quot;</span>, <span class="st">&quot;Cldn5&quot;</span>),</span>
+<span id="cb20-7"><a href="#cb20-7" tabindex="-1"></a>  <span class="at">Microglia   =</span> <span class="fu">c</span>(<span class="st">&quot;Cx3cr1&quot;</span>, <span class="st">&quot;P2ry12&quot;</span>)</span>
+<span id="cb20-8"><a href="#cb20-8" tabindex="-1"></a>)</span>
+<span id="cb20-9"><a href="#cb20-9" tabindex="-1"></a></span>
+<span id="cb20-10"><a href="#cb20-10" tabindex="-1"></a><span class="co"># Visium-safe defaults: no non-specific filter, low min_detection_frac</span></span>
+<span id="cb20-11"><a href="#cb20-11" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">AnnotateClusters</span>(</span>
+<span id="cb20-12"><a href="#cb20-12" tabindex="-1"></a>  integrated,</span>
+<span id="cb20-13"><a href="#cb20-13" tabindex="-1"></a>  <span class="at">markers             =</span> brain_markers,</span>
+<span id="cb20-14"><a href="#cb20-14" tabindex="-1"></a>  <span class="at">cluster_col         =</span> <span class="st">&quot;seurat_clusters&quot;</span>,</span>
+<span id="cb20-15"><a href="#cb20-15" tabindex="-1"></a>  <span class="at">filter_nonspecific  =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb20-16"><a href="#cb20-16" tabindex="-1"></a>  <span class="at">min_detection_frac  =</span> <span class="fl">0.05</span>,</span>
+<span id="cb20-17"><a href="#cb20-17" tabindex="-1"></a>  <span class="at">return_scores       =</span> <span class="st">&quot;cluster&quot;</span>,</span>
+<span id="cb20-18"><a href="#cb20-18" tabindex="-1"></a>  <span class="at">new_col             =</span> <span class="st">&quot;domain&quot;</span></span>
+<span id="cb20-19"><a href="#cb20-19" tabindex="-1"></a>)</span>
+<span id="cb20-20"><a href="#cb20-20" tabindex="-1"></a>res<span class="sc">$</span>scores       <span class="co"># cluster x cell-type UCell score matrix</span></span>
+<span id="cb20-21"><a href="#cb20-21" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> res<span class="sc">$</span>obj</span>
+<span id="cb20-22"><a href="#cb20-22" tabindex="-1"></a></span>
+<span id="cb20-23"><a href="#cb20-23" tabindex="-1"></a><span class="co"># Winner label is available too</span></span>
+<span id="cb20-24"><a href="#cb20-24" tabindex="-1"></a><span class="fu">table</span>(integrated<span class="sc">$</span>domain)</span></code></pre></div>
+<p><strong>Deconvolution is preferred for Visium</strong> — see section
+7 below. Use marker scoring only as a sanity check.</p>
+<hr />
+</div>
+</div>
+<div id="visium-deconvolution-runrctd" class="section level2">
+<h2>7. Visium Deconvolution — <code>RunRCTD()</code></h2>
+<p>Each Visium spot covers ~55 μm and contains 1-10 cells of mixed
+types. Winner-takes-all classifiers (<code>MarkerPlot</code>,
+<code>AnnotateClusters</code>) lose minority populations by
+construction. <code>RunRCTD()</code> deconvolves each spot as a mixture
+using a reference single-cell dataset.</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" tabindex="-1"></a><span class="co"># You need a single-cell reference Seurat object with cell-type labels.</span></span>
+<span id="cb21-2"><a href="#cb21-2" tabindex="-1"></a><span class="co"># For mouse brain, the Allen Brain Institute reference or Zeisel et al. work.</span></span>
+<span id="cb21-3"><a href="#cb21-3" tabindex="-1"></a><span class="co"># Placeholder here:</span></span>
+<span id="cb21-4"><a href="#cb21-4" tabindex="-1"></a>brain_ref <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="st">&quot;data/allen_mouse_cortex.rds&quot;</span>)</span>
+<span id="cb21-5"><a href="#cb21-5" tabindex="-1"></a></span>
+<span id="cb21-6"><a href="#cb21-6" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">RunRCTD</span>(</span>
+<span id="cb21-7"><a href="#cb21-7" tabindex="-1"></a>  integrated,</span>
+<span id="cb21-8"><a href="#cb21-8" tabindex="-1"></a>  <span class="at">reference    =</span> brain_ref,</span>
+<span id="cb21-9"><a href="#cb21-9" tabindex="-1"></a>  <span class="at">celltype_col =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb21-10"><a href="#cb21-10" tabindex="-1"></a>  <span class="at">mode         =</span> <span class="st">&quot;full&quot;</span>,              <span class="co"># or &quot;doublet&quot; for cleaner but binary calls</span></span>
+<span id="cb21-11"><a href="#cb21-11" tabindex="-1"></a>  <span class="at">max_cells_per_ref_celltype =</span> <span class="dv">5000</span>,</span>
+<span id="cb21-12"><a href="#cb21-12" tabindex="-1"></a>  <span class="at">n_cores      =</span> <span class="dv">8</span></span>
+<span id="cb21-13"><a href="#cb21-13" tabindex="-1"></a>)</span>
+<span id="cb21-14"><a href="#cb21-14" tabindex="-1"></a></span>
+<span id="cb21-15"><a href="#cb21-15" tabindex="-1"></a><span class="co"># Per-cell-type proportion columns on each spot</span></span>
+<span id="cb21-16"><a href="#cb21-16" tabindex="-1"></a><span class="fu">head</span>(<span class="fu">colnames</span>(integrated<span class="sc">@</span>misc<span class="sc">$</span>rctd_weights))</span>
+<span id="cb21-17"><a href="#cb21-17" tabindex="-1"></a><span class="co"># [1] &quot;L2/3 IT&quot; &quot;L5 IT&quot;   &quot;L6 CT&quot;   &quot;Oligo&quot;   ...</span></span>
+<span id="cb21-18"><a href="#cb21-18" tabindex="-1"></a></span>
+<span id="cb21-19"><a href="#cb21-19" tabindex="-1"></a><span class="co"># Overlay proportions spatially</span></span>
+<span id="cb21-20"><a href="#cb21-20" tabindex="-1"></a><span class="fu">SpatialFeaturePlot</span>(integrated,</span>
+<span id="cb21-21"><a href="#cb21-21" tabindex="-1"></a>                   <span class="at">features =</span> <span class="fu">c</span>(<span class="st">&quot;rctd_Oligo&quot;</span>, <span class="st">&quot;rctd_Astro&quot;</span>, <span class="st">&quot;rctd_L2.3.IT&quot;</span>))</span>
+<span id="cb21-22"><a href="#cb21-22" tabindex="-1"></a></span>
+<span id="cb21-23"><a href="#cb21-23" tabindex="-1"></a><span class="co"># Dominant type per spot for quick visualization</span></span>
+<span id="cb21-24"><a href="#cb21-24" tabindex="-1"></a><span class="fu">SpatialDimPlot</span>(integrated, <span class="at">group.by =</span> <span class="st">&quot;rctd_dominant&quot;</span>)</span></code></pre></div>
+<p>For laminar cortex or clearly zoned tissue, RCTD proportions map
+cleanly onto the anatomical structure — a strong sanity check that
+everything is working.</p>
+<div id="choosing-a-mode" class="section level3">
+<h3>7.1 Choosing a mode</h3>
+<p><code>mode</code> controls RCTD’s <code>doublet_mode</code>, and it’s
+a real tradeoff, not just a speed knob:</p>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Mode</th>
+<th>Assumption</th>
+<th>Best for</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>&quot;full&quot;</code> (default)</td>
+<td>Each spot is a mixture of <em>any number</em> of cell types</td>
+<td>Standard Visium — spots routinely hold several types, and
+<code>&quot;full&quot;</code> is the only mode that returns their actual
+proportions rather than forcing a 1-2 type call</td>
+</tr>
+<tr class="even">
+<td><code>&quot;doublet&quot;</code></td>
+<td>Each spot has exactly 1 or 2 cell types</td>
+<td>High-resolution or sparse tissue where that assumption roughly
+holds; faster, and gives a discrete, more interpretable per-spot
+call</td>
+</tr>
+<tr class="odd">
+<td><code>&quot;multi&quot;</code></td>
+<td>Iteratively fits more types per spot than <code>&quot;doublet&quot;</code>
+allows</td>
+<td>A middle ground — use if <code>&quot;doublet&quot;</code> visibly under-fits
+(e.g. a spot’s residual expression clearly implies a third type) but
+full <code>&quot;full&quot;</code>-mode mixtures aren’t needed</td>
+</tr>
+</tbody>
+</table>
+<p><code>&quot;doublet&quot;</code>/<code>&quot;multi&quot;</code> also give you
+<code>rctd_spot_class</code> (see 7.4) — a real per-spot confidence call
+from spacexr itself, which <code>&quot;full&quot;</code> mode doesn’t have an
+equivalent for.</p>
+<p><code>max_cells_per_ref_celltype</code> (default 10000) and
+<code>CELL_MIN_INSTANCE</code> (default 25) both trade reference
+fidelity for speed/memory: lowering
+<code>max_cells_per_ref_celltype</code> shrinks the reference (faster
+<code>create.RCTD()</code>, coarser per-type expression profiles);
+raising <code>CELL_MIN_INSTANCE</code> drops rare reference cell types
+entirely rather than trying to build an unreliable profile from too few
+cells. If a cell type you expect is missing from
+<code>rctd_weights</code>, check whether it was filtered out here before
+assuming something else is wrong.</p>
+</div>
+<div id="multiple-samples" class="section level3">
+<h3>7.2 Multiple samples</h3>
+<p><code>obj</code> can be a single Visium object or a named list of
+them. If you’ve already merged samples into one object (like
+<code>integrated</code> above), <code>RunRCTD()</code> already handles
+that correctly — it gathers tissue coordinates from every image in
+<code>obj@images</code>, not just the first, so every sample’s spots are
+included. If you haven’t merged yet, pass the list directly instead and
+skip a <code>merge()</code> step you don’t otherwise need:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" tabindex="-1"></a>visium_list <span class="ot">&lt;-</span> <span class="fu">RunRCTD</span>(</span>
+<span id="cb22-2"><a href="#cb22-2" tabindex="-1"></a>  <span class="fu">list</span>(<span class="at">sample1 =</span> visium1, <span class="at">sample2 =</span> visium2, <span class="at">sample3 =</span> visium3),</span>
+<span id="cb22-3"><a href="#cb22-3" tabindex="-1"></a>  <span class="at">reference    =</span> brain_ref,</span>
+<span id="cb22-4"><a href="#cb22-4" tabindex="-1"></a>  <span class="at">celltype_col =</span> <span class="st">&quot;cell_type&quot;</span></span>
+<span id="cb22-5"><a href="#cb22-5" tabindex="-1"></a>)</span></code></pre></div>
+<p>The RCTD reference is built once from <code>reference</code> and
+reused for every sample in the list — building it is the expensive,
+sample-independent step, so this avoids redoing that work per sample the
+way a hand-written loop would.</p>
+</div>
+<div id="feeding-rctd-output-into-compositionniche-tools" class="section level3">
+<h3>7.3 Feeding RCTD output into composition/niche tools</h3>
+<p><code>rctd_dominant</code> is a discrete per-spot label, so it’s
+already a drop-in <code>group_col</code>/<code>niche_col</code> for the
+package’s existing composition and niche tools — no extra plumbing
+needed:</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" tabindex="-1"></a><span class="co"># Cell-type composition per sample/condition, using RCTD calls instead of clusters</span></span>
+<span id="cb23-2"><a href="#cb23-2" tabindex="-1"></a>comp <span class="ot">&lt;-</span> <span class="fu">CompositionAnalysis</span>(integrated,</span>
+<span id="cb23-3"><a href="#cb23-3" tabindex="-1"></a>                            <span class="at">group_col     =</span> <span class="st">&quot;rctd_dominant&quot;</span>,</span>
+<span id="cb23-4"><a href="#cb23-4" tabindex="-1"></a>                            <span class="at">sample_col    =</span> <span class="st">&quot;orig.ident&quot;</span>,</span>
+<span id="cb23-5"><a href="#cb23-5" tabindex="-1"></a>                            <span class="at">condition_col =</span> <span class="st">&quot;region&quot;</span>)</span>
+<span id="cb23-6"><a href="#cb23-6" tabindex="-1"></a></span>
+<span id="cb23-7"><a href="#cb23-7" tabindex="-1"></a><span class="co"># Spatial niches built around RCTD-called dominant type instead of seurat_clusters</span></span>
+<span id="cb23-8"><a href="#cb23-8" tabindex="-1"></a>niches <span class="ot">&lt;-</span> <span class="fu">NicheCoExpress</span>(integrated,</span>
+<span id="cb23-9"><a href="#cb23-9" tabindex="-1"></a>                         <span class="at">niche_col     =</span> <span class="st">&quot;rctd_dominant&quot;</span>,</span>
+<span id="cb23-10"><a href="#cb23-10" tabindex="-1"></a>                         <span class="at">sample_col    =</span> <span class="st">&quot;orig.ident&quot;</span>,</span>
+<span id="cb23-11"><a href="#cb23-11" tabindex="-1"></a>                         <span class="at">condition_col =</span> <span class="st">&quot;region&quot;</span>)</span></code></pre></div>
+<p>But collapsing every spot to its single dominant type throws away
+exactly what <code>&quot;full&quot;</code> mode was estimating in the first place
+— the actual mixture. <code>CompositionalTest()</code>’s
+<code>weight_cols</code> argument runs the proportion test directly on
+the continuous <code>rctd_&lt;celltype&gt;</code> columns instead:</p>
+<div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" tabindex="-1"></a>celltypes <span class="ot">&lt;-</span> <span class="fu">grep</span>(<span class="st">&quot;^rctd_&quot;</span>, <span class="fu">colnames</span>(integrated<span class="sc">@</span>meta.data), <span class="at">value =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb24-2"><a href="#cb24-2" tabindex="-1"></a>celltypes <span class="ot">&lt;-</span> <span class="fu">setdiff</span>(celltypes, <span class="fu">c</span>(<span class="st">&quot;rctd_dominant&quot;</span>, <span class="st">&quot;rctd_max_weight&quot;</span>, <span class="st">&quot;rctd_spot_class&quot;</span>))</span>
+<span id="cb24-3"><a href="#cb24-3" tabindex="-1"></a></span>
+<span id="cb24-4"><a href="#cb24-4" tabindex="-1"></a>res_rctd <span class="ot">&lt;-</span> <span class="fu">CompositionalTest</span>(integrated,</span>
+<span id="cb24-5"><a href="#cb24-5" tabindex="-1"></a>                              <span class="at">weight_cols   =</span> celltypes,</span>
+<span id="cb24-6"><a href="#cb24-6" tabindex="-1"></a>                              <span class="at">sample_col    =</span> <span class="st">&quot;orig.ident&quot;</span>,</span>
+<span id="cb24-7"><a href="#cb24-7" tabindex="-1"></a>                              <span class="at">condition_col =</span> <span class="st">&quot;region&quot;</span>,</span>
+<span id="cb24-8"><a href="#cb24-8" tabindex="-1"></a>                              <span class="at">method        =</span> <span class="st">&quot;betareg&quot;</span>)</span>
+<span id="cb24-9"><a href="#cb24-9" tabindex="-1"></a><span class="fu">subset</span>(res_rctd, padj <span class="sc">&lt;</span> <span class="fl">0.05</span>)</span></code></pre></div>
+<p>Only <code>method = &quot;betareg&quot;</code>/<code>&quot;wilcox&quot;</code> work with
+<code>weight_cols</code> — <code>&quot;propeller&quot;</code> needs a discrete
+per-cell cluster call, which is exactly what this path is avoiding.</p>
+</div>
+<div id="qualityconfidence-fields" class="section level3">
+<h3>7.4 Quality/confidence fields</h3>
+<p><code>write_metadata = TRUE</code> (the default) also writes two or
+three diagnostic columns alongside the
+<code>rctd_&lt;celltype&gt;</code> proportions, available in every mode
+unless noted:</p>
+<ul>
+<li><strong><code>rctd_max_weight</code></strong> — the dominant type’s
+proportion at that spot. This is our own simple heuristic, not something
+spacexr computes: low values (e.g. a spot split roughly 30/30/40 across
+three types) mean a genuinely ambiguous mixture, not a confident call,
+regardless of what <code>rctd_dominant</code> says.</li>
+<li><strong><code>rctd_spot_class</code></strong> —
+<code>&quot;doublet&quot;</code>/<code>&quot;multi&quot;</code> mode only. This one
+<em>is</em> spacexr’s own diagnostic: <code>&quot;singlet&quot;</code> (one
+confident type),
+<code>&quot;doublet_certain&quot;</code>/<code>&quot;doublet_uncertain&quot;</code> (two
+types, confidence differs), or <code>&quot;reject&quot;</code> (no confident call
+at all — exclude these from downstream analysis). <code>&quot;full&quot;</code>
+mode has no equivalent built-in field, so the column simply isn’t
+present there rather than being faked.</li>
+</ul>
+<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" tabindex="-1"></a><span class="co"># Sanity-check before trusting rctd_dominant downstream</span></span>
+<span id="cb25-2"><a href="#cb25-2" tabindex="-1"></a><span class="fu">table</span>(integrated<span class="sc">$</span>rctd_spot_class)                       <span class="co"># doublet/multi mode only</span></span>
+<span id="cb25-3"><a href="#cb25-3" tabindex="-1"></a><span class="fu">summary</span>(integrated<span class="sc">$</span>rctd_max_weight)                     <span class="co"># any mode</span></span>
+<span id="cb25-4"><a href="#cb25-4" tabindex="-1"></a>low_confidence <span class="ot">&lt;-</span> <span class="fu">subset</span>(integrated, rctd_max_weight <span class="sc">&lt;</span> <span class="fl">0.4</span>)</span></code></pre></div>
+</div>
+<div id="visualizing-the-full-mixture-spatialcompositionplot" class="section level3">
+<h3>7.5 Visualizing the full mixture —
+<code>SpatialCompositionPlot()</code></h3>
+<p><code>SpatialDimPlot(group.by = &quot;rctd_dominant&quot;)</code> (7 above)
+only shows one color per spot. <code>SpatialCompositionPlot()</code>
+draws a pie glyph per spot instead, showing the complete
+<code>rctd_&lt;celltype&gt;</code> mixture RCTD actually estimated — the
+more honest picture in mixed tissue, at the cost of being harder to read
+at a glance. Requires the <code>scatterpie</code> package
+(<code>Suggests</code> only, not installed by default):</p>
+<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" tabindex="-1"></a><span class="fu">SpatialCompositionPlot</span>(integrated)                       <span class="co"># auto-detects rctd_&lt;celltype&gt; columns</span></span>
+<span id="cb26-2"><a href="#cb26-2" tabindex="-1"></a><span class="fu">SpatialCompositionPlot</span>(integrated, <span class="at">donut =</span> <span class="cn">TRUE</span>, <span class="at">pie_scale =</span> <span class="fl">0.6</span>)</span>
+<span id="cb26-3"><a href="#cb26-3" tabindex="-1"></a></span>
+<span id="cb26-4"><a href="#cb26-4" tabindex="-1"></a><span class="co"># Visium objects can have thousands of spots -- n_spots_max (default 2000)</span></span>
+<span id="cb26-5"><a href="#cb26-5" tabindex="-1"></a><span class="co"># randomly subsamples rather than rendering an unreadable/slow wall of pies</span></span>
+<span id="cb26-6"><a href="#cb26-6" tabindex="-1"></a><span class="fu">SpatialCompositionPlot</span>(integrated, <span class="at">n_spots_max =</span> <span class="dv">500</span>)</span></code></pre></div>
+</div>
+<div id="cluster-level-composition-summarizerctdbycluster" class="section level3">
+<h3>7.6 Cluster-level composition —
+<code>SummarizeRCTDByCluster()</code></h3>
+<p><code>rctd_dominant</code> (7 above) is a per-<em>spot</em>
+winner-takes-all label. Tabulating or averaging it at the cluster level
+— e.g. via <code>CompositionAnalysis(group_col = &quot;rctd_dominant&quot;)</code>
+in 7.3 — throws away exactly the mixture information <code>&quot;full&quot;</code>
+mode estimated, one level later than <code>AnnotateClusters()</code>
+would on raw expression, but the same information loss.
+<code>SummarizeRCTDByCluster()</code> instead averages the <em>soft</em>
+<code>rctd_&lt;celltype&gt;</code> proportions within each cluster
+first, then picks a per-cluster label from that averaged composition
+using the same margin-based “best label, else Unknown” logic
+<code>AnnotateClusters()</code> uses internally — just applied to RCTD’s
+already mixture-aware proportions instead of re-scoring raw expression,
+which sidesteps issues like a dominant cell type’s expression leaking
+into every cluster’s marker score (see <code>AnnotateClusters()</code>’s
+<code>visium_mode</code> docs):</p>
+<div class="sourceCode" id="cb27"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">SummarizeRCTDByCluster</span>(integrated)</span>
+<span id="cb27-2"><a href="#cb27-2" tabindex="-1"></a>res<span class="sc">$</span>composition    <span class="co"># cluster x cell-type matrix of mean RCTD proportions</span></span>
+<span id="cb27-3"><a href="#cb27-3" tabindex="-1"></a>res<span class="sc">$</span>labels          <span class="co"># named vector: cluster -&gt; most likely cell type</span></span>
+<span id="cb27-4"><a href="#cb27-4" tabindex="-1"></a></span>
+<span id="cb27-5"><a href="#cb27-5" tabindex="-1"></a><span class="co"># e.g. relabel clusters for a plot title/legend</span></span>
+<span id="cb27-6"><a href="#cb27-6" tabindex="-1"></a><span class="fu">DimPlot</span>(integrated, <span class="at">label =</span> <span class="cn">TRUE</span>) <span class="sc">+</span></span>
+<span id="cb27-7"><a href="#cb27-7" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="fu">paste</span>(<span class="fu">names</span>(res<span class="sc">$</span>labels), res<span class="sc">$</span>labels, <span class="at">sep =</span> <span class="st">&quot;: &quot;</span>, <span class="at">collapse =</span> <span class="st">&quot; | &quot;</span>))</span></code></pre></div>
+<p>Nothing is written back to <code>integrated</code> — <code>res</code>
+is a plain list, so attach it to metadata yourself
+(e.g. <code>integrated$cluster_celltype &lt;- res$labels[as.character(integrated$seurat_clusters)]</code>)
+if you want it there.</p>
+<p>By default <code>min_score</code>/<code>min_margin</code> are both
+<code>NA</code> (disabled), so every cluster gets a best guess
+regardless of confidence — the same default
+<code>AnnotateClusters()</code> uses. Pass explicit thresholds to flag
+ambiguous clusters instead of silently guessing:</p>
+<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">SummarizeRCTDByCluster</span>(integrated, <span class="at">min_score =</span> <span class="fl">0.3</span>, <span class="at">min_margin =</span> <span class="fl">0.1</span>)</span>
+<span id="cb28-2"><a href="#cb28-2" tabindex="-1"></a><span class="fu">table</span>(res<span class="sc">$</span>labels)   <span class="co"># clusters with no clear winner come back &quot;Unknown&quot;</span></span></code></pre></div>
+<p><code>weight_cols</code> defaults to every
+<code>rctd_&lt;celltype&gt;</code> column, excluding the derived
+<code>rctd_dominant</code>/<code>rctd_max_weight</code>/<code>rctd_spot_class</code>
+columns — pass it explicitly if you’ve renamed columns or want to
+restrict the comparison to a subset of cell types.</p>
+<p><strong>A common trap in tissue with one very abundant type.</strong>
+In liver, hepatocytes routinely make up 60-80%+ of every spot’s RCTD
+proportions in <em>every</em> cluster — real biology (hepatocytes
+dominate liver RNA content almost everywhere at Visium resolution), not
+a bug. But <code>res$labels</code> is still a winner-takes-all pick on
+top of <code>res$composition</code>, so it will report “Hepatocyte” for
+every cluster in that situation even when the composition matrix
+underneath has real, meaningful cluster-to-cluster differences in the
+minority cell types — the actual signal just isn’t visible from raw
+proportions, because a moderately-elevated-everywhere type (in this
+hypothetical, something like Myeloid) can still numerically beat a real,
+sharp, cluster-specific spike (e.g. Cholangiocyte in one cluster) even
+after excluding Hepatocyte from consideration.
+<code>RCTDCompositionHeatmap()</code> z-scores each cell type across
+clusters by default, which surfaces relative enrichment instead of raw
+magnitude:</p>
+<div class="sourceCode" id="cb29"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" tabindex="-1"></a><span class="fu">RCTDCompositionHeatmap</span>(integrated)                 <span class="co"># calls SummarizeRCTDByCluster() internally</span></span>
+<span id="cb29-2"><a href="#cb29-2" tabindex="-1"></a><span class="fu">RCTDCompositionHeatmap</span>(res)                         <span class="co"># or reuse an already-computed result</span></span>
+<span id="cb29-3"><a href="#cb29-3" tabindex="-1"></a><span class="fu">RCTDCompositionHeatmap</span>(res<span class="sc">$</span>composition, <span class="at">scale_cols =</span> <span class="cn">FALSE</span>)  <span class="co"># raw proportions instead of z-scores</span></span></code></pre></div>
+<p>Check the coefficient of variation per cell type
+(<code>sd / mean</code> down each column of
+<code>res$composition</code>) if you want this quantitatively rather
+than visually — a type with low CV (stable across every cluster) is your
+tissue’s dominant baseline, not a differentiator; the high-CV types are
+where cluster identity actually lives.</p>
+<hr />
+</div>
+</div>
+<div id="feature-density-on-the-tissue-plotfeaturedensity" class="section level2">
+<h2>8. Feature Density on the Tissue —
+<code>PlotFeatureDensity()</code></h2>
+<p><code>PlotFeatureDensity()</code> gives a much cleaner view of sparse
+markers than <code>SpatialFeaturePlot()</code> when combined with the
+UMAP or a spatial 2D coordinate reduction. On a UMAP:</p>
+<p>For a direct spot-level view of a gene or module score on the tissue
+itself (rather than density on a reduction),
+<code>SpatialFeaturePlotFixed()</code> is a <code>ggplot2</code>-based,
+point-size-reliable alternative to <code>SpatialFeaturePlot()</code> —
+see the note at the end of Section 5.</p>
+<p><code>PlotFeatureDensity()</code> isn’t limited to genes — any
+numeric metadata column works, including a module score.
+<code>AddModuleScore()</code> writes a column named
+<code>&lt;name&gt;1</code>; copy it to a fixed, readable name so the
+call below doesn’t depend on that numbering:</p>
+<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">AddModuleScore</span>(</span>
+<span id="cb30-2"><a href="#cb30-2" tabindex="-1"></a>  integrated,</span>
+<span id="cb30-3"><a href="#cb30-3" tabindex="-1"></a>  <span class="at">features =</span> <span class="fu">list</span>(<span class="fu">c</span>(<span class="st">&quot;Mbp&quot;</span>, <span class="st">&quot;Mog&quot;</span>, <span class="st">&quot;Plp1&quot;</span>)),   <span class="co"># oligodendrocyte / myelination markers</span></span>
+<span id="cb30-4"><a href="#cb30-4" tabindex="-1"></a>  <span class="at">name     =</span> <span class="st">&quot;OligoScore&quot;</span></span>
+<span id="cb30-5"><a href="#cb30-5" tabindex="-1"></a>)</span>
+<span id="cb30-6"><a href="#cb30-6" tabindex="-1"></a>integrated<span class="sc">$</span>module_score_oligo <span class="ot">&lt;-</span> integrated<span class="sc">$</span>OligoScore1</span>
+<span id="cb30-7"><a href="#cb30-7" tabindex="-1"></a></span>
+<span id="cb30-8"><a href="#cb30-8" tabindex="-1"></a><span class="fu">PlotFeatureDensity</span>(</span>
+<span id="cb30-9"><a href="#cb30-9" tabindex="-1"></a>  integrated,</span>
+<span id="cb30-10"><a href="#cb30-10" tabindex="-1"></a>  <span class="at">features  =</span> <span class="fu">c</span>(<span class="st">&quot;Mbp&quot;</span>, <span class="st">&quot;Gad1&quot;</span>, <span class="st">&quot;Slc17a7&quot;</span>),</span>
+<span id="cb30-11"><a href="#cb30-11" tabindex="-1"></a>  <span class="at">reduction =</span> <span class="st">&quot;umap&quot;</span></span>
+<span id="cb30-12"><a href="#cb30-12" tabindex="-1"></a>)</span>
+<span id="cb30-13"><a href="#cb30-13" tabindex="-1"></a></span>
+<span id="cb30-14"><a href="#cb30-14" tabindex="-1"></a><span class="co"># On the spatial coordinates directly (works when &#39;spatial&#39; is registered</span></span>
+<span id="cb30-15"><a href="#cb30-15" tabindex="-1"></a><span class="co"># as a reduction; otherwise use SpatialFeaturePlot for the tissue view).</span></span>
+<span id="cb30-16"><a href="#cb30-16" tabindex="-1"></a><span class="fu">PlotFeatureDensity</span>(integrated,</span>
+<span id="cb30-17"><a href="#cb30-17" tabindex="-1"></a>                   <span class="at">features  =</span> <span class="st">&quot;module_score_oligo&quot;</span>,</span>
+<span id="cb30-18"><a href="#cb30-18" tabindex="-1"></a>                   <span class="at">reduction =</span> <span class="st">&quot;umap&quot;</span>)</span></code></pre></div>
+<p>For side-by-side comparison of a gene’s density and its ligand’s
+density:</p>
+<div class="sourceCode" id="cb31"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" tabindex="-1"></a><span class="fu">PlotFeatureDensity</span>(integrated,</span>
+<span id="cb31-2"><a href="#cb31-2" tabindex="-1"></a>                   <span class="at">features =</span> <span class="fu">c</span>(<span class="st">&quot;Vegfa&quot;</span>, <span class="st">&quot;Kdr&quot;</span>),</span>
+<span id="cb31-3"><a href="#cb31-3" tabindex="-1"></a>                   <span class="at">joint    =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
+<hr />
+</div>
+<div id="gene-positivity-addgenepositivity-plotgenepositivity" class="section level2">
+<h2>9. Gene Positivity — <code>AddGenePositivity()</code> /
+<code>PlotGenePositivity()</code></h2>
+<p>Flag spots where a gene is detectably expressed (counts &gt; 0).
+Useful for quick spatial co-expression checks and for creating binary
+masks before niche analysis.</p>
+<div class="sourceCode" id="cb32"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">AddGenePositivity</span>(</span>
+<span id="cb32-2"><a href="#cb32-2" tabindex="-1"></a>  <span class="at">seurat_objects =</span> integrated,</span>
+<span id="cb32-3"><a href="#cb32-3" tabindex="-1"></a>  <span class="at">genes          =</span> <span class="fu">c</span>(<span class="st">&quot;Snap25&quot;</span>, <span class="st">&quot;Gfap&quot;</span>, <span class="st">&quot;Mbp&quot;</span>, <span class="st">&quot;Cx3cr1&quot;</span>, <span class="st">&quot;Cldn5&quot;</span>),</span>
+<span id="cb32-4"><a href="#cb32-4" tabindex="-1"></a>  <span class="at">layer          =</span> <span class="st">&quot;counts&quot;</span>,</span>
+<span id="cb32-5"><a href="#cb32-5" tabindex="-1"></a>  <span class="at">threshold      =</span> <span class="dv">0</span>,</span>
+<span id="cb32-6"><a href="#cb32-6" tabindex="-1"></a>  <span class="at">suffix         =</span> <span class="st">&quot;_pos&quot;</span></span>
+<span id="cb32-7"><a href="#cb32-7" tabindex="-1"></a>)</span>
+<span id="cb32-8"><a href="#cb32-8" tabindex="-1"></a></span>
+<span id="cb32-9"><a href="#cb32-9" tabindex="-1"></a><span class="co"># Fraction of spots positive per spatial domain</span></span>
+<span id="cb32-10"><a href="#cb32-10" tabindex="-1"></a>integrated<span class="sc">@</span>meta.data <span class="sc">%&gt;%</span></span>
+<span id="cb32-11"><a href="#cb32-11" tabindex="-1"></a>  <span class="fu">group_by</span>(spatial_domain) <span class="sc">%&gt;%</span></span>
+<span id="cb32-12"><a href="#cb32-12" tabindex="-1"></a>  <span class="fu">summarise</span>(</span>
+<span id="cb32-13"><a href="#cb32-13" tabindex="-1"></a>    <span class="at">pct_Snap25  =</span> <span class="fu">round</span>(<span class="fu">mean</span>(Snap25_pos)  <span class="sc">*</span> <span class="dv">100</span>, <span class="dv">1</span>),</span>
+<span id="cb32-14"><a href="#cb32-14" tabindex="-1"></a>    <span class="at">pct_Gfap    =</span> <span class="fu">round</span>(<span class="fu">mean</span>(Gfap_pos)    <span class="sc">*</span> <span class="dv">100</span>, <span class="dv">1</span>),</span>
+<span id="cb32-15"><a href="#cb32-15" tabindex="-1"></a>    <span class="at">pct_Mbp     =</span> <span class="fu">round</span>(<span class="fu">mean</span>(Mbp_pos)     <span class="sc">*</span> <span class="dv">100</span>, <span class="dv">1</span>),</span>
+<span id="cb32-16"><a href="#cb32-16" tabindex="-1"></a>    <span class="at">pct_Cx3cr1  =</span> <span class="fu">round</span>(<span class="fu">mean</span>(Cx3cr1_pos)  <span class="sc">*</span> <span class="dv">100</span>, <span class="dv">1</span>)</span>
+<span id="cb32-17"><a href="#cb32-17" tabindex="-1"></a>  ) <span class="sc">%&gt;%</span></span>
+<span id="cb32-18"><a href="#cb32-18" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(pct_Snap25))</span></code></pre></div>
+<p>Spatial map of a positivity flag:</p>
+<div class="sourceCode" id="cb33"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" tabindex="-1"></a><span class="fu">SpatialFeaturePlot</span>(integrated, <span class="at">features =</span> <span class="st">&quot;Gfap_pos&quot;</span>) <span class="sc">+</span></span>
+<span id="cb33-2"><a href="#cb33-2" tabindex="-1"></a>  <span class="fu">scale_fill_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">&quot;FALSE&quot;</span> <span class="ot">=</span> <span class="st">&quot;grey90&quot;</span>, <span class="st">&quot;TRUE&quot;</span> <span class="ot">=</span> <span class="st">&quot;firebrick&quot;</span>)) <span class="sc">+</span></span>
+<span id="cb33-3"><a href="#cb33-3" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;Gfap-positive spots&quot;</span>)</span></code></pre></div>
+<p>Percent-positive summary across spatial domains via
+<code>PlotGenePositivity()</code>:</p>
+<div class="sourceCode" id="cb34"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" tabindex="-1"></a><span class="fu">PlotGenePositivity</span>(integrated,</span>
+<span id="cb34-2"><a href="#cb34-2" tabindex="-1"></a>                   <span class="fu">c</span>(<span class="st">&quot;Snap25&quot;</span>, <span class="st">&quot;Gfap&quot;</span>, <span class="st">&quot;Mbp&quot;</span>, <span class="st">&quot;Cx3cr1&quot;</span>),</span>
+<span id="cb34-3"><a href="#cb34-3" tabindex="-1"></a>                   <span class="at">group.by =</span> <span class="st">&quot;spatial_domain&quot;</span>,</span>
+<span id="cb34-4"><a href="#cb34-4" tabindex="-1"></a>                   <span class="at">style    =</span> <span class="st">&quot;heatmap&quot;</span>,</span>
+<span id="cb34-5"><a href="#cb34-5" tabindex="-1"></a>                   <span class="at">max_pct  =</span> <span class="dv">90</span>)</span>
+<span id="cb34-6"><a href="#cb34-6" tabindex="-1"></a></span>
+<span id="cb34-7"><a href="#cb34-7" tabindex="-1"></a><span class="co"># Or the co-expression view for two markers</span></span>
+<span id="cb34-8"><a href="#cb34-8" tabindex="-1"></a><span class="fu">PlotGenePositivity</span>(integrated,</span>
+<span id="cb34-9"><a href="#cb34-9" tabindex="-1"></a>                   <span class="fu">c</span>(<span class="st">&quot;Snap25&quot;</span>, <span class="st">&quot;Gfap&quot;</span>),</span>
+<span id="cb34-10"><a href="#cb34-10" tabindex="-1"></a>                   <span class="at">group.by =</span> <span class="st">&quot;spatial_domain&quot;</span>,</span>
+<span id="cb34-11"><a href="#cb34-11" tabindex="-1"></a>                   <span class="at">style    =</span> <span class="st">&quot;combo&quot;</span>)</span></code></pre></div>
+<div id="genepositivityanalysis-and-genepositivityestimationplot" class="section level3">
+<h3>9.1 <code>GenePositivityAnalysis()</code> and
+<code>GenePositivityEstimationPlot()</code></h3>
+<p>The summary above is pooled across all spots regardless of section.
+<code>GenePositivityAnalysis()</code> computes positivity rates per
+<strong>sample</strong> (section) instead — stratified by
+<code>spatial_domain</code> here — plus an optional chi-square/Fisher
+test across <code>region</code>, the same
+<code>orig.ident</code>/<code>region</code> anterior-vs-posterior design
+<code>NicheCoExpress()</code> (Section 12) uses. With only 4 sections
+total (2 per region) that test pools spots across sections rather than
+testing on the 2-vs-2 sample-level rates, so it emits a
+<code>warning()</code> and shouldn’t be read as a real significance
+result here – <code>GenePositivityEstimationPlot()</code> below, which
+works directly off the per-sample rates, is the honest view of this
+comparison:</p>
+<div class="sourceCode" id="cb35"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" tabindex="-1"></a>gpa <span class="ot">&lt;-</span> <span class="fu">GenePositivityAnalysis</span>(</span>
+<span id="cb35-2"><a href="#cb35-2" tabindex="-1"></a>  integrated,</span>
+<span id="cb35-3"><a href="#cb35-3" tabindex="-1"></a>  <span class="at">genes         =</span> <span class="fu">c</span>(<span class="st">&quot;Gfap&quot;</span>, <span class="st">&quot;Mbp&quot;</span>),</span>
+<span id="cb35-4"><a href="#cb35-4" tabindex="-1"></a>  <span class="at">sample_col    =</span> <span class="st">&quot;orig.ident&quot;</span>,</span>
+<span id="cb35-5"><a href="#cb35-5" tabindex="-1"></a>  <span class="at">condition_col =</span> <span class="st">&quot;region&quot;</span>,</span>
+<span id="cb35-6"><a href="#cb35-6" tabindex="-1"></a>  <span class="at">group_col     =</span> <span class="st">&quot;spatial_domain&quot;</span>,</span>
+<span id="cb35-7"><a href="#cb35-7" tabindex="-1"></a>  <span class="at">test          =</span> <span class="st">&quot;chisq&quot;</span></span>
+<span id="cb35-8"><a href="#cb35-8" tabindex="-1"></a>)</span>
+<span id="cb35-9"><a href="#cb35-9" tabindex="-1"></a>gpa<span class="sc">$</span>proportions                    <span class="co"># sample, gene, group, n_pos, n_total, prop_pos, condition</span></span>
+<span id="cb35-10"><a href="#cb35-10" tabindex="-1"></a>gpa<span class="sc">$</span>test[[<span class="st">&quot;Mbp | Oligodendrocyte&quot;</span>]]   <span class="co"># chi-square result for that gene x domain combination (pooled-spot caveat above)</span></span></code></pre></div>
+<p>As with
+<code>CompositionAnalysis()</code>/<code>CompositionEstimationPlot()</code>
+in the other two vignettes, the test above answers “is there a
+difference”; <code>GenePositivityEstimationPlot()</code> answers “by how
+much, with what uncertainty” using per-sample positivity rates and a
+bootstrap 95% CI – the same caveat from Section 2 applies here too:
+“anterior” vs “posterior” is an anatomical grouping (2 sections each),
+not a treatment arm.</p>
+<div class="sourceCode" id="cb36"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" tabindex="-1"></a><span class="co"># Mbp positivity in the oligodendrocyte domain, anterior vs posterior</span></span>
+<span id="cb36-2"><a href="#cb36-2" tabindex="-1"></a><span class="fu">GenePositivityEstimationPlot</span>(gpa, <span class="at">genes =</span> <span class="st">&quot;Mbp&quot;</span>, <span class="at">group_levels =</span> <span class="st">&quot;Oligodendrocyte&quot;</span>,</span>
+<span id="cb36-3"><a href="#cb36-3" tabindex="-1"></a>                             <span class="at">idx =</span> <span class="fu">c</span>(<span class="st">&quot;anterior&quot;</span>, <span class="st">&quot;posterior&quot;</span>))</span>
+<span id="cb36-4"><a href="#cb36-4" tabindex="-1"></a></span>
+<span id="cb36-5"><a href="#cb36-5" tabindex="-1"></a><span class="co"># Every gene x domain combination present, as a named list of plots</span></span>
+<span id="cb36-6"><a href="#cb36-6" tabindex="-1"></a>plots <span class="ot">&lt;-</span> <span class="fu">GenePositivityEstimationPlot</span>(gpa, <span class="at">idx =</span> <span class="fu">c</span>(<span class="st">&quot;anterior&quot;</span>, <span class="st">&quot;posterior&quot;</span>))</span>
+<span id="cb36-7"><a href="#cb36-7" tabindex="-1"></a>plots[[<span class="st">&quot;Mbp | Oligodendrocyte&quot;</span>]]</span>
+<span id="cb36-8"><a href="#cb36-8" tabindex="-1"></a></span>
+<span id="cb36-9"><a href="#cb36-9" tabindex="-1"></a><span class="co"># Cohen&#39;s h -- the effect size designed specifically for comparing two proportions</span></span>
+<span id="cb36-10"><a href="#cb36-10" tabindex="-1"></a><span class="fu">GenePositivityEstimationPlot</span>(gpa, <span class="at">genes =</span> <span class="st">&quot;Mbp&quot;</span>, <span class="at">group_levels =</span> <span class="st">&quot;Oligodendrocyte&quot;</span>,</span>
+<span id="cb36-11"><a href="#cb36-11" tabindex="-1"></a>                             <span class="at">idx =</span> <span class="fu">c</span>(<span class="st">&quot;anterior&quot;</span>, <span class="st">&quot;posterior&quot;</span>), <span class="at">effect =</span> <span class="st">&quot;cohens_h&quot;</span>)</span></code></pre></div>
+<div id="how-to-read-a-dabestr-estimation-plot" class="section level4">
+<h4>How to read a <code>dabestr</code> estimation plot</h4>
+<p>This is the first estimation plot in this vignette, so it’s worth
+spelling out what’s actually on it – the same layout applies to
+<code>NicheCoExpressEstimationPlot()</code> (12.1) later on too (<a href="https://acclab.github.io/dabestr/"><code>dabestr</code></a>
+implements “estimation statistics”: Ho et al. 2019, <em>Moving beyond P
+values: data analysis with estimation graphics</em>, Nature
+Methods).</p>
+<p>Each plot has two stacked panels sharing an x-axis (the two
+<code>idx</code> conditions, here
+<code>anterior</code>/<code>posterior</code>):</p>
+<ul>
+<li><strong>Top panel — raw data.</strong> Every individual value
+feeding the comparison is plotted as a swarm along its condition’s
+column. That’s one point per <em>section</em> (<code>orig.ident</code>),
+not per spot – with only 4 sections total (2 per region) you’ll
+literally see all 4 points, which is the honest picture this comparison
+can support, rather than a p-value implying more precision than 2-vs-2
+actually gives.</li>
+<li><strong>Bottom panel — effect size.</strong> The chosen
+<code>effect</code> (<code>mean_diff</code> by default) between
+posterior and anterior, drawn as a single point with a vertical bar for
+its 95% bootstrap confidence interval (5000 resamples, by default). A
+dashed horizontal line marks the reference condition’s (anterior’s)
+value, so the effect-size point/CI can be read directly against it.</li>
+</ul>
+<p>Because the CI comes from resampling the actual sections rather than
+a parametric formula, it doesn’t assume normality – but with only 2
+sections per condition here, resampling has very little to work with, so
+expect a wide CI; that width is itself useful information (this
+comparison can detect large effects only, not subtle ones). There’s no
+p-value threshold to eyeball; instead look at whether the CI includes
+zero (no effect) and how wide it is.</p>
+<p><code>effect</code> options, all available on every
+<code>*EstimationPlot()</code> function in this package:</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th><code>effect</code></th>
+<th>What it measures</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>mean_diff</code> (default)</td>
+<td>Test mean − reference mean, in the original units (e.g. proportion
+points).</td>
+</tr>
+<tr class="even">
+<td><code>median_diff</code></td>
+<td>Same, using medians – less sensitive to one outlier section.</td>
+</tr>
+<tr class="odd">
+<td><code>cohens_d</code></td>
+<td>Standardized mean difference (pooled-SD units); comparable across
+differently-scaled measurements.</td>
+</tr>
+<tr class="even">
+<td><code>hedges_g</code></td>
+<td><code>cohens_d</code> with a small-sample bias correction – prefer
+this over <code>cohens_d</code> with only 2 sections per condition.</td>
+</tr>
+<tr class="odd">
+<td><code>cliffs_delta</code></td>
+<td>Non-parametric, rank-based (akin to a standardized Mann-Whitney
+effect) – robust to outliers and non-normal spread, no distributional
+assumptions.</td>
+</tr>
+<tr class="even">
+<td><code>cohens_h</code></td>
+<td>Designed specifically for comparing two proportions – often the more
+principled choice for <code>prop_pos</code>/<code>prop</code> columns
+(bounded 0-1) rather than a raw mean difference.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+</div>
+</div>
+</div>
+<div id="spatial-niche-analysis-buildmultiplenicheassays" class="section level2">
+<h2>10. Spatial Niche Analysis —
+<code>BuildMultipleNicheAssays()</code></h2>
+<p>A spatial niche captures not just what a spot expresses, but what its
+<em>neighbors</em> express. <code>BuildMultipleNicheAssays()</code>
+builds a neighborhood-composition assay across all sections and then
+clusters spots by niche profile using mini-batch k-means. This reveals
+recurring spatial patterns that transcend individual sections.</p>
+<p>The function requires a <code>group.by</code> metadata column that
+classifies spots — here we use the <code>spatial_domain</code> labels
+assigned in Section 6. It also needs the list of FOV (image) names that
+correspond to each object, and <code>type = &quot;visium&quot;</code> to use the
+correct coordinate accessor.</p>
+<div class="sourceCode" id="cb37"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" tabindex="-1"></a><span class="co"># Split the integrated object back into per-section objects for niche building.</span></span>
+<span id="cb37-2"><a href="#cb37-2" tabindex="-1"></a><span class="co"># BuildMultipleNicheAssays() works on a list, not the merged object.</span></span>
+<span id="cb37-3"><a href="#cb37-3" tabindex="-1"></a>brain_list_annotated <span class="ot">&lt;-</span> <span class="fu">SplitObject</span>(integrated, <span class="at">split.by =</span> <span class="st">&quot;orig.ident&quot;</span>)</span>
+<span id="cb37-4"><a href="#cb37-4" tabindex="-1"></a></span>
+<span id="cb37-5"><a href="#cb37-5" tabindex="-1"></a><span class="co"># Confirm FOV names match what&#39;s in each object&#39;s images slot</span></span>
+<span id="cb37-6"><a href="#cb37-6" tabindex="-1"></a><span class="fu">lapply</span>(brain_list_annotated, <span class="cf">function</span>(obj) <span class="fu">names</span>(obj<span class="sc">@</span>images))</span>
+<span id="cb37-7"><a href="#cb37-7" tabindex="-1"></a><span class="co">#&gt; $anterior1</span></span>
+<span id="cb37-8"><a href="#cb37-8" tabindex="-1"></a><span class="co">#&gt; [1] &quot;anterior1&quot;</span></span>
+<span id="cb37-9"><a href="#cb37-9" tabindex="-1"></a><span class="co">#&gt; $anterior2</span></span>
+<span id="cb37-10"><a href="#cb37-10" tabindex="-1"></a><span class="co">#&gt; [1] &quot;anterior2&quot;</span></span>
+<span id="cb37-11"><a href="#cb37-11" tabindex="-1"></a><span class="co">#&gt; $posterior1</span></span>
+<span id="cb37-12"><a href="#cb37-12" tabindex="-1"></a><span class="co">#&gt; [1] &quot;posterior1&quot;</span></span>
+<span id="cb37-13"><a href="#cb37-13" tabindex="-1"></a><span class="co">#&gt; $posterior2</span></span>
+<span id="cb37-14"><a href="#cb37-14" tabindex="-1"></a><span class="co">#&gt; [1] &quot;posterior2&quot;</span></span>
+<span id="cb37-15"><a href="#cb37-15" tabindex="-1"></a></span>
+<span id="cb37-16"><a href="#cb37-16" tabindex="-1"></a>niche_list <span class="ot">&lt;-</span> <span class="fu">BuildMultipleNicheAssays</span>(</span>
+<span id="cb37-17"><a href="#cb37-17" tabindex="-1"></a>  <span class="at">list.object  =</span> brain_list_annotated,</span>
+<span id="cb37-18"><a href="#cb37-18" tabindex="-1"></a>  <span class="at">list.fov     =</span> <span class="fu">as.list</span>(<span class="fu">names</span>(brain_list_annotated)),  <span class="co"># must match names(obj@images)</span></span>
+<span id="cb37-19"><a href="#cb37-19" tabindex="-1"></a>  <span class="at">group.by     =</span> <span class="st">&quot;spatial_domain&quot;</span>,</span>
+<span id="cb37-20"><a href="#cb37-20" tabindex="-1"></a>  <span class="at">assay        =</span> <span class="st">&quot;niche&quot;</span>,</span>
+<span id="cb37-21"><a href="#cb37-21" tabindex="-1"></a>  <span class="at">cluster.name =</span> <span class="st">&quot;niches&quot;</span>,</span>
+<span id="cb37-22"><a href="#cb37-22" tabindex="-1"></a>  <span class="at">neighbors.k  =</span> <span class="dv">6</span>,              <span class="co"># Visium spots have ~6 direct neighbors in the hexagonal grid</span></span>
+<span id="cb37-23"><a href="#cb37-23" tabindex="-1"></a>  <span class="at">niches.k.range =</span> <span class="dv">4</span><span class="sc">:</span><span class="dv">15</span>,         <span class="co"># test k = 4 through 15; inspect stability</span></span>
+<span id="cb37-24"><a href="#cb37-24" tabindex="-1"></a>  <span class="at">batch_size   =</span> <span class="dv">20</span>,</span>
+<span id="cb37-25"><a href="#cb37-25" tabindex="-1"></a>  <span class="at">num_init     =</span> <span class="dv">20</span>,</span>
+<span id="cb37-26"><a href="#cb37-26" tabindex="-1"></a>  <span class="at">type         =</span> <span class="st">&quot;visium&quot;</span>        <span class="co"># tells the function to use Visium coordinate accessors</span></span>
+<span id="cb37-27"><a href="#cb37-27" tabindex="-1"></a>)</span></code></pre></div>
+<p><code>niche_list</code> now has four elements
+(<code>anterior1</code>, <code>anterior2</code>,
+<code>posterior1</code>, <code>posterior2</code>). The examples below
+use <code>anterior1</code>/<code>posterior1</code> for illustration —
+the same calls work for the other two sections.</p>
+<p><code>BuildMultipleNicheAssays()</code> adds: - A <code>niche</code>
+assay to each object (features = cell-type labels, values = neighborhood
+composition) - <code>niches.kmeans_4</code> through
+<code>niches.kmeans_15</code> metadata columns (one per k tested)</p>
+<div id="choosing-k" class="section level3">
+<h3>Choosing k</h3>
+<p>Examine a few values of k spatially to find the one that produces
+interpretable, anatomically consistent niche patterns:</p>
+<div class="sourceCode" id="cb38"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" tabindex="-1"></a><span class="co"># Visualize different k values on the anterior section</span></span>
+<span id="cb38-2"><a href="#cb38-2" tabindex="-1"></a>p4  <span class="ot">&lt;-</span> <span class="fu">SpatialDimPlot</span>(niche_list[[<span class="st">&quot;anterior1&quot;</span>]],</span>
+<span id="cb38-3"><a href="#cb38-3" tabindex="-1"></a>                      <span class="at">group.by =</span> <span class="st">&quot;niches.kmeans_4&quot;</span>,  <span class="at">label =</span> <span class="cn">FALSE</span>) <span class="sc">+</span> <span class="fu">ggtitle</span>(<span class="st">&quot;k = 4&quot;</span>)</span>
+<span id="cb38-4"><a href="#cb38-4" tabindex="-1"></a>p8  <span class="ot">&lt;-</span> <span class="fu">SpatialDimPlot</span>(niche_list[[<span class="st">&quot;anterior1&quot;</span>]],</span>
+<span id="cb38-5"><a href="#cb38-5" tabindex="-1"></a>                      <span class="at">group.by =</span> <span class="st">&quot;niches.kmeans_8&quot;</span>,  <span class="at">label =</span> <span class="cn">FALSE</span>) <span class="sc">+</span> <span class="fu">ggtitle</span>(<span class="st">&quot;k = 8&quot;</span>)</span>
+<span id="cb38-6"><a href="#cb38-6" tabindex="-1"></a>p12 <span class="ot">&lt;-</span> <span class="fu">SpatialDimPlot</span>(niche_list[[<span class="st">&quot;anterior1&quot;</span>]],</span>
+<span id="cb38-7"><a href="#cb38-7" tabindex="-1"></a>                      <span class="at">group.by =</span> <span class="st">&quot;niches.kmeans_12&quot;</span>, <span class="at">label =</span> <span class="cn">FALSE</span>) <span class="sc">+</span> <span class="fu">ggtitle</span>(<span class="st">&quot;k = 12&quot;</span>)</span>
+<span id="cb38-8"><a href="#cb38-8" tabindex="-1"></a></span>
+<span id="cb38-9"><a href="#cb38-9" tabindex="-1"></a>p4 <span class="sc">|</span> p8 <span class="sc">|</span> p12</span>
+<span id="cb38-10"><a href="#cb38-10" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="st">&quot;niche_k_comparison_anterior.pdf&quot;</span>, <span class="at">width =</span> <span class="dv">18</span>, <span class="at">height =</span> <span class="dv">6</span>)</span></code></pre></div>
+<p>Pick the k where niches map cleanly onto known anatomical boundaries
+(cortical layers, white matter, hippocampus, etc.) without fragmented,
+salt-and-pepper patterns. For the mouse brain, k = 6–10 often works
+well.</p>
+<div class="sourceCode" id="cb39"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" tabindex="-1"></a><span class="co"># Once you&#39;ve chosen k, add a clean &quot;best_k&quot; column for downstream use</span></span>
+<span id="cb39-2"><a href="#cb39-2" tabindex="-1"></a>best_k <span class="ot">&lt;-</span> <span class="dv">8</span></span>
+<span id="cb39-3"><a href="#cb39-3" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="fu">seq_along</span>(niche_list)) {</span>
+<span id="cb39-4"><a href="#cb39-4" tabindex="-1"></a>  niche_list[[i]]<span class="sc">$</span>best_niche <span class="ot">&lt;-</span> niche_list[[i]][[<span class="fu">paste0</span>(<span class="st">&quot;niches.kmeans_&quot;</span>, best_k)]]</span>
+<span id="cb39-5"><a href="#cb39-5" tabindex="-1"></a>}</span>
+<span id="cb39-6"><a href="#cb39-6" tabindex="-1"></a></span>
+<span id="cb39-7"><a href="#cb39-7" tabindex="-1"></a><span class="co"># Compare niches across sections</span></span>
+<span id="cb39-8"><a href="#cb39-8" tabindex="-1"></a><span class="fu">SpatialDimPlot</span>(niche_list[[<span class="st">&quot;anterior1&quot;</span>]],  <span class="at">group.by =</span> <span class="st">&quot;best_niche&quot;</span>) <span class="sc">+</span></span>
+<span id="cb39-9"><a href="#cb39-9" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;Anterior niches&quot;</span>) <span class="sc">|</span></span>
+<span id="cb39-10"><a href="#cb39-10" tabindex="-1"></a><span class="fu">SpatialDimPlot</span>(niche_list[[<span class="st">&quot;posterior1&quot;</span>]], <span class="at">group.by =</span> <span class="st">&quot;best_niche&quot;</span>) <span class="sc">+</span></span>
+<span id="cb39-11"><a href="#cb39-11" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;Posterior niches&quot;</span>)</span>
+<span id="cb39-12"><a href="#cb39-12" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="st">&quot;best_niches_both_sections.pdf&quot;</span>, <span class="at">width =</span> <span class="dv">14</span>, <span class="at">height =</span> <span class="dv">7</span>)</span></code></pre></div>
+</div>
+<div id="niche-composition-heatmap" class="section level3">
+<h3>Niche composition heatmap</h3>
+<p>Which spatial domains make up each niche?</p>
+<div class="sourceCode" id="cb40"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb40-1"><a href="#cb40-1" tabindex="-1"></a><span class="fu">library</span>(tidyr)</span>
+<span id="cb40-2"><a href="#cb40-2" tabindex="-1"></a></span>
+<span id="cb40-3"><a href="#cb40-3" tabindex="-1"></a><span class="co"># Use the anterior section as an example</span></span>
+<span id="cb40-4"><a href="#cb40-4" tabindex="-1"></a>niche_meta <span class="ot">&lt;-</span> niche_list[[<span class="st">&quot;anterior1&quot;</span>]]<span class="sc">@</span>meta.data</span>
+<span id="cb40-5"><a href="#cb40-5" tabindex="-1"></a></span>
+<span id="cb40-6"><a href="#cb40-6" tabindex="-1"></a>comp <span class="ot">&lt;-</span> niche_meta <span class="sc">%&gt;%</span></span>
+<span id="cb40-7"><a href="#cb40-7" tabindex="-1"></a>  <span class="fu">count</span>(best_niche, spatial_domain) <span class="sc">%&gt;%</span></span>
+<span id="cb40-8"><a href="#cb40-8" tabindex="-1"></a>  <span class="fu">group_by</span>(best_niche) <span class="sc">%&gt;%</span></span>
+<span id="cb40-9"><a href="#cb40-9" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">pct =</span> n <span class="sc">/</span> <span class="fu">sum</span>(n) <span class="sc">*</span> <span class="dv">100</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb40-10"><a href="#cb40-10" tabindex="-1"></a>  <span class="fu">ungroup</span>()</span>
+<span id="cb40-11"><a href="#cb40-11" tabindex="-1"></a></span>
+<span id="cb40-12"><a href="#cb40-12" tabindex="-1"></a><span class="fu">ggplot</span>(comp, <span class="fu">aes</span>(<span class="at">x =</span> best_niche, <span class="at">y =</span> spatial_domain, <span class="at">fill =</span> pct)) <span class="sc">+</span></span>
+<span id="cb40-13"><a href="#cb40-13" tabindex="-1"></a>  <span class="fu">geom_tile</span>(<span class="at">color =</span> <span class="st">&quot;white&quot;</span>) <span class="sc">+</span></span>
+<span id="cb40-14"><a href="#cb40-14" tabindex="-1"></a>  <span class="fu">scale_fill_gradientn</span>(<span class="at">colors =</span> <span class="fu">c</span>(<span class="st">&quot;white&quot;</span>, <span class="st">&quot;steelblue&quot;</span>, <span class="st">&quot;navy&quot;</span>),</span>
+<span id="cb40-15"><a href="#cb40-15" tabindex="-1"></a>                       <span class="at">name   =</span> <span class="st">&quot;% of niche&quot;</span>) <span class="sc">+</span></span>
+<span id="cb40-16"><a href="#cb40-16" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">&quot;Niche&quot;</span>, <span class="at">y =</span> <span class="st">&quot;Spatial domain&quot;</span>,</span>
+<span id="cb40-17"><a href="#cb40-17" tabindex="-1"></a>       <span class="at">title =</span> <span class="st">&quot;Spatial domain composition per niche — anterior section&quot;</span>) <span class="sc">+</span></span>
+<span id="cb40-18"><a href="#cb40-18" tabindex="-1"></a>  <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
+<span id="cb40-19"><a href="#cb40-19" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text.x =</span> <span class="fu">element_text</span>(<span class="at">angle =</span> <span class="dv">45</span>, <span class="at">hjust =</span> <span class="dv">1</span>))</span>
+<span id="cb40-20"><a href="#cb40-20" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="st">&quot;niche_composition_heatmap.pdf&quot;</span>, <span class="at">width =</span> <span class="dv">8</span>, <span class="at">height =</span> <span class="dv">6</span>)</span></code></pre></div>
+</div>
+<div id="an-alternative-spatial-domain-segmentation-via-runbanksywrapper" class="section level3">
+<h3>10.1 An Alternative: Spatial Domain Segmentation via
+<code>RunBanksyWrapper()</code></h3>
+<p><code>BuildMultipleNicheAssays()</code> above finds niches from
+neighborhood <em>composition</em> (what cell-type labels surround each
+spot). <code>RunBanksyWrapper()</code> takes a different approach: it
+wraps
+<code>SeuratWrappers::RunBanksy()</code>/<code>Banksy::computeBanksy()</code>
+to build a joint expression + spatial-neighbor feature space directly
+from gene expression, then lets you cluster on that instead.
+<code>lambda</code> controls the trade-off: low values (~0.2) favor
+ordinary cell-typing, high values (~0.8) favor spatial domain
+segmentation — since that’s the goal here, use a high
+<code>lambda</code>.</p>
+<p>This runs on <code>integrated</code> from Section 5 (the merged,
+SCTransform-normalized, harmony- integrated object across all 4
+sections) rather than the per-section <code>niche_list</code>. Because
+BANKSY needs spatial coordinates and <code>integrated</code> has 4
+sections’ worth of spots that would otherwise spatially overlap (each
+section’s pixel coordinates start near the origin independently), pass
+<code>group = &quot;orig.ident&quot;</code> so coordinates are staggered per
+section before computing spatial neighbors – skipping this would let
+BANKSY treat spots from <em>different</em> sections as if they were
+physically adjacent.</p>
+<div class="sourceCode" id="cb41"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">RunBanksyWrapper</span>(</span>
+<span id="cb41-2"><a href="#cb41-2" tabindex="-1"></a>  integrated,</span>
+<span id="cb41-3"><a href="#cb41-3" tabindex="-1"></a>  <span class="at">lambda   =</span> <span class="fl">0.8</span>,          <span class="co"># high lambda -- spatial domain segmentation, not cell-typing</span></span>
+<span id="cb41-4"><a href="#cb41-4" tabindex="-1"></a>  <span class="at">k_geom   =</span> <span class="dv">15</span>,</span>
+<span id="cb41-5"><a href="#cb41-5" tabindex="-1"></a>  <span class="at">group    =</span> <span class="st">&quot;orig.ident&quot;</span>,  <span class="co"># keep the 4 sections&#39; coordinates from overlapping</span></span>
+<span id="cb41-6"><a href="#cb41-6" tabindex="-1"></a>  <span class="at">assay_name =</span> <span class="st">&quot;BANKSY&quot;</span></span>
+<span id="cb41-7"><a href="#cb41-7" tabindex="-1"></a>)</span>
+<span id="cb41-8"><a href="#cb41-8" tabindex="-1"></a></span>
+<span id="cb41-9"><a href="#cb41-9" tabindex="-1"></a><span class="co"># RunBanksyWrapper() already ran PCA on the BANKSY assay (reduction &quot;pca_banksy&quot;)</span></span>
+<span id="cb41-10"><a href="#cb41-10" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">FindNeighbors</span>(integrated, <span class="at">reduction =</span> <span class="st">&quot;pca_banksy&quot;</span>, <span class="at">dims =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">30</span>)</span>
+<span id="cb41-11"><a href="#cb41-11" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">FindClusters</span>(integrated, <span class="at">resolution =</span> <span class="fl">0.5</span>, <span class="at">cluster.name =</span> <span class="st">&quot;banksy_domain&quot;</span>)</span>
+<span id="cb41-12"><a href="#cb41-12" tabindex="-1"></a></span>
+<span id="cb41-13"><a href="#cb41-13" tabindex="-1"></a><span class="co"># Compare to the marker-based spatial_domain labels from Section 6</span></span>
+<span id="cb41-14"><a href="#cb41-14" tabindex="-1"></a><span class="fu">SpatialDimPlot</span>(integrated, <span class="at">group.by =</span> <span class="st">&quot;banksy_domain&quot;</span>) <span class="sc">+</span> <span class="fu">ggtitle</span>(<span class="st">&quot;BANKSY domains&quot;</span>)</span>
+<span id="cb41-15"><a href="#cb41-15" tabindex="-1"></a><span class="fu">table</span>(integrated<span class="sc">$</span>banksy_domain, integrated<span class="sc">$</span>spatial_domain)</span></code></pre></div>
+<blockquote>
+<p><strong>Caveat inherited from <code>RunBanksy()</code>:</strong>
+don’t call <code>ScaleData()</code> on the <code>BANKSY</code> assay
+afterward – it already holds the lambda-weighted BANKSY matrix in
+<code>scale.data</code>, and re-scaling would undo the effect of
+<code>lambda</code>.</p>
+</blockquote>
+<p>Neither method is strictly better:
+<code>BuildMultipleNicheAssays()</code>‘s niches are defined by which
+cell types surround a spot (interpretable directly in terms of the
+annotations from Section 6), while BANKSY domains are defined by a blend
+of a spot’s own expression and its neighbors’ expression (can pick up
+transcriptional gradients composition-based niches miss, at the cost of
+being less directly interpretable).</p>
+<hr />
+</div>
+</div>
+<div id="neighborhood-enrichment-neighborhoodenrichment" class="section level2">
+<h2>11. Neighborhood Enrichment —
+<code>NeighborhoodEnrichment()</code></h2>
+<p>Tests pairwise cell-type co-localization by comparing observed k-NN
+pair frequencies to a permutation null. Reports enrichment z-scores per
+(source, target) pair, and optionally clusters cells into “niches” based
+on their neighborhood composition.</p>
+<div class="sourceCode" id="cb42"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" tabindex="-1"></a>enrich <span class="ot">&lt;-</span> <span class="fu">NeighborhoodEnrichment</span>(</span>
+<span id="cb42-2"><a href="#cb42-2" tabindex="-1"></a>  integrated,</span>
+<span id="cb42-3"><a href="#cb42-3" tabindex="-1"></a>  <span class="at">group.by      =</span> <span class="st">&quot;domain&quot;</span>,       <span class="co"># or rctd_dominant, or predicted labels</span></span>
+<span id="cb42-4"><a href="#cb42-4" tabindex="-1"></a>  <span class="at">k             =</span> <span class="dv">10</span>,</span>
+<span id="cb42-5"><a href="#cb42-5" tabindex="-1"></a>  <span class="at">n_perm        =</span> <span class="dv">200</span>,</span>
+<span id="cb42-6"><a href="#cb42-6" tabindex="-1"></a>  <span class="at">assign_niches =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb42-7"><a href="#cb42-7" tabindex="-1"></a>  <span class="at">n_niches      =</span> <span class="dv">6</span></span>
+<span id="cb42-8"><a href="#cb42-8" tabindex="-1"></a>)</span>
+<span id="cb42-9"><a href="#cb42-9" tabindex="-1"></a>enrich<span class="sc">$</span>z                            <span class="co"># source x target z-score matrix</span></span>
+<span id="cb42-10"><a href="#cb42-10" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> enrich<span class="sc">$</span>obj            <span class="co"># now carries a &#39;niche&#39; metadata column</span></span>
+<span id="cb42-11"><a href="#cb42-11" tabindex="-1"></a></span>
+<span id="cb42-12"><a href="#cb42-12" tabindex="-1"></a><span class="co"># Visualize niches on the tissue</span></span>
+<span id="cb42-13"><a href="#cb42-13" tabindex="-1"></a><span class="fu">SpatialDimPlot</span>(integrated, <span class="at">group.by =</span> <span class="st">&quot;niche&quot;</span>)</span>
+<span id="cb42-14"><a href="#cb42-14" tabindex="-1"></a></span>
+<span id="cb42-15"><a href="#cb42-15" tabindex="-1"></a><span class="co"># Enrichment heatmap</span></span>
+<span id="cb42-16"><a href="#cb42-16" tabindex="-1"></a><span class="fu">library</span>(pheatmap)</span>
+<span id="cb42-17"><a href="#cb42-17" tabindex="-1"></a>pheatmap<span class="sc">::</span><span class="fu">pheatmap</span>(enrich<span class="sc">$</span>z, <span class="at">cluster_rows =</span> <span class="cn">FALSE</span>, <span class="at">cluster_cols =</span> <span class="cn">FALSE</span>)</span></code></pre></div>
+<p>Complementary to <code>BuildMultipleNicheAssays()</code> — this one
+focuses on statistical enrichment of specific cell-type pairings; the
+other builds a full neighborhood assay usable in downstream Seurat
+workflows.</p>
+<div id="validating-a-spatial-label-spatialconcordance" class="section level3">
+<h3>11.1 Validating a spatial label —
+<code>SpatialConcordance()</code></h3>
+<p><code>NeighborhoodEnrichment()</code> above pools cells across every
+image and asks <em>which</em> label pairs co-localize.
+<code>SpatialConcordance()</code> asks a coarser, per-sample question
+instead: is a single categorical label — a zonation call,
+<code>spatial_domain</code> from Section 6, or the <code>niche</code>
+column <code>NeighborhoodEnrichment()</code> just wrote above —
+spatially coherent at all, on each sample independently? It’s a
+same-label k-NN concordance, permutation tested against shuffled labels,
+one row per image:</p>
+<div class="sourceCode" id="cb43"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" tabindex="-1"></a><span class="fu">SpatialConcordance</span>(integrated, <span class="at">group.by =</span> <span class="st">&quot;spatial_domain&quot;</span>)</span>
+<span id="cb43-2"><a href="#cb43-2" tabindex="-1"></a></span>
+<span id="cb43-3"><a href="#cb43-3" tabindex="-1"></a><span class="co">#      sample n_spots k_used  observed null_mean    null_sd        z p  padj</span></span>
+<span id="cb43-4"><a href="#cb43-4" tabindex="-1"></a><span class="co"># 1 anterior1    2558      6 0.7421875 0.3120978 0.01013259 42.61... 0 0.000</span></span>
+<span id="cb43-5"><a href="#cb43-5" tabindex="-1"></a></span>
+<span id="cb43-6"><a href="#cb43-6" tabindex="-1"></a><span class="co"># Or check the data-driven niche assignment from Section 11 instead</span></span>
+<span id="cb43-7"><a href="#cb43-7" tabindex="-1"></a><span class="fu">SpatialConcordance</span>(integrated, <span class="at">group.by =</span> <span class="st">&quot;niche&quot;</span>, <span class="at">k =</span> <span class="dv">10</span>)</span></code></pre></div>
+<p>A large positive <code>z</code> (and small
+<code>p</code>/<code>padj</code>) means neighboring spots really do tend
+to share a label far more often than chance — the assignment is
+spatially coherent, not scattered noise. If a sample’s <code>z</code> is
+small or negative, that sample’s domain/niche calls are worth a second
+look before trusting downstream analyses (composition tests,
+<code>NicheCoExpress()</code>, etc.) that assume the label reflects real
+spatial structure. Use <code>exclude</code> to drop a catch-all bucket
+that shouldn’t count as meaningful structure, e.g.
+<code>exclude = c(NA, &quot;Unclassified&quot;)</code> for a zonation column with
+an unclassified/ambiguous category.</p>
+<hr />
+</div>
+</div>
+<div id="niche-co-expression-nichecoexpress" class="section level2">
+<h2>12. Niche Co-expression — <code>NicheCoExpress()</code></h2>
+<p>Differential co-expression of a gene pair across niches using the
+Manders overlap coefficient, comparing two <em>conditions</em> (each
+needing at least 2 samples for the statistical test). Answers “is this
+ligand-receptor pair co-detected more often in the vascular niche in
+condition B than condition A?”</p>
+<p>This is where loading all four <code>stxBrain</code> sections back in
+Section 2 pays off: <code>sample_col = &quot;orig.ident&quot;</code> gives four
+samples (<code>anterior1</code>, <code>anterior2</code>,
+<code>posterior1</code>, <code>posterior2</code>), and
+<code>condition_col = &quot;region&quot;</code> (set in Section 5) splits them
+2-vs-2 — exactly the minimum <code>NicheCoExpress()</code> needs to run
+a real test rather than a syntax stub. As flagged back in Section 2:
+“region” here means anterior-vs-posterior brain anatomy, not a treatment
+condition — read the result as “does this pair co-express differently
+between these two brain regions,” not as a stand-in for a drug/disease
+comparison.</p>
+<div class="sourceCode" id="cb44"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb44-1"><a href="#cb44-1" tabindex="-1"></a><span class="fu">DefaultAssay</span>(integrated) <span class="ot">&lt;-</span> <span class="st">&#39;RNA&#39;</span></span>
+<span id="cb44-2"><a href="#cb44-2" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">JoinLayers</span>(integrated)</span>
+<span id="cb44-3"><a href="#cb44-3" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">NormalizeData</span>(integrated)</span>
+<span id="cb44-4"><a href="#cb44-4" tabindex="-1"></a></span>
+<span id="cb44-5"><a href="#cb44-5" tabindex="-1"></a>co <span class="ot">&lt;-</span> <span class="fu">NicheCoExpress</span>(</span>
+<span id="cb44-6"><a href="#cb44-6" tabindex="-1"></a>  <span class="at">seurat_obj    =</span> integrated,</span>
+<span id="cb44-7"><a href="#cb44-7" tabindex="-1"></a>  <span class="at">genes         =</span> <span class="fu">c</span>(<span class="st">&quot;Vegfa&quot;</span>, <span class="st">&quot;Kdr&quot;</span>),   <span class="co"># or a 2-column data.frame of specific pairs</span></span>
+<span id="cb44-8"><a href="#cb44-8" tabindex="-1"></a>  <span class="at">niche_col     =</span> <span class="st">&quot;niche&quot;</span>,             <span class="co"># set by NeighborhoodEnrichment() in Section 11</span></span>
+<span id="cb44-9"><a href="#cb44-9" tabindex="-1"></a>  <span class="at">sample_col    =</span> <span class="st">&quot;orig.ident&quot;</span>,        <span class="co"># anterior1, anterior2, posterior1, posterior2</span></span>
+<span id="cb44-10"><a href="#cb44-10" tabindex="-1"></a>  <span class="at">condition_col =</span> <span class="st">&quot;region&quot;</span>,            <span class="co"># anterior (n=2) vs posterior (n=2)</span></span>
+<span id="cb44-11"><a href="#cb44-11" tabindex="-1"></a>  <span class="at">layer         =</span> <span class="st">&quot;data&quot;</span></span>
+<span id="cb44-12"><a href="#cb44-12" tabindex="-1"></a>)</span>
+<span id="cb44-13"><a href="#cb44-13" tabindex="-1"></a>co<span class="sc">$</span>stats               <span class="co"># per niche x pair: delta, statistic, p, p_adj</span></span>
+<span id="cb44-14"><a href="#cb44-14" tabindex="-1"></a>co<span class="sc">$</span>per_sample           <span class="co"># long-form per-sample x niche x pair co-expression scores</span></span>
+<span id="cb44-15"><a href="#cb44-15" tabindex="-1"></a></span>
+<span id="cb44-16"><a href="#cb44-16" tabindex="-1"></a><span class="fu">plotNicheCoExpress</span>(co, <span class="at">type =</span> <span class="st">&quot;heatmap&quot;</span>)   <span class="co"># niche x pair heatmap of delta, significance stars from p_adj</span></span>
+<span id="cb44-17"><a href="#cb44-17" tabindex="-1"></a><span class="fu">plotNicheCoExpress</span>(co, <span class="at">type =</span> <span class="st">&quot;scores&quot;</span>)    <span class="co"># per-sample score plots for top/selected pairs</span></span></code></pre></div>
+<div id="estimation-plot-nichecoexpressestimationplot" class="section level3">
+<h3>12.1 Estimation Plot —
+<code>NicheCoExpressEstimationPlot()</code></h3>
+<p><code>NicheCoExpress()</code>’s Wilcoxon/t-test in
+<code>co$stats</code> answers “is there a difference.”
+<code>NicheCoExpressEstimationPlot()</code> answers “how big, with what
+uncertainty” for a specific (niche, gene-pair) combination, using
+<code>dabestr</code> to show a bootstrap 95% confidence interval on the
+effect size alongside the raw per-sample values – see 9.1 for how to
+read that plot (raw per-sample swarm + effect size/CI panels) and what
+each <code>effect</code> option means.</p>
+<p>By default it reuses <code>attr(co$stats, &quot;conditions&quot;)</code> for
+<code>idx</code>, so the reference/test order matches
+<code>co$stats$delta</code> automatically — you don’t need to re-specify
+which region is which.</p>
+<p><code>niches</code> must match the actual values in
+<code>co$per_sample$niche</code>, not the bare cluster number.
+<code>NeighborhoodEnrichment()</code> in Section 11 was called with its
+default <code>niche_prefix = &quot;niche_&quot;</code>, so the 6 clusters
+requested there (<code>n_niches = 6</code>) are labeled
+<code>&quot;niche_1&quot;</code> through <code>&quot;niche_6&quot;</code>, not
+<code>&quot;1&quot;</code> through <code>&quot;6&quot;</code> — check
+<code>unique(co$per_sample$niche)</code> if you’re not sure what’s
+actually present:</p>
+<div class="sourceCode" id="cb45"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" tabindex="-1"></a><span class="fu">unique</span>(co<span class="sc">$</span>per_sample<span class="sc">$</span>niche)</span>
+<span id="cb45-2"><a href="#cb45-2" tabindex="-1"></a></span>
+<span id="cb45-3"><a href="#cb45-3" tabindex="-1"></a><span class="co"># One niche x pair combination</span></span>
+<span id="cb45-4"><a href="#cb45-4" tabindex="-1"></a><span class="fu">NicheCoExpressEstimationPlot</span>(co, <span class="at">niches =</span> <span class="st">&quot;niche_1&quot;</span>, <span class="at">pairs =</span> <span class="st">&quot;Vegfa_Kdr&quot;</span>)</span>
+<span id="cb45-5"><a href="#cb45-5" tabindex="-1"></a></span>
+<span id="cb45-6"><a href="#cb45-6" tabindex="-1"></a><span class="co"># Every niche x pair combination present, as a named list of plots</span></span>
+<span id="cb45-7"><a href="#cb45-7" tabindex="-1"></a>plots <span class="ot">&lt;-</span> <span class="fu">NicheCoExpressEstimationPlot</span>(co)</span>
+<span id="cb45-8"><a href="#cb45-8" tabindex="-1"></a>plots[[<span class="st">&quot;niche_1 | Vegfa_Kdr&quot;</span>]]</span>
+<span id="cb45-9"><a href="#cb45-9" tabindex="-1"></a></span>
+<span id="cb45-10"><a href="#cb45-10" tabindex="-1"></a><span class="co"># A different effect size -- e.g. Cliff&#39;s delta instead of the mean-difference default</span></span>
+<span id="cb45-11"><a href="#cb45-11" tabindex="-1"></a><span class="fu">NicheCoExpressEstimationPlot</span>(co, <span class="at">niches =</span> <span class="st">&quot;niche_1&quot;</span>, <span class="at">pairs =</span> <span class="st">&quot;Vegfa_Kdr&quot;</span>, <span class="at">effect =</span> <span class="st">&quot;cliffs_delta&quot;</span>)</span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="single-cell-spatial-xenium-cosmx-detect_fov_edges-detect_tissue_holes" class="section level2">
+<h2>13. Single-cell Spatial (Xenium / CosMx) —
+<code>detect_fov_edges()</code> /
+<code>detect_tissue_holes()</code></h2>
+<p><code>detect_fov_edges()</code> and
+<code>detect_tissue_holes()</code> aren’t specific to imaging-based data
+— Section 4 above already used both on Visium. They’re especially handy
+for Xenium/CosMx, though, since those platforms have no hex-grid
+structure at all (cells sit at arbitrary micron coordinates), so a
+Visium-specific tool like <code>EdgeDetectionVisium()</code> isn’t an
+option there in the first place.</p>
+<div class="sourceCode" id="cb46"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb46-1"><a href="#cb46-1" tabindex="-1"></a><span class="co"># Cells near the FOV outer boundary (bbox method is fast and stable)</span></span>
+<span id="cb46-2"><a href="#cb46-2" tabindex="-1"></a>xenium <span class="ot">&lt;-</span> <span class="fu">detect_fov_edges</span>(xenium,</span>
+<span id="cb46-3"><a href="#cb46-3" tabindex="-1"></a>                           <span class="at">method       =</span> <span class="st">&quot;bbox&quot;</span>,</span>
+<span id="cb46-4"><a href="#cb46-4" tabindex="-1"></a>                           <span class="at">bbox_factor  =</span> <span class="dv">2</span>,</span>
+<span id="cb46-5"><a href="#cb46-5" tabindex="-1"></a>                           <span class="at">n_iterations =</span> <span class="dv">2</span>,</span>
+<span id="cb46-6"><a href="#cb46-6" tabindex="-1"></a>                           <span class="at">label_col    =</span> <span class="st">&quot;edge_layer&quot;</span>)</span>
+<span id="cb46-7"><a href="#cb46-7" tabindex="-1"></a></span>
+<span id="cb46-8"><a href="#cb46-8" tabindex="-1"></a><span class="co"># Cells bordering internal gaps / tears</span></span>
+<span id="cb46-9"><a href="#cb46-9" tabindex="-1"></a>xenium <span class="ot">&lt;-</span> <span class="fu">detect_tissue_holes</span>(xenium,</span>
+<span id="cb46-10"><a href="#cb46-10" tabindex="-1"></a>                              <span class="at">min_hole_size =</span> <span class="dv">4</span>,</span>
+<span id="cb46-11"><a href="#cb46-11" tabindex="-1"></a>                              <span class="at">n_iterations  =</span> <span class="dv">2</span>,</span>
+<span id="cb46-12"><a href="#cb46-12" tabindex="-1"></a>                              <span class="at">label_col     =</span> <span class="st">&quot;hole_layer&quot;</span>)</span></code></pre></div>
+<p><strong>Marker-gene exclusion</strong> — biologically meaningful gaps
+(e.g. liver central veins expressing <code>Glul</code>, vessels
+expressing <code>Pecam1</code>) can be preserved:</p>
+<div class="sourceCode" id="cb47"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb47-1"><a href="#cb47-1" tabindex="-1"></a>xenium <span class="ot">&lt;-</span> <span class="fu">detect_tissue_holes</span>(xenium,</span>
+<span id="cb47-2"><a href="#cb47-2" tabindex="-1"></a>                              <span class="at">exclude_gene       =</span> <span class="st">&quot;Glul&quot;</span>,</span>
+<span id="cb47-3"><a href="#cb47-3" tabindex="-1"></a>                              <span class="at">sensitivity        =</span> <span class="fl">0.75</span>,</span>
+<span id="cb47-4"><a href="#cb47-4" tabindex="-1"></a>                              <span class="at">exclude_gene_layer =</span> <span class="st">&quot;data&quot;</span>)</span></code></pre></div>
+<p>Combine both filters:</p>
+<div class="sourceCode" id="cb48"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb48-1"><a href="#cb48-1" tabindex="-1"></a>xenium <span class="ot">&lt;-</span> xenium[, xenium<span class="sc">$</span>edge_layer <span class="sc">==</span> <span class="dv">0</span> <span class="sc">&amp;</span> xenium<span class="sc">$</span>hole_layer <span class="sc">==</span> <span class="dv">0</span>]</span></code></pre></div>
+<div id="combining-and-managing-fovs-combine_fovs-setimageboundary" class="section level3">
+<h3>13.1 Combining and Managing FOVs — <code>combine_fovs()</code> /
+<code>SetImageBoundary()</code></h3>
+<p>Xenium/CosMx runs are often stored as many small per-tile FOVs
+(<code>obj@images</code>) rather than one contiguous image.
+<code>combine_fovs()</code> lays them out on a grid (using each FOV’s
+own coordinate range to compute a per-tile offset) and merges them into
+a single combined FOV — useful for a whole-sample plot or any analysis
+that expects one spatial image rather than dozens:</p>
+<div class="sourceCode" id="cb49"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb49-1"><a href="#cb49-1" tabindex="-1"></a><span class="co"># Lay FOVs out in a 4-column grid; keep the original per-FOV images too (append = TRUE default)</span></span>
+<span id="cb49-2"><a href="#cb49-2" tabindex="-1"></a>xenium <span class="ot">&lt;-</span> <span class="fu">combine_fovs</span>(xenium, <span class="at">n_cols =</span> <span class="dv">4</span>, <span class="at">fov_name =</span> <span class="st">&quot;combined&quot;</span>)</span>
+<span id="cb49-3"><a href="#cb49-3" tabindex="-1"></a></span>
+<span id="cb49-4"><a href="#cb49-4" tabindex="-1"></a><span class="co"># Only the combined FOV, original per-FOV images dropped</span></span>
+<span id="cb49-5"><a href="#cb49-5" tabindex="-1"></a>xenium <span class="ot">&lt;-</span> <span class="fu">combine_fovs</span>(xenium, <span class="at">n_cols =</span> <span class="dv">4</span>, <span class="at">fov_name =</span> <span class="st">&quot;combined&quot;</span>, <span class="at">append =</span> <span class="cn">FALSE</span>)</span></code></pre></div>
+<p>Each FOV can carry more than one boundary set
+(e.g. <code>centroids</code> and <code>segmentation</code>) — most
+plotting/analysis functions use whichever one is set as the
+<em>default</em> boundary. <code>SetImageBoundary()</code> switches that
+default across every FOV on the object at once, skipping (with a
+warning) any FOV that doesn’t have the requested boundary set:</p>
+<div class="sourceCode" id="cb50"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb50-1"><a href="#cb50-1" tabindex="-1"></a><span class="co"># Switch every FOV from point centroids to full segmentation polygons</span></span>
+<span id="cb50-2"><a href="#cb50-2" tabindex="-1"></a>xenium <span class="ot">&lt;-</span> <span class="fu">SetImageBoundary</span>(xenium, <span class="at">boundary =</span> <span class="st">&quot;segmentation&quot;</span>)</span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="subsetting-spatial-objects-subsetspatial" class="section level2">
+<h2>14. Subsetting Spatial Objects — <code>SubsetSpatial()</code></h2>
+<p>Never use plain <code>subset()</code> on a spatial Seurat object.
+Seurat’s built-in <code>subset()</code> can leave
+<code>obj@images</code> internally inconsistent after cell removal — an
+upstream, still-unresolved bug (<a href="https://github.com/satijalab/seurat/issues/8848">satijalab/seurat#8848</a>).
+The subset call itself won’t error; the inconsistency only surfaces
+later, whenever some other function (<code>RunPCA()</code>,
+<code>PrepSCTFindMarkers()</code>, <code>ScaleData()</code>, and others)
+happens to call <code>validObject()</code>, with
+<code>invalid class &quot;Seurat&quot; object: All cells in images must be present in the Seurat object</code>.
+By then the stack trace points at whatever you were running, not the
+subset call that actually caused it.</p>
+<p><code>SubsetSpatial()</code> avoids this by explicitly re-subsetting
+every attached image against the object’s own post-subset cells, rather
+than trusting <code>subset()</code>’s own per-image handling. It works
+on <strong>any</strong> image type — pixel-backed Visium images
+(<code>VisiumV1</code>/<code>VisiumV2</code>, used throughout this
+vignette) and coordinate-only FOV images (Xenium/CosMx/MERFISH-style)
+alike — and, unlike <code>DropSpatialImage()</code>, keeps images
+attached (correctly re-subset, not removed), so the result is still
+usable for spatial plotting afterward:</p>
+<div class="sourceCode" id="cb51"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb51-1"><a href="#cb51-1" tabindex="-1"></a><span class="co"># Isolate oligodendrocyte spots from one section</span></span>
+<span id="cb51-2"><a href="#cb51-2" tabindex="-1"></a>oligo_ant <span class="ot">&lt;-</span> <span class="fu">SubsetSpatial</span>(</span>
+<span id="cb51-3"><a href="#cb51-3" tabindex="-1"></a>  niche_list[[<span class="st">&quot;anterior1&quot;</span>]],</span>
+<span id="cb51-4"><a href="#cb51-4" tabindex="-1"></a>  <span class="at">subset =</span> spatial_domain <span class="sc">==</span> <span class="st">&quot;Oligodendrocyte&quot;</span></span>
+<span id="cb51-5"><a href="#cb51-5" tabindex="-1"></a>)</span>
+<span id="cb51-6"><a href="#cb51-6" tabindex="-1"></a></span>
+<span id="cb51-7"><a href="#cb51-7" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Oligodendrocyte spots:&quot;</span>, <span class="fu">ncol</span>(oligo_ant), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb51-8"><a href="#cb51-8" tabindex="-1"></a></span>
+<span id="cb51-9"><a href="#cb51-9" tabindex="-1"></a><span class="co"># Visualize just oligodendrocytes on tissue -- safe because images are still</span></span>
+<span id="cb51-10"><a href="#cb51-10" tabindex="-1"></a><span class="co"># correctly attached</span></span>
+<span id="cb51-11"><a href="#cb51-11" tabindex="-1"></a><span class="fu">SpatialDimPlotFixed</span>(oligo_ant, <span class="at">group.by =</span> <span class="st">&quot;spatial_domain&quot;</span>) <span class="sc">+</span></span>
+<span id="cb51-12"><a href="#cb51-12" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;Oligodendrocyte spots — anterior&quot;</span>)</span>
+<span id="cb51-13"><a href="#cb51-13" tabindex="-1"></a></span>
+<span id="cb51-14"><a href="#cb51-14" tabindex="-1"></a><span class="co"># Subset by niche</span></span>
+<span id="cb51-15"><a href="#cb51-15" tabindex="-1"></a>white_matter_niche <span class="ot">&lt;-</span> <span class="fu">SubsetSpatial</span>(</span>
+<span id="cb51-16"><a href="#cb51-16" tabindex="-1"></a>  niche_list[[<span class="st">&quot;anterior1&quot;</span>]],</span>
+<span id="cb51-17"><a href="#cb51-17" tabindex="-1"></a>  <span class="at">subset =</span> best_niche <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;1&quot;</span>, <span class="st">&quot;3&quot;</span>)   <span class="co"># adjust niche IDs to match your run</span></span>
+<span id="cb51-18"><a href="#cb51-18" tabindex="-1"></a>)</span></code></pre></div>
+<p><code>SubsetSpatial()</code> also accepts an explicit
+<code>cells</code> vector, which is useful after polygon-based
+selection:</p>
+<div class="sourceCode" id="cb52"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb52-1"><a href="#cb52-1" tabindex="-1"></a><span class="co"># Keep only cells in a specific niche AND expressing Mbp</span></span>
+<span id="cb52-2"><a href="#cb52-2" tabindex="-1"></a>mbp_oligo <span class="ot">&lt;-</span> <span class="fu">SubsetSpatial</span>(</span>
+<span id="cb52-3"><a href="#cb52-3" tabindex="-1"></a>  niche_list[[<span class="st">&quot;anterior1&quot;</span>]],</span>
+<span id="cb52-4"><a href="#cb52-4" tabindex="-1"></a>  <span class="at">cells =</span> <span class="fu">WhichCells</span>(niche_list[[<span class="st">&quot;anterior1&quot;</span>]],</span>
+<span id="cb52-5"><a href="#cb52-5" tabindex="-1"></a>                     <span class="at">expression =</span> spatial_domain <span class="sc">==</span> <span class="st">&quot;Oligodendrocyte&quot;</span> <span class="sc">&amp;</span> Mbp_pos <span class="sc">==</span> <span class="cn">TRUE</span>)</span>
+<span id="cb52-6"><a href="#cb52-6" tabindex="-1"></a>)</span></code></pre></div>
+<p><strong><code>subset_opt()</code> is a separate, narrower
+tool.</strong> It’s written specifically for CosMx/Xenium
+<code>FOV</code> objects — it reaches into a <code>centroids</code>
+sub-slot and an optional <code>molecules</code> slot to also drop
+out-of-bounds molecules after subsetting
+(<code>cleanMolecules = TRUE</code>, the default), which
+<code>SubsetSpatial()</code> doesn’t do. It does <strong>not</strong>
+work on Visium’s pixel-backed images (there’s no <code>centroids</code>/
+<code>molecules</code> sub-slot to find), so for Visium data — including
+every example in this vignette — use <code>SubsetSpatial()</code>. For
+FOV-based platforms where you also want the molecules-slot cleanup,
+<code>subset_opt()</code> remains the right choice; you can still run
+<code>CleanMolSlot()</code> on a <code>SubsetSpatial()</code> result
+afterward if you want that cleanup without its FOV-specific subsetting
+path.</p>
+<hr />
+</div>
+<div id="tips-specific-to-spatial-data" class="section level2">
+<h2>15. Tips Specific to Spatial Data</h2>
+<p><strong>Run
+<code>detect_fov_edges()</code>/<code>detect_tissue_holes()</code>
+before <code>MergeSeurat()</code>.</strong> Edge and hole-bordering
+spots are almost always the lowest-quality cells in the dataset.
+Including them biases normalization and distorts the integration.
+(<code>EdgeDetectionVisium()</code> is also available for this purpose —
+see the comparison note in Section 4 for when to prefer one over the
+other.)</p>
+<p><strong><code>spatial = &quot;Visium&quot;</code> in
+<code>MergeSeurat()</code>.</strong> Without this flag, the function
+won’t handle the <code>Spatial</code> assay correctly and image slots
+may be dropped or misaligned after merging.</p>
+<p><strong>Regress <code>percent.mt</code> even in Visium.</strong>
+Although Visium spots contain multiple cells, high mitochondrial read
+fractions still indicate damaged or necrotic tissue regions and should
+be regressed.</p>
+<p><strong>SCTransform is preferred over LogNormalize for
+Visium.</strong> Visium spots have highly variable total counts driven
+by spot cellularity. SCTransform’s variance-stabilization handles this
+better than library-size normalization.</p>
+<p><strong><code>neighbors.k = 6</code> for Visium niche
+assays.</strong> Visium spots are arrayed in a hexagonal grid with
+exactly 6 direct neighbors. Using <code>neighbors.k = 6</code> therefore
+captures the immediate physical neighborhood without reaching into
+distant spots.</p>
+<p><strong>Deconvolution for cell-type resolution.</strong> Visium spots
+capture multiple cells. The bundled <code>RunRCTD()</code> wraps
+<code>spacexr::RCTD</code> and writes per-cell-type proportion columns
+onto every spot — this is the recommended primary annotation strategy
+for Visium. <code>AnnotateClusters()</code> on Visium data works as a
+sanity check but loses minority populations by construction
+(winner-takes-all).</p>
+<p><strong>Visium-safe defaults for
+<code>AnnotateClusters()</code>.</strong> If you do use marker scoring
+on Visium, pass <code>filter_nonspecific = FALSE</code>,
+<code>min_detection_frac = 0.05</code>, and
+<code>return_scores = &quot;cluster&quot;</code> so you can inspect the minority
+signal in the score matrix.</p>
+<p><strong><code>check_gene_ids_across_objects()</code> before merging
+sections from different runs.</strong> Mouse gene symbols are consistent
+across standard 10x Genomics pipelines, but if you ever mix CellRanger
+versions or genome builds, identifiers can drift.</p>
+<p><strong>Renaming <code>obj@images</code> safely.</strong>
+<code>names(obj@images) &lt;- new_names</code> is the standard way to
+rename spatial images, but a plain positional assignment trusts that
+<code>new_names</code> (e.g. <code>unique(obj$orig.ident)</code>) is
+already in the same order the images were attached in — nothing
+guarantees that, and a mismatch silently swaps which name lands on which
+sample’s data. <code>RenameSpatialImages()</code> derives each image’s
+new name from its own cells instead
+(<code>group_col = &quot;orig.ident&quot;</code>), or validates an explicit
+<code>new_names</code> mapping (positional or named, for a partial
+rename) before applying it — either way it errors on an ambiguous or
+colliding name rather than producing a mismatched object:</p>
+<div class="sourceCode" id="cb53"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb53-1"><a href="#cb53-1" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">RenameSpatialImages</span>(integrated, <span class="at">group_col =</span> <span class="st">&quot;orig.ident&quot;</span>)</span></code></pre></div>
+<p><strong>Memory management for large spatial runs.</strong>
+<code>image_backend = &quot;deferred&quot;</code> on
+<code>CreateVisiumObjects()</code> and
+<code>DropSpatialImage()</code>/<code>SpatialObjectInfo()</code> handle
+image/molecule memory (see the tour of these in <a href="SingleCellTools_vignette_bpcells.md"><code>SingleCellTools_vignette_bpcells.md</code></a>
+as well); <code>on_disk = TRUE</code> on
+<code>CreateVisiumObjects()</code>/<code>LoadXenium2()</code> handles
+the counts matrix itself via <code>BPCells</code>, which is the piece
+these image-focused tools don’t touch.</p>
+<div class="sourceCode" id="cb54"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb54-1"><a href="#cb54-1" tabindex="-1"></a><span class="fu">check_gene_ids_across_objects</span>(brain_list)</span>
+<span id="cb54-2"><a href="#cb54-2" tabindex="-1"></a><span class="co">#&gt; All objects use: MGI symbol</span></span></code></pre></div>
+<hr />
+</div>
+<div id="session-info" class="section level2">
+<h2>16. Session Info</h2>
+<div class="sourceCode" id="cb55"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb55-1"><a href="#cb55-1" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span></code></pre></div>
+<p>Key packages used in this vignette:</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Package</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>SingleCellTools</code></td>
+<td>Edge/hole detection, integration, annotation, RCTD, niche +
+enrichment analysis</td>
+</tr>
+<tr class="even">
+<td><code>Seurat</code></td>
+<td>Core data structure and spatial visualization</td>
+</tr>
+<tr class="odd">
+<td><code>SeuratData</code></td>
+<td><code>stxBrain</code> Visium mouse brain dataset</td>
+</tr>
+<tr class="even">
+<td><code>harmony</code></td>
+<td>Batch correction across sections (via
+<code>IntegrateLayers</code>)</td>
+</tr>
+<tr class="odd">
+<td><code>ClusterR</code></td>
+<td>Mini-batch k-means for niche clustering</td>
+</tr>
+<tr class="even">
+<td><code>spacexr</code></td>
+<td>RCTD Visium deconvolution</td>
+</tr>
+<tr class="odd">
+<td><code>RANN</code></td>
+<td>Nearest-neighbor searches (<code>detect_fov_edges</code>,
+<code>detect_tissue_holes</code>,
+<code>NeighborhoodEnrichment</code>)</td>
+</tr>
+<tr class="even">
+<td><code>ks</code></td>
+<td>2D KDE for <code>PlotFeatureDensity</code></td>
+</tr>
+<tr class="odd">
+<td><code>UCell</code></td>
+<td>Module scoring for <code>AnnotateClusters</code></td>
+</tr>
+<tr class="even">
+<td><code>dplyr</code> / <code>ggplot2</code> /
+<code>patchwork</code></td>
+<td>Data wrangling and plotting</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>For questions or bug reports, open an issue at <a href="https://github.com/gevensen95/SingleCellTools/issues">github.com/gevensen95/SingleCellTools/issues</a>.</em></p>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

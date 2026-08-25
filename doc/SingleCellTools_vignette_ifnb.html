@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>SingleCellTools Vignette: PBMC Integration with the ifnb Dataset</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">SingleCellTools Vignette: PBMC Integration
+with the ifnb Dataset</h1>
+
+
+
+<p><strong>Package:</strong> <code>SingleCellTools</code><br />
+<strong>Data:</strong> <code>ifnb</code> — 13,999 human PBMCs (control
+vs. IFN-β stimulated), from <code>SeuratData</code><br />
+<strong>Goal:</strong> Walk through a complete multi-sample scRNA-seq
+workflow using only built-in Seurat datasets — no raw CellRanger output
+required.</p>
+<hr />
+<div id="table-of-contents" class="section level2">
+<h2>Table of Contents</h2>
+<ol style="list-style-type: decimal">
+<li><a href="#id_1-setup">Setup</a></li>
+<li><a href="#id_2-load-and-inspect-the-data">Load and Inspect the
+Data</a></li>
+<li><a href="#id_3-split-into-a-sample-list">Split into a Sample
+List</a></li>
+<li><a href="#id_4-doublet-detection--calldoublet">Doublet Detection —
+<code>calldoublet()</code></a></li>
+<li><a href="#id_5-gene-id-check">Gene ID Check</a></li>
+<li><a href="#id_6-qc-report-and-filter">QC Report and Filter —
+<code>GenerateQCReport()</code> / <code>ApplyQCFilters()</code> /
+<code>QCComparePlots()</code></a></li>
+<li><a href="#id_7-merge-and-integrate--mergeseurat">Merge and Integrate
+— <code>MergeSeurat()</code></a></li>
+<li><a href="#id_8-integration-quality--batcheffectqc">Integration
+Quality — <code>BatchEffectQC()</code></a></li>
+<li><a href="#id_9-annotate-cell-types--three-approaches">Annotate Cell
+Types — Three Approaches</a>
+<ul>
+<li>9.1 <a href="#id_91-marker-dot-plots--markerplot--markerpctplot">Marker Dot
+Plots — <code>MarkerPlot()</code> /
+<code>MarkerPctPlot()</code></a></li>
+<li>9.2 <a href="#id_92-cluster-level-marker-scoring--annotateclusters">Cluster-level
+Marker Scoring — <code>AnnotateClusters()</code></a></li>
+<li>9.3 <a href="#id_93-reference-based--annotatewithreference">Reference-based —
+<code>AnnotateWithReference()</code></a></li>
+</ul></li>
+<li><a href="#id_10-flag-gene-positive-cells--addgenepositivity--plotgenepositivity">Flag
+Gene-Positive Cells — <code>AddGenePositivity()</code> /
+<code>PlotGenePositivity()</code></a>
+<ul>
+<li>10.1 <a href="#id_101-genepositivityanalysis-and-genepositivityestimationplot"><code>GenePositivityAnalysis()</code>
+and <code>GenePositivityEstimationPlot()</code></a></li>
+</ul></li>
+<li><a href="#id_11-cell-cycle-scoring--assign_cell_cycle_phase">Cell-Cycle
+Scoring — <code>assign_cell_cycle_phase()</code></a></li>
+<li><a href="#id_12-cell-type-composition--cellcomposition--compositionaltest">Cell-Type
+Composition — <code>CellComposition()</code> /
+<code>CompositionalTest()</code></a>
+<ul>
+<li>12.1 <a href="#id_121-compositionanalysis-and-compositionestimationplot"><code>CompositionAnalysis()</code>
+and <code>CompositionEstimationPlot()</code></a></li>
+</ul></li>
+<li><a href="#id_13-differential-expression--pseudobulkde--plotvolcano">Differential
+Expression — <code>PseudobulkDE()</code> /
+<code>PlotVolcano()</code></a></li>
+<li><a href="#id_14-cell-cell-communication--runliana">Cell-Cell
+Communication — <code>RunLIANA()</code></a>
+<ul>
+<li>14.1 <a href="#id_141-runcellchat"><code>RunCellChat()</code></a></li>
+</ul></li>
+<li><a href="#id_15-save-with-provenance--savewithprovenance">Save with
+Provenance — <code>SaveWithProvenance()</code></a></li>
+<li><a href="#id_16-session-info">Session Info</a></li>
+</ol>
+<hr />
+</div>
+<div id="setup" class="section level2">
+<h2>1. Setup</h2>
+<div id="install-required-packages" class="section level3">
+<h3>Install required packages</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="co"># SingleCellTools</span></span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>remotes<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;gevensen95/SingleCellTools&quot;</span>)</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="co"># DoubletFinder (GitHub-only)</span></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a>remotes<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;chris-mcginnis-ucsf/DoubletFinder&quot;</span>)</span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a><span class="co"># Bioconductor dependencies</span></span>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;BiocManager&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb1-9"><a href="#cb1-9" tabindex="-1"></a>  <span class="fu">install.packages</span>(<span class="st">&quot;BiocManager&quot;</span>)</span>
+<span id="cb1-10"><a href="#cb1-10" tabindex="-1"></a>BiocManager<span class="sc">::</span><span class="fu">install</span>(<span class="fu">c</span>(<span class="st">&quot;glmGamPoi&quot;</span>, <span class="st">&quot;UCell&quot;</span>))</span>
+<span id="cb1-11"><a href="#cb1-11" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" tabindex="-1"></a><span class="co"># SeuratData — provides the ifnb dataset</span></span>
+<span id="cb1-13"><a href="#cb1-13" tabindex="-1"></a>remotes<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;satijalab/seurat-data&quot;</span>)</span></code></pre></div>
+</div>
+<div id="install-and-load-the-ifnb-dataset" class="section level3">
+<h3>Install and load the ifnb dataset</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">library</span>(SeuratData)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a><span class="fu">InstallData</span>(<span class="st">&quot;ifnb&quot;</span>)   <span class="co"># downloads ~45 MB once; cached for future sessions</span></span></code></pre></div>
+</div>
+<div id="load-libraries" class="section level3">
+<h3>Load libraries</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="fu">library</span>(SingleCellTools)</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="fu">library</span>(Seurat)</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="fu">library</span>(SeuratData)</span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="load-and-inspect-the-data" class="section level2">
+<h2>2. Load and Inspect the Data</h2>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="fu">data</span>(<span class="st">&quot;ifnb&quot;</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a><span class="co"># Basic overview</span></span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>ifnb</span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a><span class="co">#&gt; An object of class Seurat</span></span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a><span class="co">#&gt; 14053 features across 13999 samples within 1 assay</span></span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a><span class="co">#&gt; Active assay: RNA (14053 features, 0 variable features)</span></span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a><span class="co">#&gt; 2 layers present: counts, data</span></span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a><span class="co"># The key metadata column is &#39;stim&#39;: CTRL or STIM</span></span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a><span class="fu">table</span>(ifnb<span class="sc">$</span>stim)</span>
+<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a><span class="co">#&gt; CTRL  STIM</span></span>
+<span id="cb4-13"><a href="#cb4-13" tabindex="-1"></a><span class="co">#&gt; 6548  7451</span></span>
+<span id="cb4-14"><a href="#cb4-14" tabindex="-1"></a></span>
+<span id="cb4-15"><a href="#cb4-15" tabindex="-1"></a><span class="co"># Also has donor IDs</span></span>
+<span id="cb4-16"><a href="#cb4-16" tabindex="-1"></a><span class="fu">table</span>(ifnb<span class="sc">$</span>donor)</span></code></pre></div>
+<p>The <code>ifnb</code> object contains two biological conditions —
+resting PBMCs (<code>CTRL</code>) and PBMCs treated with interferon-beta
+(<code>STIM</code>) — collected from the same donors. This makes it an
+ideal test case for batch-corrected integration: the biology changes,
+but we want to align the donors properly.</p>
+<p>Before going further, make sure the counts layer is accessible. The
+<code>ifnb</code> object from <code>SeuratData</code> ships as a v3
+Seurat object; join the layers so it behaves like a standard v5
+object:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a>ifnb[[<span class="st">&quot;RNA&quot;</span>]] <span class="ot">&lt;-</span> <span class="fu">JoinLayers</span>(ifnb[[<span class="st">&quot;RNA&quot;</span>]])</span></code></pre></div>
+<blockquote>
+<p><strong>A note on memory for real datasets.</strong> At ~14K cells,
+<code>ifnb</code> comfortably fits in memory and none of this matters
+here. For a real dataset large enough that it doesn’t – hundreds of
+thousands of cells, many samples, or both –
+<code>ConvertToBPCells()</code> moves any existing Seurat object’s
+counts layer to an on-disk <code>BPCells</code> matrix, in place, so the
+rest of a normal Seurat pipeline keeps working against it unmodified. It
+works retroactively on any object regardless of how it was built (this
+<code>ifnb</code> object included, just to show the call):</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="co"># Illustrative only -- ifnb is small enough that this isn&#39;t actually needed.</span></span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>ifnb_on_disk <span class="ot">&lt;-</span> <span class="fu">ConvertToBPCells</span>(ifnb, <span class="at">path =</span> <span class="st">&quot;bpcells_ifnb&quot;</span>)</span></code></pre></div>
+<p><code>CreateRNAObjects()</code> also has this built in via
+<code>on_disk = TRUE</code>, for when you’re reading from raw CellRanger
+output rather than a pre-packaged <code>SeuratData</code> object. See <a href="SingleCellTools_vignette_bpcells.md"><code>SingleCellTools_vignette_bpcells.md</code></a>.</p>
+</blockquote>
+<hr />
+</div>
+<div id="split-into-a-sample-list" class="section level2">
+<h2>3. Split into a Sample List</h2>
+<p><code>SingleCellTools</code> integration functions expect a
+<strong>named list of Seurat objects</strong>, one per sample. The
+cleanest approach here is to split by donor within each condition,
+giving us one object per (donor, condition) pair — exactly what you’d
+have coming out of <code>CreateRNAObjects()</code> with real CellRanger
+output.</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="co"># Add a combined sample ID column</span></span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>ifnb<span class="sc">$</span>sample_id <span class="ot">&lt;-</span> <span class="fu">paste</span>(ifnb<span class="sc">$</span>stim, ifnb<span class="sc">$</span>donor, <span class="at">sep =</span> <span class="st">&quot;_&quot;</span>)</span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a><span class="fu">table</span>(ifnb<span class="sc">$</span>sample_id)</span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a><span class="co"># Split into a list — one object per sample</span></span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a>sample_list <span class="ot">&lt;-</span> <span class="fu">SplitObject</span>(ifnb, <span class="at">split.by =</span> <span class="st">&quot;sample_id&quot;</span>)</span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a></span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a><span class="co"># How many cells per sample?</span></span>
+<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a><span class="fu">sapply</span>(sample_list, ncol)</span></code></pre></div>
+<p>We also need <code>percent.mt</code> in metadata —
+<code>calldoublet()</code> uses it by default as a regression covariate,
+and <code>MergeSeurat()</code> will regress it out during normalization.
+Human mitochondrial genes start with <code>MT-</code> (uppercase).</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a>sample_list <span class="ot">&lt;-</span> <span class="fu">lapply</span>(sample_list, <span class="cf">function</span>(obj) {</span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>  obj[[<span class="st">&quot;percent.mt&quot;</span>]] <span class="ot">&lt;-</span> <span class="fu">PercentageFeatureSet</span>(obj, <span class="at">pattern =</span> <span class="st">&quot;^MT-&quot;</span>)</span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>  obj</span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>})</span></code></pre></div>
+<hr />
+</div>
+<div id="doublet-detection-calldoublet" class="section level2">
+<h2>4. Doublet Detection — <code>calldoublet()</code></h2>
+<p><code>calldoublet()</code> wraps the full DoubletFinder workflow —
+normalize, PCA, auto-detect significant PCs, pK sweep, doublet calling —
+into a single function. It strips intermediate reductions and normalized
+layers from the returned object, keeping it lightweight.</p>
+<blockquote>
+<p><strong>Note:</strong> DoubletFinder is designed for droplet-based
+data where each GEM is one cell. Running it on a pre-split object that
+already has cell-type labels is still valid — it finds technical
+doublets within the sample.</p>
+</blockquote>
+<blockquote>
+<p><strong>Speed:</strong> most of that per-sample time is
+DoubletFinder’s pK parameter sweep, which reprocesses a
+real+artificial-doublet matrix from scratch for each of 6 fixed pN
+values. <code>pk_sweep_max_cells</code> (default <code>4000</code>)
+estimates pK from a random subsample instead of every cell, and
+<code>sweep_cores</code> parallelizes the 6 pN passes internally — see
+<a href="SingleCellTools_vignette.html#33-doublet-detection--calldoublet">Section
+3.3 of the main vignette</a> for the tradeoffs. Both are shown
+below.</p>
+</blockquote>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="co"># Run calldoublet() on every sample</span></span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a><span class="co"># This may take a few minutes per sample</span></span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a>sample_list <span class="ot">&lt;-</span> <span class="fu">setNames</span>(</span>
+<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a>  <span class="fu">lapply</span>(<span class="fu">seq_along</span>(sample_list), <span class="cf">function</span>(i) {</span>
+<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a>    <span class="fu">message</span>(<span class="fu">sprintf</span>(<span class="st">&quot;[%d/%d] Calling doublets: %s&quot;</span>,</span>
+<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a>                    i, <span class="fu">length</span>(sample_list), <span class="fu">names</span>(sample_list)[i]))</span>
+<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a>    <span class="fu">calldoublet</span>(</span>
+<span id="cb9-8"><a href="#cb9-8" tabindex="-1"></a>      <span class="at">obj                =</span> sample_list[[i]],</span>
+<span id="cb9-9"><a href="#cb9-9" tabindex="-1"></a>      <span class="at">samplenameIndex    =</span> i,</span>
+<span id="cb9-10"><a href="#cb9-10" tabindex="-1"></a>      <span class="at">normalization      =</span> <span class="st">&quot;LogNormalize&quot;</span>,</span>
+<span id="cb9-11"><a href="#cb9-11" tabindex="-1"></a>      <span class="at">vars.to.regress    =</span> <span class="st">&quot;percent.mt&quot;</span>,</span>
+<span id="cb9-12"><a href="#cb9-12" tabindex="-1"></a>      <span class="at">cluster_resolution =</span> <span class="fl">0.1</span>,</span>
+<span id="cb9-13"><a href="#cb9-13" tabindex="-1"></a>      <span class="at">pk_sweep_max_cells =</span> <span class="dv">4000</span>,</span>
+<span id="cb9-14"><a href="#cb9-14" tabindex="-1"></a>      <span class="at">sweep_cores        =</span> <span class="dv">1</span></span>
+<span id="cb9-15"><a href="#cb9-15" tabindex="-1"></a>    )</span>
+<span id="cb9-16"><a href="#cb9-16" tabindex="-1"></a>  }),</span>
+<span id="cb9-17"><a href="#cb9-17" tabindex="-1"></a>  <span class="fu">names</span>(sample_list)</span>
+<span id="cb9-18"><a href="#cb9-18" tabindex="-1"></a>)</span>
+<span id="cb9-19"><a href="#cb9-19" tabindex="-1"></a></span>
+<span id="cb9-20"><a href="#cb9-20" tabindex="-1"></a><span class="co"># Inspect doublet calls across samples</span></span>
+<span id="cb9-21"><a href="#cb9-21" tabindex="-1"></a><span class="fu">lapply</span>(sample_list, <span class="cf">function</span>(obj) <span class="fu">table</span>(obj<span class="sc">$</span>doublet_finder))</span></code></pre></div>
+<p>Review the doublet fractions — a healthy droplet experiment typically
+yields 1–8% doublets. If a sample looks unusually high, check the cell
+count (very high cell loading increases multiplet rate) or QC
+metrics.</p>
+<p>Filter doublets before integration:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a>sample_list <span class="ot">&lt;-</span> <span class="fu">lapply</span>(sample_list, <span class="cf">function</span>(obj) {</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a>  n_before <span class="ot">&lt;-</span> <span class="fu">ncol</span>(obj)</span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a>  obj      <span class="ot">&lt;-</span> <span class="fu">subset</span>(obj, doublet_finder <span class="sc">==</span> <span class="st">&quot;Singlet&quot;</span>)</span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a>  <span class="fu">message</span>(<span class="fu">sprintf</span>(<span class="st">&quot;  Dropped %d doublets; %d singlets remaining&quot;</span>,</span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>                  n_before <span class="sc">-</span> <span class="fu">ncol</span>(obj), <span class="fu">ncol</span>(obj)))</span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>  obj</span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a>})</span></code></pre></div>
+<p>Apply a basic QC filter while we’re here:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a>sample_list <span class="ot">&lt;-</span> <span class="fu">lapply</span>(sample_list, <span class="cf">function</span>(obj) {</span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="fu">subset</span>(obj,</span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>    nFeature_RNA <span class="sc">&gt;</span> <span class="dv">200</span>  <span class="sc">&amp;</span></span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>    nFeature_RNA <span class="sc">&lt;</span> <span class="dv">5000</span> <span class="sc">&amp;</span></span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>    percent.mt   <span class="sc">&lt;</span> <span class="dv">20</span></span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>  )</span>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>})</span>
+<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a></span>
+<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a><span class="co"># Confirm cell counts</span></span>
+<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a><span class="fu">sapply</span>(sample_list, ncol)</span></code></pre></div>
+<hr />
+</div>
+<div id="gene-id-check" class="section level2">
+<h2>5. Gene ID Check</h2>
+<p>Before merging samples from different sources it is good practice to
+confirm that all objects use the same gene identifier format. For
+<code>ifnb</code> this is trivially true since it all came from one
+object, but in real projects samples often come from different pipelines
+or genome annotations.</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="co"># Check the identifier type for a single object</span></span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a><span class="fu">detect_gene_id_type</span>(sample_list[[<span class="dv">1</span>]])</span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a><span class="co">#&gt; [1] &quot;HGNC symbol&quot;</span></span>
+<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a></span>
+<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a><span class="co"># Check consistency across the whole list</span></span>
+<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a><span class="fu">check_gene_ids_across_objects</span>(sample_list)</span>
+<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a><span class="co">#&gt; All objects use: HGNC symbol</span></span></code></pre></div>
+<p>If this ever returns a mix (e.g., some objects have Ensembl IDs and
+others have gene symbols), you will lose almost all genes at the merge
+step. Fix identifier format before proceeding.</p>
+<hr />
+</div>
+<div id="qc-report-and-filter" class="section level2">
+<h2>6. QC Report and Filter</h2>
+<p>Rather than eyeballing violin plots and picking cutoffs by hand,
+generate a full HTML QC report with recommended per-sample cutoffs and
+apply them programmatically.</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a><span class="co"># Generate HTML report + machine-readable sidecar CSV</span></span>
+<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a><span class="fu">GenerateQCReport</span>(</span>
+<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a>  sample_list,</span>
+<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a>  <span class="at">output_file    =</span> <span class="st">&quot;qc/ifnb_qc.html&quot;</span>,</span>
+<span id="cb13-5"><a href="#cb13-5" tabindex="-1"></a>  <span class="at">metadata_cols  =</span> <span class="fu">c</span>(<span class="st">&quot;nCount_RNA&quot;</span>, <span class="st">&quot;nFeature_RNA&quot;</span>, <span class="st">&quot;percent.mt&quot;</span>),</span>
+<span id="cb13-6"><a href="#cb13-6" tabindex="-1"></a>  <span class="at">mad_multiplier =</span> <span class="dv">3</span>,</span>
+<span id="cb13-7"><a href="#cb13-7" tabindex="-1"></a>  <span class="at">doublet_col    =</span> <span class="st">&quot;doublet_finder&quot;</span></span>
+<span id="cb13-8"><a href="#cb13-8" tabindex="-1"></a>)</span>
+<span id="cb13-9"><a href="#cb13-9" tabindex="-1"></a><span class="co"># writes qc/ifnb_qc.html AND qc/ifnb_qc_cutoffs.csv</span></span></code></pre></div>
+<p>Apply the recommended cutoffs — doublet filtering happens by
+default:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a>filtered <span class="ot">&lt;-</span> <span class="fu">ApplyQCFilters</span>(</span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a>  sample_list,</span>
+<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a>  <span class="at">cutoffs         =</span> <span class="st">&quot;qc/ifnb_qc_cutoffs.csv&quot;</span>,</span>
+<span id="cb14-4"><a href="#cb14-4" tabindex="-1"></a>  <span class="at">filter_doublets =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb14-5"><a href="#cb14-5" tabindex="-1"></a>  <span class="at">return_report   =</span> <span class="cn">TRUE</span></span>
+<span id="cb14-6"><a href="#cb14-6" tabindex="-1"></a>)</span>
+<span id="cb14-7"><a href="#cb14-7" tabindex="-1"></a>sample_list <span class="ot">&lt;-</span> filtered<span class="sc">$</span>obj</span>
+<span id="cb14-8"><a href="#cb14-8" tabindex="-1"></a>filtered<span class="sc">$</span>report                <span class="co"># per-sample per-metric retention stats</span></span></code></pre></div>
+<p>Confirm at a glance that the filter did what you intended:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a><span class="fu">QCComparePlots</span>(</span>
+<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a>  <span class="at">pre     =</span> sample_list_pre,   <span class="co"># save this before overwriting</span></span>
+<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a>  <span class="at">post    =</span> sample_list,</span>
+<span id="cb15-4"><a href="#cb15-4" tabindex="-1"></a>  <span class="at">metrics =</span> <span class="fu">c</span>(<span class="st">&quot;nCount_RNA&quot;</span>, <span class="st">&quot;nFeature_RNA&quot;</span>, <span class="st">&quot;percent.mt&quot;</span>)</span>
+<span id="cb15-5"><a href="#cb15-5" tabindex="-1"></a>)</span></code></pre></div>
+<p>This replaces the manual
+<code>subset(obj, nFeature_RNA &gt; 200 &amp; nFeature_RNA &lt; 5000 &amp; percent.mt &lt; 20)</code>
+step from earlier versions of this vignette.</p>
+<hr />
+</div>
+<div id="merge-and-integrate-mergeseurat" class="section level2">
+<h2>7. Merge and Integrate — <code>MergeSeurat()</code></h2>
+<p><code>MergeSeurat()</code> handles normalization, PCA, integration,
+clustering, UMAP, and (optionally) marker detection in one call. We use
+Harmony integration here, which is fast and works well for this
+dataset.</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">MergeSeurat</span>(</span>
+<span id="cb16-2"><a href="#cb16-2" tabindex="-1"></a>  <span class="at">seurat_objects =</span> sample_list,</span>
+<span id="cb16-3"><a href="#cb16-3" tabindex="-1"></a></span>
+<span id="cb16-4"><a href="#cb16-4" tabindex="-1"></a>  <span class="co"># Regression during SCTransform</span></span>
+<span id="cb16-5"><a href="#cb16-5" tabindex="-1"></a>  <span class="at">to_regress     =</span> <span class="st">&quot;percent.mt&quot;</span>,</span>
+<span id="cb16-6"><a href="#cb16-6" tabindex="-1"></a>  <span class="at">use_SCT        =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb16-7"><a href="#cb16-7" tabindex="-1"></a></span>
+<span id="cb16-8"><a href="#cb16-8" tabindex="-1"></a>  <span class="co"># Dimensionality</span></span>
+<span id="cb16-9"><a href="#cb16-9" tabindex="-1"></a>  <span class="at">max_dims       =</span> <span class="dv">20</span>,</span>
+<span id="cb16-10"><a href="#cb16-10" tabindex="-1"></a></span>
+<span id="cb16-11"><a href="#cb16-11" tabindex="-1"></a>  <span class="co"># Harmony integration</span></span>
+<span id="cb16-12"><a href="#cb16-12" tabindex="-1"></a>  <span class="at">integration    =</span> <span class="st">&quot;HarmonyIntegration&quot;</span>,</span>
+<span id="cb16-13"><a href="#cb16-13" tabindex="-1"></a>  <span class="at">new_reduction  =</span> <span class="st">&quot;harmony&quot;</span>,</span>
+<span id="cb16-14"><a href="#cb16-14" tabindex="-1"></a></span>
+<span id="cb16-15"><a href="#cb16-15" tabindex="-1"></a>  <span class="co"># Clustering</span></span>
+<span id="cb16-16"><a href="#cb16-16" tabindex="-1"></a>  <span class="at">cluster_resolution =</span> <span class="fl">0.5</span>,</span>
+<span id="cb16-17"><a href="#cb16-17" tabindex="-1"></a></span>
+<span id="cb16-18"><a href="#cb16-18" tabindex="-1"></a>  <span class="co"># Save outputs</span></span>
+<span id="cb16-19"><a href="#cb16-19" tabindex="-1"></a>  <span class="at">save_rds_file =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb16-20"><a href="#cb16-20" tabindex="-1"></a>  <span class="at">file_name     =</span> <span class="st">&quot;ifnb&quot;</span>,</span>
+<span id="cb16-21"><a href="#cb16-21" tabindex="-1"></a></span>
+<span id="cb16-22"><a href="#cb16-22" tabindex="-1"></a>  <span class="co"># Run FindAllMarkers and save marker table + dot plot</span></span>
+<span id="cb16-23"><a href="#cb16-23" tabindex="-1"></a>  <span class="at">markers       =</span> <span class="cn">TRUE</span></span>
+<span id="cb16-24"><a href="#cb16-24" tabindex="-1"></a>)</span></code></pre></div>
+<p>When this finishes, your working directory will contain:</p>
+<ul>
+<li><code>ifnb_merged_seurat_objects.rds</code> — the integrated
+object</li>
+<li><code>dimplot_seurat_clusters.pdf</code> — UMAP colored by Seurat
+cluster</li>
+<li><code>markers_all.csv</code> — <code>FindAllMarkers</code>
+results</li>
+<li><code>marker_plot.pdf</code> — top-10 marker dot plot per
+cluster</li>
+</ul>
+<div id="quick-sanity-checks" class="section level3">
+<h3>Quick sanity checks</h3>
+<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" tabindex="-1"></a><span class="co"># UMAP colored by cluster</span></span>
+<span id="cb17-2"><a href="#cb17-2" tabindex="-1"></a><span class="fu">DimPlot</span>(integrated, <span class="at">label =</span> <span class="cn">TRUE</span>, <span class="at">repel =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb17-3"><a href="#cb17-3" tabindex="-1"></a></span>
+<span id="cb17-4"><a href="#cb17-4" tabindex="-1"></a><span class="co"># Verify that CTRL and STIM cells are interleaved (good integration)</span></span>
+<span id="cb17-5"><a href="#cb17-5" tabindex="-1"></a><span class="fu">DimPlot</span>(integrated, <span class="at">group.by =</span> <span class="st">&quot;stim&quot;</span>, <span class="at">cols =</span> <span class="fu">c</span>(<span class="st">&quot;steelblue&quot;</span>, <span class="st">&quot;tomato&quot;</span>))</span>
+<span id="cb17-6"><a href="#cb17-6" tabindex="-1"></a></span>
+<span id="cb17-7"><a href="#cb17-7" tabindex="-1"></a><span class="co"># Cells per cluster</span></span>
+<span id="cb17-8"><a href="#cb17-8" tabindex="-1"></a><span class="fu">table</span>(<span class="fu">Idents</span>(integrated))</span></code></pre></div>
+<p>If CTRL and STIM cells form separate blobs by condition in the UMAP,
+the integration did not fully correct for the stimulation effect. In
+that case, try increasing <code>max_dims</code>, adjusting
+<code>cluster_resolution</code>, or switching to
+<code>RPCAIntegration</code> with
+<code>k_anchor = 20, k_weight = 100</code>.</p>
+<hr />
+</div>
+</div>
+<div id="integration-quality-batcheffectqc" class="section level2">
+<h2>8. Integration Quality — <code>BatchEffectQC()</code></h2>
+<p><code>BatchEffectQC()</code> quantifies how well the integration
+mixed CTRL and STIM (or across donors) versus preserving biology. Run it
+on both the pre-integration <code>pca</code> and post-integration
+<code>harmony</code> reductions to see the effect numerically:</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a>pre  <span class="ot">&lt;-</span> <span class="fu">BatchEffectQC</span>(integrated, <span class="at">reduction =</span> <span class="st">&quot;pca&quot;</span>,</span>
+<span id="cb18-2"><a href="#cb18-2" tabindex="-1"></a>                      <span class="at">batch_col    =</span> <span class="st">&quot;stim&quot;</span>,</span>
+<span id="cb18-3"><a href="#cb18-3" tabindex="-1"></a>                      <span class="at">celltype_col =</span> <span class="cn">NULL</span>)     <span class="co"># no labels yet</span></span>
+<span id="cb18-4"><a href="#cb18-4" tabindex="-1"></a>post <span class="ot">&lt;-</span> <span class="fu">BatchEffectQC</span>(integrated, <span class="at">reduction =</span> <span class="st">&quot;harmony&quot;</span>,</span>
+<span id="cb18-5"><a href="#cb18-5" tabindex="-1"></a>                      <span class="at">batch_col    =</span> <span class="st">&quot;stim&quot;</span>,</span>
+<span id="cb18-6"><a href="#cb18-6" tabindex="-1"></a>                      <span class="at">celltype_col =</span> <span class="cn">NULL</span>)</span>
+<span id="cb18-7"><a href="#cb18-7" tabindex="-1"></a></span>
+<span id="cb18-8"><a href="#cb18-8" tabindex="-1"></a><span class="fu">rbind</span>(pre<span class="sc">$</span>summary, post<span class="sc">$</span>summary)</span>
+<span id="cb18-9"><a href="#cb18-9" tabindex="-1"></a><span class="co">#          batch_asw knn_mixing expected_mixing ...</span></span>
+<span id="cb18-10"><a href="#cb18-10" tabindex="-1"></a><span class="co"># [pca]         0.28       0.61            0.94</span></span>
+<span id="cb18-11"><a href="#cb18-11" tabindex="-1"></a><span class="co"># [harmony]     0.03       0.93            0.94</span></span></code></pre></div>
+<p>Ideally <code>knn_mixing</code> ratio approaches 1 (perfectly random
+neighborhoods across conditions), and <code>batch_asw</code> drops
+toward 0 (cells no longer cluster by condition). Once you have cell-type
+labels, re-run with <code>celltype_col</code> set to check that
+biological structure was preserved (<code>knn_purity</code> and
+<code>celltype_asw</code> should stay high).</p>
+<hr />
+</div>
+<div id="annotate-cell-types-three-approaches" class="section level2">
+<h2>9. Annotate Cell Types — Three Approaches</h2>
+<p><code>SingleCellTools</code> v2.4 offers three complementary paths
+for cell-type annotation. For PBMC-style well-studied tissues, Azimuth
+is usually the fastest and most accurate; marker-based approaches are
+more transparent and don’t require internet access.</p>
+<div id="marker-dot-plots-markerplot-markerpctplot" class="section level3">
+<h3>9.1 Marker Dot Plots — <code>MarkerPlot()</code> /
+<code>MarkerPctPlot()</code></h3>
+<p>Now we assign cell-type labels to clusters using canonical PBMC
+markers. <code>MarkerPlot()</code> builds an annotated dot plot, groups
+the genes by cell type, and clusters the identities by expression
+correlation so similar populations appear next to each other.</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" tabindex="-1"></a><span class="co"># Canonical human PBMC marker panel</span></span>
+<span id="cb19-2"><a href="#cb19-2" tabindex="-1"></a>pbmc_markers <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb19-3"><a href="#cb19-3" tabindex="-1"></a>  <span class="at">Gene =</span> <span class="fu">c</span>(</span>
+<span id="cb19-4"><a href="#cb19-4" tabindex="-1"></a>    <span class="co"># T cells</span></span>
+<span id="cb19-5"><a href="#cb19-5" tabindex="-1"></a>    <span class="st">&quot;CD3D&quot;</span>,  <span class="st">&quot;CD3E&quot;</span>,  <span class="st">&quot;CD8A&quot;</span>,   <span class="st">&quot;CD8B&quot;</span>,</span>
+<span id="cb19-6"><a href="#cb19-6" tabindex="-1"></a>    <span class="co"># CD4 T cells</span></span>
+<span id="cb19-7"><a href="#cb19-7" tabindex="-1"></a>    <span class="st">&quot;CD4&quot;</span>,   <span class="st">&quot;IL7R&quot;</span>,  <span class="st">&quot;CCR7&quot;</span>,</span>
+<span id="cb19-8"><a href="#cb19-8" tabindex="-1"></a>    <span class="co"># NK cells</span></span>
+<span id="cb19-9"><a href="#cb19-9" tabindex="-1"></a>    <span class="st">&quot;GNLY&quot;</span>,  <span class="st">&quot;NKG7&quot;</span>,  <span class="st">&quot;KLRD1&quot;</span>,</span>
+<span id="cb19-10"><a href="#cb19-10" tabindex="-1"></a>    <span class="co"># B cells</span></span>
+<span id="cb19-11"><a href="#cb19-11" tabindex="-1"></a>    <span class="st">&quot;MS4A1&quot;</span>, <span class="st">&quot;CD79A&quot;</span>, <span class="st">&quot;CD79B&quot;</span>,</span>
+<span id="cb19-12"><a href="#cb19-12" tabindex="-1"></a>    <span class="co"># Monocytes (classical)</span></span>
+<span id="cb19-13"><a href="#cb19-13" tabindex="-1"></a>    <span class="st">&quot;CD14&quot;</span>,  <span class="st">&quot;LYZ&quot;</span>,   <span class="st">&quot;CST3&quot;</span>,</span>
+<span id="cb19-14"><a href="#cb19-14" tabindex="-1"></a>    <span class="co"># Monocytes (non-classical)</span></span>
+<span id="cb19-15"><a href="#cb19-15" tabindex="-1"></a>    <span class="st">&quot;FCGR3A&quot;</span>,<span class="st">&quot;MS4A7&quot;</span>,</span>
+<span id="cb19-16"><a href="#cb19-16" tabindex="-1"></a>    <span class="co"># Dendritic cells</span></span>
+<span id="cb19-17"><a href="#cb19-17" tabindex="-1"></a>    <span class="st">&quot;FCER1A&quot;</span>,<span class="st">&quot;CST3&quot;</span>,</span>
+<span id="cb19-18"><a href="#cb19-18" tabindex="-1"></a>    <span class="co"># Platelets</span></span>
+<span id="cb19-19"><a href="#cb19-19" tabindex="-1"></a>    <span class="st">&quot;PPBP&quot;</span></span>
+<span id="cb19-20"><a href="#cb19-20" tabindex="-1"></a>  ),</span>
+<span id="cb19-21"><a href="#cb19-21" tabindex="-1"></a>  <span class="at">CellType =</span> <span class="fu">c</span>(</span>
+<span id="cb19-22"><a href="#cb19-22" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;T cell&quot;</span>, <span class="dv">4</span>),</span>
+<span id="cb19-23"><a href="#cb19-23" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;CD4 T&quot;</span>, <span class="dv">3</span>),</span>
+<span id="cb19-24"><a href="#cb19-24" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;NK&quot;</span>, <span class="dv">3</span>),</span>
+<span id="cb19-25"><a href="#cb19-25" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;B cell&quot;</span>, <span class="dv">3</span>),</span>
+<span id="cb19-26"><a href="#cb19-26" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;CD14 Mono&quot;</span>, <span class="dv">3</span>),</span>
+<span id="cb19-27"><a href="#cb19-27" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;CD16 Mono&quot;</span>, <span class="dv">2</span>),</span>
+<span id="cb19-28"><a href="#cb19-28" tabindex="-1"></a>    <span class="fu">rep</span>(<span class="st">&quot;DC&quot;</span>, <span class="dv">2</span>),</span>
+<span id="cb19-29"><a href="#cb19-29" tabindex="-1"></a>    <span class="st">&quot;Platelet&quot;</span></span>
+<span id="cb19-30"><a href="#cb19-30" tabindex="-1"></a>  )</span>
+<span id="cb19-31"><a href="#cb19-31" tabindex="-1"></a>)</span>
+<span id="cb19-32"><a href="#cb19-32" tabindex="-1"></a></span>
+<span id="cb19-33"><a href="#cb19-33" tabindex="-1"></a><span class="co"># Ensure we&#39;re plotting against the RNA assay</span></span>
+<span id="cb19-34"><a href="#cb19-34" tabindex="-1"></a><span class="fu">DefaultAssay</span>(integrated) <span class="ot">&lt;-</span> <span class="st">&quot;RNA&quot;</span></span>
+<span id="cb19-35"><a href="#cb19-35" tabindex="-1"></a></span>
+<span id="cb19-36"><a href="#cb19-36" tabindex="-1"></a>p <span class="ot">&lt;-</span> <span class="fu">MarkerPlot</span>(</span>
+<span id="cb19-37"><a href="#cb19-37" tabindex="-1"></a>  <span class="at">obj              =</span> integrated,</span>
+<span id="cb19-38"><a href="#cb19-38" tabindex="-1"></a>  <span class="at">genes            =</span> pbmc_markers,</span>
+<span id="cb19-39"><a href="#cb19-39" tabindex="-1"></a>  <span class="at">assay            =</span> <span class="st">&quot;RNA&quot;</span>,</span>
+<span id="cb19-40"><a href="#cb19-40" tabindex="-1"></a>  <span class="at">cluster          =</span> <span class="cn">TRUE</span>,       <span class="co"># cluster identities by correlation</span></span>
+<span id="cb19-41"><a href="#cb19-41" tabindex="-1"></a>  <span class="at">show.annotations =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb19-42"><a href="#cb19-42" tabindex="-1"></a>  <span class="at">maxsize          =</span> <span class="dv">5</span>,</span>
+<span id="cb19-43"><a href="#cb19-43" tabindex="-1"></a>  <span class="at">label.fontsize   =</span> <span class="dv">3</span></span>
+<span id="cb19-44"><a href="#cb19-44" tabindex="-1"></a>)</span>
+<span id="cb19-45"><a href="#cb19-45" tabindex="-1"></a><span class="fu">print</span>(p)</span>
+<span id="cb19-46"><a href="#cb19-46" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="st">&quot;markerplot_ifnb.pdf&quot;</span>, p, <span class="at">width =</span> <span class="dv">14</span>, <span class="at">height =</span> <span class="dv">9</span>)</span></code></pre></div>
+<p><code>MarkerPlot()</code> will automatically drop any gene absent
+from the assay or with zero expression, and report those drops as
+messages — no manual filtering needed.</p>
+<p><strong>Auto-sizing for large panels.</strong> The example above sets
+<code>label.fontsize</code> explicitly. Leave it (and
+<code>axis_text_size</code>) at their <code>NULL</code> default instead
+and <code>MarkerPlot()</code> scales both, plus a suggested figure size,
+down as the gene count grows — handy for marker panels much bigger than
+this one. <code>save_path</code> saves directly at that computed
+size:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" tabindex="-1"></a><span class="fu">MarkerPlot</span>(integrated, pbmc_markers, <span class="at">save_path =</span> <span class="st">&quot;markerplot_ifnb.pdf&quot;</span>)</span></code></pre></div>
+</div>
+<div id="assign-cell-type-labels" class="section level3">
+<h3>Assign cell-type labels</h3>
+<p>After reviewing the dot plot, rename clusters:</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" tabindex="-1"></a><span class="co"># Adjust these mappings based on what you see in the plot</span></span>
+<span id="cb21-2"><a href="#cb21-2" tabindex="-1"></a>new_labels <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb21-3"><a href="#cb21-3" tabindex="-1"></a>  <span class="st">&quot;0&quot;</span>  <span class="ot">=</span> <span class="st">&quot;CD14 Mono&quot;</span>,</span>
+<span id="cb21-4"><a href="#cb21-4" tabindex="-1"></a>  <span class="st">&quot;1&quot;</span>  <span class="ot">=</span> <span class="st">&quot;CD4 T naive&quot;</span>,</span>
+<span id="cb21-5"><a href="#cb21-5" tabindex="-1"></a>  <span class="st">&quot;2&quot;</span>  <span class="ot">=</span> <span class="st">&quot;CD4 T memory&quot;</span>,</span>
+<span id="cb21-6"><a href="#cb21-6" tabindex="-1"></a>  <span class="st">&quot;3&quot;</span>  <span class="ot">=</span> <span class="st">&quot;CD14 Mono&quot;</span>,</span>
+<span id="cb21-7"><a href="#cb21-7" tabindex="-1"></a>  <span class="st">&quot;4&quot;</span>  <span class="ot">=</span> <span class="st">&quot;B cell&quot;</span>,</span>
+<span id="cb21-8"><a href="#cb21-8" tabindex="-1"></a>  <span class="st">&quot;5&quot;</span>  <span class="ot">=</span> <span class="st">&quot;NK&quot;</span>,</span>
+<span id="cb21-9"><a href="#cb21-9" tabindex="-1"></a>  <span class="st">&quot;6&quot;</span>  <span class="ot">=</span> <span class="st">&quot;CD8 T&quot;</span>,</span>
+<span id="cb21-10"><a href="#cb21-10" tabindex="-1"></a>  <span class="st">&quot;7&quot;</span>  <span class="ot">=</span> <span class="st">&quot;CD16 Mono&quot;</span>,</span>
+<span id="cb21-11"><a href="#cb21-11" tabindex="-1"></a>  <span class="st">&quot;8&quot;</span>  <span class="ot">=</span> <span class="st">&quot;T cell&quot;</span>,</span>
+<span id="cb21-12"><a href="#cb21-12" tabindex="-1"></a>  <span class="st">&quot;9&quot;</span>  <span class="ot">=</span> <span class="st">&quot;DC&quot;</span>,</span>
+<span id="cb21-13"><a href="#cb21-13" tabindex="-1"></a>  <span class="st">&quot;10&quot;</span> <span class="ot">=</span> <span class="st">&quot;B cell&quot;</span>,</span>
+<span id="cb21-14"><a href="#cb21-14" tabindex="-1"></a>  <span class="st">&quot;11&quot;</span> <span class="ot">=</span> <span class="st">&quot;Platelet&quot;</span></span>
+<span id="cb21-15"><a href="#cb21-15" tabindex="-1"></a>)</span>
+<span id="cb21-16"><a href="#cb21-16" tabindex="-1"></a></span>
+<span id="cb21-17"><a href="#cb21-17" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">RenameIdents</span>(integrated, new_labels)</span>
+<span id="cb21-18"><a href="#cb21-18" tabindex="-1"></a>integrated<span class="sc">$</span>cell_type <span class="ot">&lt;-</span> <span class="fu">Idents</span>(integrated)</span>
+<span id="cb21-19"><a href="#cb21-19" tabindex="-1"></a></span>
+<span id="cb21-20"><a href="#cb21-20" tabindex="-1"></a><span class="co"># Labeled UMAP</span></span>
+<span id="cb21-21"><a href="#cb21-21" tabindex="-1"></a><span class="fu">DimPlot</span>(integrated, <span class="at">label =</span> <span class="cn">TRUE</span>, <span class="at">repel =</span> <span class="cn">TRUE</span>) <span class="sc">+</span></span>
+<span id="cb21-22"><a href="#cb21-22" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;PBMC cell types — ifnb dataset&quot;</span>) <span class="sc">+</span></span>
+<span id="cb21-23"><a href="#cb21-23" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">&quot;right&quot;</span>)</span>
+<span id="cb21-24"><a href="#cb21-24" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="st">&quot;umap_celltypes_ifnb.pdf&quot;</span>, <span class="at">width =</span> <span class="dv">10</span>, <span class="at">height =</span> <span class="dv">7</span>)</span></code></pre></div>
+<hr />
+</div>
+<div id="cluster-level-marker-scoring-annotateclusters" class="section level3">
+<h3>9.2 Cluster-level Marker Scoring —
+<code>AnnotateClusters()</code></h3>
+<p>Skip the manual <code>RenameIdents</code> step by having
+<code>AnnotateClusters</code> score each cluster on every marker set
+with UCell and pick the winner:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" tabindex="-1"></a>pbmc_marker_list <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb22-2"><a href="#cb22-2" tabindex="-1"></a>  <span class="at">T_cell     =</span> <span class="fu">c</span>(<span class="st">&quot;CD3D&quot;</span>, <span class="st">&quot;CD3E&quot;</span>, <span class="st">&quot;CD8A&quot;</span>, <span class="st">&quot;CD8B&quot;</span>),</span>
+<span id="cb22-3"><a href="#cb22-3" tabindex="-1"></a>  <span class="at">CD4_T      =</span> <span class="fu">c</span>(<span class="st">&quot;CD4&quot;</span>, <span class="st">&quot;IL7R&quot;</span>, <span class="st">&quot;CCR7&quot;</span>),</span>
+<span id="cb22-4"><a href="#cb22-4" tabindex="-1"></a>  <span class="at">NK         =</span> <span class="fu">c</span>(<span class="st">&quot;GNLY&quot;</span>, <span class="st">&quot;NKG7&quot;</span>, <span class="st">&quot;KLRD1&quot;</span>),</span>
+<span id="cb22-5"><a href="#cb22-5" tabindex="-1"></a>  <span class="at">B_cell     =</span> <span class="fu">c</span>(<span class="st">&quot;MS4A1&quot;</span>, <span class="st">&quot;CD79A&quot;</span>, <span class="st">&quot;CD79B&quot;</span>),</span>
+<span id="cb22-6"><a href="#cb22-6" tabindex="-1"></a>  <span class="at">CD14_Mono  =</span> <span class="fu">c</span>(<span class="st">&quot;CD14&quot;</span>, <span class="st">&quot;LYZ&quot;</span>, <span class="st">&quot;CST3&quot;</span>),</span>
+<span id="cb22-7"><a href="#cb22-7" tabindex="-1"></a>  <span class="at">CD16_Mono  =</span> <span class="fu">c</span>(<span class="st">&quot;FCGR3A&quot;</span>, <span class="st">&quot;MS4A7&quot;</span>),</span>
+<span id="cb22-8"><a href="#cb22-8" tabindex="-1"></a>  <span class="at">DC         =</span> <span class="fu">c</span>(<span class="st">&quot;FCER1A&quot;</span>),</span>
+<span id="cb22-9"><a href="#cb22-9" tabindex="-1"></a>  <span class="at">Platelet   =</span> <span class="fu">c</span>(<span class="st">&quot;PPBP&quot;</span>)</span>
+<span id="cb22-10"><a href="#cb22-10" tabindex="-1"></a>)</span>
+<span id="cb22-11"><a href="#cb22-11" tabindex="-1"></a></span>
+<span id="cb22-12"><a href="#cb22-12" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">AnnotateClusters</span>(</span>
+<span id="cb22-13"><a href="#cb22-13" tabindex="-1"></a>  integrated,</span>
+<span id="cb22-14"><a href="#cb22-14" tabindex="-1"></a>  <span class="at">method              =</span> <span class="st">&quot;marker&quot;</span>,</span>
+<span id="cb22-15"><a href="#cb22-15" tabindex="-1"></a>  <span class="at">markers             =</span> pbmc_marker_list,</span>
+<span id="cb22-16"><a href="#cb22-16" tabindex="-1"></a>  <span class="at">cluster_col         =</span> <span class="st">&quot;seurat_clusters&quot;</span>,</span>
+<span id="cb22-17"><a href="#cb22-17" tabindex="-1"></a>  <span class="at">new_col             =</span> <span class="st">&quot;predicted_cell_type&quot;</span>,</span>
+<span id="cb22-18"><a href="#cb22-18" tabindex="-1"></a>  <span class="at">filter_nonspecific  =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb22-19"><a href="#cb22-19" tabindex="-1"></a>  <span class="at">min_score           =</span> <span class="fl">0.1</span>,</span>
+<span id="cb22-20"><a href="#cb22-20" tabindex="-1"></a>  <span class="at">min_margin          =</span> <span class="fl">0.05</span></span>
+<span id="cb22-21"><a href="#cb22-21" tabindex="-1"></a>)</span>
+<span id="cb22-22"><a href="#cb22-22" tabindex="-1"></a></span>
+<span id="cb22-23"><a href="#cb22-23" tabindex="-1"></a><span class="fu">table</span>(integrated<span class="sc">$</span>predicted_cell_type)</span>
+<span id="cb22-24"><a href="#cb22-24" tabindex="-1"></a></span>
+<span id="cb22-25"><a href="#cb22-25" tabindex="-1"></a><span class="co"># Inspect the full per-cluster score matrix</span></span>
+<span id="cb22-26"><a href="#cb22-26" tabindex="-1"></a>scored <span class="ot">&lt;-</span> <span class="fu">AnnotateClusters</span>(integrated, <span class="at">markers =</span> pbmc_marker_list,</span>
+<span id="cb22-27"><a href="#cb22-27" tabindex="-1"></a>                           <span class="at">method =</span> <span class="st">&quot;marker&quot;</span>,</span>
+<span id="cb22-28"><a href="#cb22-28" tabindex="-1"></a>                           <span class="at">return_scores =</span> <span class="st">&quot;cluster&quot;</span>)</span>
+<span id="cb22-29"><a href="#cb22-29" tabindex="-1"></a>scored<span class="sc">$</span>scores        <span class="co"># cluster x cell-type UCell mean scores</span></span></code></pre></div>
+</div>
+<div id="reference-based-annotatewithreference" class="section level3">
+<h3>9.3 Reference-based — <code>AnnotateWithReference()</code></h3>
+<p>For PBMCs, the CellTypist immune models give consistent, granular
+labels without needing to supply a reference dataset.
+<code>Immune_All_Low.pkl</code> is the low-resolution PBMC-friendly
+model; <code>Immune_All_High.pkl</code> is the fine-resolution
+variant.</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">AnnotateWithReference</span>(</span>
+<span id="cb23-2"><a href="#cb23-2" tabindex="-1"></a>  integrated,</span>
+<span id="cb23-3"><a href="#cb23-3" tabindex="-1"></a>  <span class="at">method          =</span> <span class="st">&quot;celltypist&quot;</span>,</span>
+<span id="cb23-4"><a href="#cb23-4" tabindex="-1"></a>  <span class="at">model           =</span> <span class="st">&quot;Immune_All_Low.pkl&quot;</span>,</span>
+<span id="cb23-5"><a href="#cb23-5" tabindex="-1"></a>  <span class="at">majority_voting =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb23-6"><a href="#cb23-6" tabindex="-1"></a>  <span class="at">min_score       =</span> <span class="fl">0.5</span></span>
+<span id="cb23-7"><a href="#cb23-7" tabindex="-1"></a>)</span>
+<span id="cb23-8"><a href="#cb23-8" tabindex="-1"></a></span>
+<span id="cb23-9"><a href="#cb23-9" tabindex="-1"></a><span class="fu">table</span>(integrated<span class="sc">$</span>predicted_cell_type)</span>
+<span id="cb23-10"><a href="#cb23-10" tabindex="-1"></a></span>
+<span id="cb23-11"><a href="#cb23-11" tabindex="-1"></a><span class="co"># Compare to your marker-based labels</span></span>
+<span id="cb23-12"><a href="#cb23-12" tabindex="-1"></a><span class="fu">table</span>(<span class="at">marker    =</span> integrated<span class="sc">$</span>predicted_cell_type,</span>
+<span id="cb23-13"><a href="#cb23-13" tabindex="-1"></a>      <span class="at">annotate  =</span> integrated<span class="sc">$</span>domain)      <span class="co"># from 9.2 AnnotateClusters</span></span></code></pre></div>
+<p>Alternative backends work with the same interface — supply your own
+labeled reference:</p>
+<div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" tabindex="-1"></a><span class="co"># scANVI: semi-supervised, best when reference and query come from</span></span>
+<span id="cb24-2"><a href="#cb24-2" tabindex="-1"></a><span class="co"># different technologies</span></span>
+<span id="cb24-3"><a href="#cb24-3" tabindex="-1"></a><span class="fu">AnnotateWithReference</span>(integrated, <span class="at">method =</span> <span class="st">&quot;scanvi&quot;</span>,</span>
+<span id="cb24-4"><a href="#cb24-4" tabindex="-1"></a>                      <span class="at">reference =</span> pbmc_ref, <span class="at">ref_label_col =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb24-5"><a href="#cb24-5" tabindex="-1"></a>                      <span class="at">batch_col =</span> <span class="st">&quot;sample_id&quot;</span>)</span>
+<span id="cb24-6"><a href="#cb24-6" tabindex="-1"></a></span>
+<span id="cb24-7"><a href="#cb24-7" tabindex="-1"></a><span class="co"># scmap: R-native, no Python required</span></span>
+<span id="cb24-8"><a href="#cb24-8" tabindex="-1"></a><span class="fu">AnnotateWithReference</span>(integrated, <span class="at">method =</span> <span class="st">&quot;scmap&quot;</span>,</span>
+<span id="cb24-9"><a href="#cb24-9" tabindex="-1"></a>                      <span class="at">reference =</span> pbmc_ref, <span class="at">ref_label_col =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb24-10"><a href="#cb24-10" tabindex="-1"></a>                      <span class="at">scmap_method =</span> <span class="st">&quot;cluster&quot;</span>)</span></code></pre></div>
+<p>For the rest of the vignette we’ll use <code>cell_type</code> — pick
+whichever of the three above you trust most and assign:</p>
+<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" tabindex="-1"></a>integrated<span class="sc">$</span>cell_type <span class="ot">&lt;-</span> integrated<span class="sc">$</span>predicted_cell_type   <span class="co"># from CellTypist</span></span>
+<span id="cb25-2"><a href="#cb25-2" tabindex="-1"></a><span class="fu">Idents</span>(integrated) <span class="ot">&lt;-</span> integrated<span class="sc">$</span>cell_type</span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="flag-gene-positive-cells-addgenepositivity-plotgenepositivity" class="section level2">
+<h2>10. Flag Gene-Positive Cells — <code>AddGenePositivity()</code> /
+<code>PlotGenePositivity()</code></h2>
+<p><code>AddGenePositivity()</code> adds a logical metadata column for
+each gene indicating whether a cell expresses it above a threshold. This
+is useful for gating, subsetting, or computing co-expression
+fractions.</p>
+<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" tabindex="-1"></a><span class="co"># Flag expression of key lineage markers</span></span>
+<span id="cb26-2"><a href="#cb26-2" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">AddGenePositivity</span>(</span>
+<span id="cb26-3"><a href="#cb26-3" tabindex="-1"></a>  <span class="at">seurat_objects =</span> integrated,</span>
+<span id="cb26-4"><a href="#cb26-4" tabindex="-1"></a>  <span class="at">genes          =</span> <span class="fu">c</span>(<span class="st">&quot;CD3D&quot;</span>, <span class="st">&quot;CD14&quot;</span>, <span class="st">&quot;MS4A1&quot;</span>, <span class="st">&quot;GNLY&quot;</span>, <span class="st">&quot;CD8A&quot;</span>),</span>
+<span id="cb26-5"><a href="#cb26-5" tabindex="-1"></a>  <span class="at">layer          =</span> <span class="st">&quot;counts&quot;</span>,</span>
+<span id="cb26-6"><a href="#cb26-6" tabindex="-1"></a>  <span class="at">threshold      =</span> <span class="dv">0</span>,       <span class="co"># any count &gt; 0 is positive</span></span>
+<span id="cb26-7"><a href="#cb26-7" tabindex="-1"></a>  <span class="at">suffix         =</span> <span class="st">&quot;_pos&quot;</span></span>
+<span id="cb26-8"><a href="#cb26-8" tabindex="-1"></a>)</span>
+<span id="cb26-9"><a href="#cb26-9" tabindex="-1"></a></span>
+<span id="cb26-10"><a href="#cb26-10" tabindex="-1"></a><span class="co"># New logical columns in metadata</span></span>
+<span id="cb26-11"><a href="#cb26-11" tabindex="-1"></a><span class="fu">head</span>(integrated<span class="sc">@</span>meta.data[, <span class="fu">c</span>(<span class="st">&quot;CD3D_pos&quot;</span>, <span class="st">&quot;CD14_pos&quot;</span>, <span class="st">&quot;MS4A1_pos&quot;</span>,</span>
+<span id="cb26-12"><a href="#cb26-12" tabindex="-1"></a>                               <span class="st">&quot;GNLY_pos&quot;</span>, <span class="st">&quot;CD8A_pos&quot;</span>)])</span>
+<span id="cb26-13"><a href="#cb26-13" tabindex="-1"></a></span>
+<span id="cb26-14"><a href="#cb26-14" tabindex="-1"></a><span class="co"># Fraction positive per cell type</span></span>
+<span id="cb26-15"><a href="#cb26-15" tabindex="-1"></a>positivity_summary <span class="ot">&lt;-</span> integrated<span class="sc">@</span>meta.data <span class="sc">%&gt;%</span></span>
+<span id="cb26-16"><a href="#cb26-16" tabindex="-1"></a>  <span class="fu">group_by</span>(cell_type) <span class="sc">%&gt;%</span></span>
+<span id="cb26-17"><a href="#cb26-17" tabindex="-1"></a>  <span class="fu">summarise</span>(</span>
+<span id="cb26-18"><a href="#cb26-18" tabindex="-1"></a>    <span class="at">pct_CD3D  =</span> <span class="fu">mean</span>(CD3D_pos)  <span class="sc">*</span> <span class="dv">100</span>,</span>
+<span id="cb26-19"><a href="#cb26-19" tabindex="-1"></a>    <span class="at">pct_CD14  =</span> <span class="fu">mean</span>(CD14_pos)  <span class="sc">*</span> <span class="dv">100</span>,</span>
+<span id="cb26-20"><a href="#cb26-20" tabindex="-1"></a>    <span class="at">pct_MS4A1 =</span> <span class="fu">mean</span>(MS4A1_pos) <span class="sc">*</span> <span class="dv">100</span>,</span>
+<span id="cb26-21"><a href="#cb26-21" tabindex="-1"></a>    <span class="at">pct_GNLY  =</span> <span class="fu">mean</span>(GNLY_pos)  <span class="sc">*</span> <span class="dv">100</span>,</span>
+<span id="cb26-22"><a href="#cb26-22" tabindex="-1"></a>    <span class="at">pct_CD8A  =</span> <span class="fu">mean</span>(CD8A_pos)  <span class="sc">*</span> <span class="dv">100</span></span>
+<span id="cb26-23"><a href="#cb26-23" tabindex="-1"></a>  )</span>
+<span id="cb26-24"><a href="#cb26-24" tabindex="-1"></a><span class="fu">print</span>(positivity_summary)</span></code></pre></div>
+<p>You can also use positivity flags for subsetting:</p>
+<div class="sourceCode" id="cb27"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" tabindex="-1"></a><span class="co"># Isolate CD14+ monocytes for downstream re-analysis</span></span>
+<span id="cb27-2"><a href="#cb27-2" tabindex="-1"></a>mono <span class="ot">&lt;-</span> <span class="fu">subset</span>(integrated, CD14_pos <span class="sc">==</span> <span class="cn">TRUE</span>)</span>
+<span id="cb27-3"><a href="#cb27-3" tabindex="-1"></a><span class="fu">ncol</span>(mono)</span></code></pre></div>
+<p>Visualize positivity across cell types:</p>
+<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" tabindex="-1"></a><span class="co"># Percent-positive per cluster, one bar per gene</span></span>
+<span id="cb28-2"><a href="#cb28-2" tabindex="-1"></a><span class="fu">PlotGenePositivity</span>(integrated,</span>
+<span id="cb28-3"><a href="#cb28-3" tabindex="-1"></a>                   <span class="fu">c</span>(<span class="st">&quot;CD3D&quot;</span>, <span class="st">&quot;CD14&quot;</span>, <span class="st">&quot;MS4A1&quot;</span>, <span class="st">&quot;GNLY&quot;</span>, <span class="st">&quot;CD8A&quot;</span>))</span>
+<span id="cb28-4"><a href="#cb28-4" tabindex="-1"></a></span>
+<span id="cb28-5"><a href="#cb28-5" tabindex="-1"></a><span class="co"># Heatmap for a longer panel</span></span>
+<span id="cb28-6"><a href="#cb28-6" tabindex="-1"></a><span class="fu">PlotGenePositivity</span>(integrated,</span>
+<span id="cb28-7"><a href="#cb28-7" tabindex="-1"></a>                   <span class="fu">c</span>(<span class="st">&quot;CD3D&quot;</span>, <span class="st">&quot;CD4&quot;</span>, <span class="st">&quot;CD8A&quot;</span>, <span class="st">&quot;IL7R&quot;</span>, <span class="st">&quot;CD14&quot;</span>, <span class="st">&quot;LYZ&quot;</span>,</span>
+<span id="cb28-8"><a href="#cb28-8" tabindex="-1"></a>                     <span class="st">&quot;FCGR3A&quot;</span>, <span class="st">&quot;MS4A1&quot;</span>, <span class="st">&quot;GNLY&quot;</span>, <span class="st">&quot;NKG7&quot;</span>),</span>
+<span id="cb28-9"><a href="#cb28-9" tabindex="-1"></a>                   <span class="at">style =</span> <span class="st">&quot;heatmap&quot;</span>, <span class="at">max_pct =</span> <span class="dv">90</span>)</span>
+<span id="cb28-10"><a href="#cb28-10" tabindex="-1"></a></span>
+<span id="cb28-11"><a href="#cb28-11" tabindex="-1"></a><span class="co"># Co-expression combinations for a T/B binary</span></span>
+<span id="cb28-12"><a href="#cb28-12" tabindex="-1"></a><span class="fu">PlotGenePositivity</span>(integrated, <span class="fu">c</span>(<span class="st">&quot;CD3D&quot;</span>, <span class="st">&quot;MS4A1&quot;</span>), <span class="at">style =</span> <span class="st">&quot;combo&quot;</span>)</span></code></pre></div>
+<div id="genepositivityanalysis-and-genepositivityestimationplot" class="section level3">
+<h3>10.1 <code>GenePositivityAnalysis()</code> and
+<code>GenePositivityEstimationPlot()</code></h3>
+<p>The positivity summary above is a per-cell-type snapshot; it doesn’t
+say whether a gene’s positivity rate actually shifted between CTRL and
+STIM. <code>GenePositivityAnalysis()</code> computes per-sample
+positivity rates — stratified by <code>cell_type</code> here — plus an
+optional chi-square/Fisher test across <code>stim</code>, the same
+<code>sample_id</code>/<code>stim</code> design
+<code>CompositionAnalysis()</code> (12.1) uses – and the same caveat:
+the test pools cells across donors within each condition, so it’s not a
+valid replicate-level test (it emits a <code>warning()</code> saying
+so). There’s no propeller-style sample-level test for gene positivity
+here, so <code>GenePositivityEstimationPlot()</code> below is the result
+to trust for an effect that actually reflects the donor-level
+replicates:</p>
+<div class="sourceCode" id="cb29"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" tabindex="-1"></a>gpa <span class="ot">&lt;-</span> <span class="fu">GenePositivityAnalysis</span>(</span>
+<span id="cb29-2"><a href="#cb29-2" tabindex="-1"></a>  integrated,</span>
+<span id="cb29-3"><a href="#cb29-3" tabindex="-1"></a>  <span class="at">genes         =</span> <span class="fu">c</span>(<span class="st">&quot;CD14&quot;</span>, <span class="st">&quot;GNLY&quot;</span>),</span>
+<span id="cb29-4"><a href="#cb29-4" tabindex="-1"></a>  <span class="at">sample_col    =</span> <span class="st">&quot;sample_id&quot;</span>,</span>
+<span id="cb29-5"><a href="#cb29-5" tabindex="-1"></a>  <span class="at">condition_col =</span> <span class="st">&quot;stim&quot;</span>,</span>
+<span id="cb29-6"><a href="#cb29-6" tabindex="-1"></a>  <span class="at">group_col     =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb29-7"><a href="#cb29-7" tabindex="-1"></a>  <span class="at">test          =</span> <span class="st">&quot;chisq&quot;</span></span>
+<span id="cb29-8"><a href="#cb29-8" tabindex="-1"></a>)</span>
+<span id="cb29-9"><a href="#cb29-9" tabindex="-1"></a>gpa<span class="sc">$</span>proportions               <span class="co"># sample, gene, group, n_pos, n_total, prop_pos, condition</span></span>
+<span id="cb29-10"><a href="#cb29-10" tabindex="-1"></a>gpa<span class="sc">$</span>test[[<span class="st">&quot;CD14 | CD14 Mono&quot;</span>]]   <span class="co"># chi-square result for that gene x cell-type combination (pooled-cell caveat above)</span></span></code></pre></div>
+<p>As with
+<code>CompositionAnalysis()</code>/<code>CompositionEstimationPlot()</code>,
+the test above answers “is there a difference”;
+<code>GenePositivityEstimationPlot()</code> answers “by how much, with
+what uncertainty” using per-sample positivity rates and a bootstrap 95%
+CI:</p>
+<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" tabindex="-1"></a><span class="co"># CD14 positivity in CD14+ monocytes, CTRL vs STIM</span></span>
+<span id="cb30-2"><a href="#cb30-2" tabindex="-1"></a><span class="fu">GenePositivityEstimationPlot</span>(gpa, <span class="at">genes =</span> <span class="st">&quot;CD14&quot;</span>, <span class="at">group_levels =</span> <span class="st">&quot;CD14 Mono&quot;</span>,</span>
+<span id="cb30-3"><a href="#cb30-3" tabindex="-1"></a>                             <span class="at">idx =</span> <span class="fu">c</span>(<span class="st">&quot;CTRL&quot;</span>, <span class="st">&quot;STIM&quot;</span>))</span>
+<span id="cb30-4"><a href="#cb30-4" tabindex="-1"></a></span>
+<span id="cb30-5"><a href="#cb30-5" tabindex="-1"></a><span class="co"># Every gene x cell-type combination present, as a named list of plots</span></span>
+<span id="cb30-6"><a href="#cb30-6" tabindex="-1"></a>plots <span class="ot">&lt;-</span> <span class="fu">GenePositivityEstimationPlot</span>(gpa, <span class="at">idx =</span> <span class="fu">c</span>(<span class="st">&quot;CTRL&quot;</span>, <span class="st">&quot;STIM&quot;</span>))</span>
+<span id="cb30-7"><a href="#cb30-7" tabindex="-1"></a>plots[[<span class="st">&quot;CD14 | CD14 Mono&quot;</span>]]</span>
+<span id="cb30-8"><a href="#cb30-8" tabindex="-1"></a></span>
+<span id="cb30-9"><a href="#cb30-9" tabindex="-1"></a><span class="co"># Cohen&#39;s h -- the effect size designed specifically for comparing two proportions</span></span>
+<span id="cb30-10"><a href="#cb30-10" tabindex="-1"></a><span class="fu">GenePositivityEstimationPlot</span>(gpa, <span class="at">genes =</span> <span class="st">&quot;CD14&quot;</span>, <span class="at">group_levels =</span> <span class="st">&quot;CD14 Mono&quot;</span>,</span>
+<span id="cb30-11"><a href="#cb30-11" tabindex="-1"></a>                             <span class="at">idx =</span> <span class="fu">c</span>(<span class="st">&quot;CTRL&quot;</span>, <span class="st">&quot;STIM&quot;</span>), <span class="at">effect =</span> <span class="st">&quot;cohens_h&quot;</span>)</span></code></pre></div>
+<div id="how-to-read-a-dabestr-estimation-plot" class="section level4">
+<h4>How to read a <code>dabestr</code> estimation plot</h4>
+<p>This is the first estimation plot in this vignette, so it’s worth
+spelling out what’s actually on it – the same layout applies to
+<code>CompositionEstimationPlot()</code> (12.1) later on too (<a href="https://acclab.github.io/dabestr/"><code>dabestr</code></a>
+implements “estimation statistics”: Ho et al. 2019, <em>Moving beyond P
+values: data analysis with estimation graphics</em>, Nature
+Methods).</p>
+<p>Each plot has two stacked panels sharing an x-axis (the two
+<code>idx</code> conditions, here
+<code>CTRL</code>/<code>STIM</code>):</p>
+<ul>
+<li><strong>Top panel — raw data.</strong> Every individual value
+feeding the comparison is plotted as a swarm along its condition’s
+column. That’s one point per <em>donor/sample</em>
+(<code>sample_id</code>), not per cell – the whole point of these
+functions is to show the per-sample values a bare p-value collapses into
+a single number.</li>
+<li><strong>Bottom panel — effect size.</strong> The chosen
+<code>effect</code> (<code>mean_diff</code> by default) between STIM and
+CTRL, drawn as a single point with a vertical bar for its 95% bootstrap
+confidence interval (5000 resamples, by default). A dashed horizontal
+line marks the reference condition’s (CTRL’s) value, so the effect-size
+point/CI can be read directly against it.</li>
+</ul>
+<p>Because the CI comes from resampling the actual donors rather than a
+parametric formula, it doesn’t assume normality – appropriate here since
+<code>n</code> is the number of donors (often single digits), not the
+(much larger, and non-independent) number of cells. There’s no p-value
+threshold to eyeball; instead look at whether the CI includes zero (no
+effect) and how wide it is – a wide CI with few donors is telling you
+the estimate is uncertain, which a bare significant/non-significant
+p-value would hide.</p>
+<p><code>effect</code> options, all available on every
+<code>*EstimationPlot()</code> function in this package:</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th><code>effect</code></th>
+<th>What it measures</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>mean_diff</code> (default)</td>
+<td>Test mean − reference mean, in the original units (e.g. proportion
+points).</td>
+</tr>
+<tr class="even">
+<td><code>median_diff</code></td>
+<td>Same, using medians – less sensitive to one outlier donor.</td>
+</tr>
+<tr class="odd">
+<td><code>cohens_d</code></td>
+<td>Standardized mean difference (pooled-SD units); comparable across
+differently-scaled measurements.</td>
+</tr>
+<tr class="even">
+<td><code>hedges_g</code></td>
+<td><code>cohens_d</code> with a small-sample bias correction – prefer
+this over <code>cohens_d</code> with few donors per condition.</td>
+</tr>
+<tr class="odd">
+<td><code>cliffs_delta</code></td>
+<td>Non-parametric, rank-based (akin to a standardized Mann-Whitney
+effect) – robust to outliers and non-normal spread, no distributional
+assumptions.</td>
+</tr>
+<tr class="even">
+<td><code>cohens_h</code></td>
+<td>Designed specifically for comparing two proportions – often the more
+principled choice for <code>prop_pos</code>/<code>prop</code> columns
+(bounded 0-1) rather than a raw mean difference.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+</div>
+</div>
+</div>
+<div id="cell-cycle-scoring-assign_cell_cycle_phase" class="section level2">
+<h2>11. Cell-Cycle Scoring — <code>assign_cell_cycle_phase()</code></h2>
+<p><code>assign_cell_cycle_phase()</code> uses UCell module scoring to
+assign S, G2M, or G1 phase to each cell. It is more robust than Seurat’s
+<code>CellCycleScoring</code> on datasets with lower sequencing depth
+because UCell normalizes for library size internally.</p>
+<div class="sourceCode" id="cb31"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">assign_cell_cycle_phase</span>(integrated)</span>
+<span id="cb31-2"><a href="#cb31-2" tabindex="-1"></a></span>
+<span id="cb31-3"><a href="#cb31-3" tabindex="-1"></a><span class="co"># New metadata columns: S.Score, G2M.Score, Phase</span></span>
+<span id="cb31-4"><a href="#cb31-4" tabindex="-1"></a><span class="fu">table</span>(integrated<span class="sc">$</span>Phase)</span>
+<span id="cb31-5"><a href="#cb31-5" tabindex="-1"></a><span class="co">#&gt;   G1  G2M    S</span></span>
+<span id="cb31-6"><a href="#cb31-6" tabindex="-1"></a><span class="co">#&gt; 9821 1043 1872  (approximate)</span></span>
+<span id="cb31-7"><a href="#cb31-7" tabindex="-1"></a></span>
+<span id="cb31-8"><a href="#cb31-8" tabindex="-1"></a><span class="co"># Visualize phase on UMAP</span></span>
+<span id="cb31-9"><a href="#cb31-9" tabindex="-1"></a><span class="fu">DimPlot</span>(integrated, <span class="at">group.by =</span> <span class="st">&quot;Phase&quot;</span>,</span>
+<span id="cb31-10"><a href="#cb31-10" tabindex="-1"></a>        <span class="at">cols =</span> <span class="fu">c</span>(<span class="st">&quot;G1&quot;</span> <span class="ot">=</span> <span class="st">&quot;grey80&quot;</span>, <span class="st">&quot;S&quot;</span> <span class="ot">=</span> <span class="st">&quot;steelblue&quot;</span>, <span class="st">&quot;G2M&quot;</span> <span class="ot">=</span> <span class="st">&quot;tomato&quot;</span>))</span>
+<span id="cb31-11"><a href="#cb31-11" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="st">&quot;umap_cellcycle_ifnb.pdf&quot;</span>, <span class="at">width =</span> <span class="dv">8</span>, <span class="at">height =</span> <span class="dv">6</span>)</span>
+<span id="cb31-12"><a href="#cb31-12" tabindex="-1"></a></span>
+<span id="cb31-13"><a href="#cb31-13" tabindex="-1"></a><span class="co"># Phase breakdown per cell type</span></span>
+<span id="cb31-14"><a href="#cb31-14" tabindex="-1"></a><span class="fu">table</span>(integrated<span class="sc">$</span>cell_type, integrated<span class="sc">$</span>Phase)</span></code></pre></div>
+<p>If cycling cells cluster separately from their resting counterparts
+and you want to remove this confound, re-run <code>MergeSeurat()</code>
+with cell-cycle scores added to <code>to_regress</code>:</p>
+<div class="sourceCode" id="cb32"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" tabindex="-1"></a>integrated <span class="ot">&lt;-</span> <span class="fu">MergeSeurat</span>(</span>
+<span id="cb32-2"><a href="#cb32-2" tabindex="-1"></a>  <span class="at">seurat_objects =</span> sample_list,</span>
+<span id="cb32-3"><a href="#cb32-3" tabindex="-1"></a>  <span class="at">to_regress     =</span> <span class="fu">c</span>(<span class="st">&quot;percent.mt&quot;</span>, <span class="st">&quot;S.Score&quot;</span>, <span class="st">&quot;G2M.Score&quot;</span>),</span>
+<span id="cb32-4"><a href="#cb32-4" tabindex="-1"></a>  <span class="at">use_SCT        =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb32-5"><a href="#cb32-5" tabindex="-1"></a>  <span class="at">integration    =</span> <span class="st">&quot;HarmonyIntegration&quot;</span>,</span>
+<span id="cb32-6"><a href="#cb32-6" tabindex="-1"></a>  <span class="at">new_reduction  =</span> <span class="st">&quot;harmony&quot;</span>,</span>
+<span id="cb32-7"><a href="#cb32-7" tabindex="-1"></a>  <span class="at">cluster_resolution =</span> <span class="fl">0.5</span></span>
+<span id="cb32-8"><a href="#cb32-8" tabindex="-1"></a>)</span></code></pre></div>
+<hr />
+</div>
+<div id="cell-type-composition-cellcomposition-compositionaltest" class="section level2">
+<h2>12. Cell-Type Composition — <code>CellComposition()</code> /
+<code>CompositionalTest()</code></h2>
+<p>A natural follow-up question after integration is whether the
+proportions of each cell type differ between CTRL and STIM.</p>
+<div class="sourceCode" id="cb33"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" tabindex="-1"></a><span class="co"># Compute proportions + plot</span></span>
+<span id="cb33-2"><a href="#cb33-2" tabindex="-1"></a>comp <span class="ot">&lt;-</span> <span class="fu">CellComposition</span>(</span>
+<span id="cb33-3"><a href="#cb33-3" tabindex="-1"></a>  integrated,</span>
+<span id="cb33-4"><a href="#cb33-4" tabindex="-1"></a>  <span class="at">cluster_col =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb33-5"><a href="#cb33-5" tabindex="-1"></a>  <span class="at">sample_col  =</span> <span class="st">&quot;sample_id&quot;</span>,</span>
+<span id="cb33-6"><a href="#cb33-6" tabindex="-1"></a>  <span class="at">group_col   =</span> <span class="st">&quot;stim&quot;</span>,</span>
+<span id="cb33-7"><a href="#cb33-7" tabindex="-1"></a>  <span class="at">style       =</span> <span class="st">&quot;box&quot;</span></span>
+<span id="cb33-8"><a href="#cb33-8" tabindex="-1"></a>)</span>
+<span id="cb33-9"><a href="#cb33-9" tabindex="-1"></a>comp<span class="sc">$</span>plot</span>
+<span id="cb33-10"><a href="#cb33-10" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="st">&quot;composition_ifnb.pdf&quot;</span>, comp<span class="sc">$</span>plot, <span class="at">width =</span> <span class="dv">10</span>, <span class="at">height =</span> <span class="dv">5</span>)</span>
+<span id="cb33-11"><a href="#cb33-11" tabindex="-1"></a></span>
+<span id="cb33-12"><a href="#cb33-12" tabindex="-1"></a><span class="co"># Underlying tidy data</span></span>
+<span id="cb33-13"><a href="#cb33-13" tabindex="-1"></a><span class="fu">head</span>(comp<span class="sc">$</span>df)     <span class="co"># sample, cluster, n_cells, prop, group</span></span></code></pre></div>
+<p>Test statistical significance of the composition shift using
+propeller (empirical-Bayes-moderated ANOVA on arcsin-sqrt transformed
+proportions):</p>
+<div class="sourceCode" id="cb34"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" tabindex="-1"></a>comp_test <span class="ot">&lt;-</span> <span class="fu">CompositionalTest</span>(</span>
+<span id="cb34-2"><a href="#cb34-2" tabindex="-1"></a>  integrated,</span>
+<span id="cb34-3"><a href="#cb34-3" tabindex="-1"></a>  <span class="at">cluster_col   =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb34-4"><a href="#cb34-4" tabindex="-1"></a>  <span class="at">sample_col    =</span> <span class="st">&quot;sample_id&quot;</span>,</span>
+<span id="cb34-5"><a href="#cb34-5" tabindex="-1"></a>  <span class="at">condition_col =</span> <span class="st">&quot;stim&quot;</span>,</span>
+<span id="cb34-6"><a href="#cb34-6" tabindex="-1"></a>  <span class="at">method        =</span> <span class="st">&quot;auto&quot;</span>        <span class="co"># propeller if available, else betareg, else wilcox</span></span>
+<span id="cb34-7"><a href="#cb34-7" tabindex="-1"></a>)</span>
+<span id="cb34-8"><a href="#cb34-8" tabindex="-1"></a><span class="fu">subset</span>(comp_test, padj <span class="sc">&lt;</span> <span class="fl">0.05</span>)</span></code></pre></div>
+<p>The IFN-β stimulated condition typically shows a shift in monocyte
+proportions and upregulation of ISGs across all cell types — a
+well-characterized response that makes <code>ifnb</code> a good sanity
+check that your integration and composition-testing pipelines are
+working correctly.</p>
+<div id="compositionanalysis-and-compositionestimationplot" class="section level3">
+<h3>12.1 <code>CompositionAnalysis()</code> and
+<code>CompositionEstimationPlot()</code></h3>
+<p><code>CompositionalTest()</code> above answers “does composition
+differ between CTRL and STIM” with a p-value per cell type.
+<code>CompositionAnalysis()</code> computes the same long-format
+counts/proportions but is the function whose output
+<code>CompositionEstimationPlot()</code> consumes to instead show
+<em>how big</em> that shift is, with a bootstrap 95% confidence
+interval, rather than just a p-value – see 10.1 for how to read that
+plot (raw per-donor swarm + effect size/CI panels) and what each
+<code>effect</code> option means. Since <code>ifnb</code> has real
+CTRL/STIM replicates (multiple donors per condition via
+<code>sample_id</code>), this is a genuine estimation-plot demo, not a
+syntax stub. Note that <code>comp2$test</code> below pools cells across
+donors rather than testing on the per-donor proportions
+<code>CompositionalTest()</code> above uses, so it emits a
+<code>warning()</code> and is a much rougher check than the
+propeller/wilcox result already computed above — included here only
+because <code>test = &quot;chisq&quot;</code> is a
+<code>CompositionAnalysis()</code> option, not as the test to actually
+report:</p>
+<div class="sourceCode" id="cb35"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" tabindex="-1"></a>comp2 <span class="ot">&lt;-</span> <span class="fu">CompositionAnalysis</span>(</span>
+<span id="cb35-2"><a href="#cb35-2" tabindex="-1"></a>  integrated,</span>
+<span id="cb35-3"><a href="#cb35-3" tabindex="-1"></a>  <span class="at">group_col     =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb35-4"><a href="#cb35-4" tabindex="-1"></a>  <span class="at">sample_col    =</span> <span class="st">&quot;sample_id&quot;</span>,</span>
+<span id="cb35-5"><a href="#cb35-5" tabindex="-1"></a>  <span class="at">condition_col =</span> <span class="st">&quot;stim&quot;</span>,</span>
+<span id="cb35-6"><a href="#cb35-6" tabindex="-1"></a>  <span class="at">test          =</span> <span class="st">&quot;chisq&quot;</span></span>
+<span id="cb35-7"><a href="#cb35-7" tabindex="-1"></a>)</span>
+<span id="cb35-8"><a href="#cb35-8" tabindex="-1"></a>comp2<span class="sc">$</span>test   <span class="co"># chi-square result across all cell types at once (pooled-cell caveat above)</span></span>
+<span id="cb35-9"><a href="#cb35-9" tabindex="-1"></a></span>
+<span id="cb35-10"><a href="#cb35-10" tabindex="-1"></a><span class="co"># Monocytes are the cell type most affected by IFN-β stimulation --</span></span>
+<span id="cb35-11"><a href="#cb35-11" tabindex="-1"></a><span class="co"># CompositionEstimationPlot() shows the effect size directly instead of a p-value</span></span>
+<span id="cb35-12"><a href="#cb35-12" tabindex="-1"></a><span class="fu">CompositionEstimationPlot</span>(comp2, <span class="at">group_levels =</span> <span class="st">&quot;CD14 Mono&quot;</span>,</span>
+<span id="cb35-13"><a href="#cb35-13" tabindex="-1"></a>                          <span class="at">idx =</span> <span class="fu">c</span>(<span class="st">&quot;CTRL&quot;</span>, <span class="st">&quot;STIM&quot;</span>))</span>
+<span id="cb35-14"><a href="#cb35-14" tabindex="-1"></a></span>
+<span id="cb35-15"><a href="#cb35-15" tabindex="-1"></a><span class="co"># Every cell type present, as a named list of plots</span></span>
+<span id="cb35-16"><a href="#cb35-16" tabindex="-1"></a>plots <span class="ot">&lt;-</span> <span class="fu">CompositionEstimationPlot</span>(comp2, <span class="at">idx =</span> <span class="fu">c</span>(<span class="st">&quot;CTRL&quot;</span>, <span class="st">&quot;STIM&quot;</span>))</span>
+<span id="cb35-17"><a href="#cb35-17" tabindex="-1"></a>plots[[<span class="st">&quot;CD14 Mono&quot;</span>]]</span>
+<span id="cb35-18"><a href="#cb35-18" tabindex="-1"></a></span>
+<span id="cb35-19"><a href="#cb35-19" tabindex="-1"></a><span class="co"># Cohen&#39;s h -- the effect size designed specifically for comparing two proportions</span></span>
+<span id="cb35-20"><a href="#cb35-20" tabindex="-1"></a><span class="fu">CompositionEstimationPlot</span>(comp2, <span class="at">idx =</span> <span class="fu">c</span>(<span class="st">&quot;CTRL&quot;</span>, <span class="st">&quot;STIM&quot;</span>),</span>
+<span id="cb35-21"><a href="#cb35-21" tabindex="-1"></a>                          <span class="at">group_levels =</span> <span class="st">&quot;CD14 Mono&quot;</span>, <span class="at">effect =</span> <span class="st">&quot;cohens_h&quot;</span>)</span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="differential-expression-pseudobulkde-plotvolcano" class="section level2">
+<h2>13. Differential Expression — <code>PseudobulkDE()</code> /
+<code>PlotVolcano()</code></h2>
+<p>The correct way to identify STIM-vs-CTRL DE genes is per-cell-type
+pseudobulk DE, not <code>FindMarkers</code>. <code>PseudobulkDE()</code>
+aggregates per (sample, cell_type) and runs DESeq2:</p>
+<div class="sourceCode" id="cb36"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" tabindex="-1"></a><span class="co"># Every cell type at once</span></span>
+<span id="cb36-2"><a href="#cb36-2" tabindex="-1"></a>de_all <span class="ot">&lt;-</span> <span class="fu">PseudobulkDE</span>(</span>
+<span id="cb36-3"><a href="#cb36-3" tabindex="-1"></a>  integrated,</span>
+<span id="cb36-4"><a href="#cb36-4" tabindex="-1"></a>  <span class="at">sample_col    =</span> <span class="st">&quot;sample_id&quot;</span>,</span>
+<span id="cb36-5"><a href="#cb36-5" tabindex="-1"></a>  <span class="at">condition_col =</span> <span class="st">&quot;stim&quot;</span>,</span>
+<span id="cb36-6"><a href="#cb36-6" tabindex="-1"></a>  <span class="at">ident_1       =</span> <span class="st">&quot;STIM&quot;</span>,</span>
+<span id="cb36-7"><a href="#cb36-7" tabindex="-1"></a>  <span class="at">ident_2       =</span> <span class="st">&quot;CTRL&quot;</span>,</span>
+<span id="cb36-8"><a href="#cb36-8" tabindex="-1"></a>  <span class="at">cluster_col   =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb36-9"><a href="#cb36-9" tabindex="-1"></a>  <span class="at">min_cells_per_sample      =</span> <span class="dv">10</span>,</span>
+<span id="cb36-10"><a href="#cb36-10" tabindex="-1"></a>  <span class="at">min_samples_per_condition =</span> <span class="dv">2</span></span>
+<span id="cb36-11"><a href="#cb36-11" tabindex="-1"></a>)</span>
+<span id="cb36-12"><a href="#cb36-12" tabindex="-1"></a></span>
+<span id="cb36-13"><a href="#cb36-13" tabindex="-1"></a><span class="co"># Inspect one cell type</span></span>
+<span id="cb36-14"><a href="#cb36-14" tabindex="-1"></a><span class="fu">head</span>(de_all<span class="sc">$</span>CD14_Mono<span class="sc">$</span>results)</span></code></pre></div>
+<p>Volcano plot for one cell type:</p>
+<div class="sourceCode" id="cb37"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" tabindex="-1"></a><span class="fu">PlotVolcano</span>(de_all<span class="sc">$</span>CD14_Mono<span class="sc">$</span>results,</span>
+<span id="cb37-2"><a href="#cb37-2" tabindex="-1"></a>            <span class="at">fc_threshold =</span> <span class="dv">1</span>,</span>
+<span id="cb37-3"><a href="#cb37-3" tabindex="-1"></a>            <span class="at">p_threshold  =</span> <span class="fl">0.05</span>,</span>
+<span id="cb37-4"><a href="#cb37-4" tabindex="-1"></a>            <span class="at">top_n        =</span> <span class="dv">20</span>,</span>
+<span id="cb37-5"><a href="#cb37-5" tabindex="-1"></a>            <span class="at">label_genes  =</span> <span class="fu">c</span>(<span class="st">&quot;ISG15&quot;</span>, <span class="st">&quot;IFI6&quot;</span>, <span class="st">&quot;MX1&quot;</span>, <span class="st">&quot;IFIT1&quot;</span>, <span class="st">&quot;IFIT3&quot;</span>))</span></code></pre></div>
+<p>Compare the DE profiles across two cell types (do they share the same
+ISGs?):</p>
+<div class="sourceCode" id="cb38"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" tabindex="-1"></a>cmp <span class="ot">&lt;-</span> <span class="fu">CompareMarkers</span>(</span>
+<span id="cb38-2"><a href="#cb38-2" tabindex="-1"></a>  de_all<span class="sc">$</span>CD14_Mono<span class="sc">$</span>results,</span>
+<span id="cb38-3"><a href="#cb38-3" tabindex="-1"></a>  de_all<span class="sc">$</span>CD4_T<span class="sc">$</span>results,</span>
+<span id="cb38-4"><a href="#cb38-4" tabindex="-1"></a>  <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">&quot;CD14_Mono&quot;</span>, <span class="st">&quot;CD4_T&quot;</span>)</span>
+<span id="cb38-5"><a href="#cb38-5" tabindex="-1"></a>)</span>
+<span id="cb38-6"><a href="#cb38-6" tabindex="-1"></a>cmp<span class="sc">$</span>overlap</span>
+<span id="cb38-7"><a href="#cb38-7" tabindex="-1"></a>cmp<span class="sc">$</span>plot                   <span class="co"># log2FC-vs-log2FC scatter, colored by category</span></span></code></pre></div>
+<hr />
+</div>
+<div id="cell-cell-communication-runliana" class="section level2">
+<h2>14. Cell-Cell Communication — <code>RunLIANA()</code></h2>
+<p>Compare ligand-receptor interactions between conditions by running
+LIANA on each stim/ctrl split, then intersecting the top
+interactions:</p>
+<div class="sourceCode" id="cb39"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" tabindex="-1"></a><span class="co"># CTRL</span></span>
+<span id="cb39-2"><a href="#cb39-2" tabindex="-1"></a>lr_ctrl <span class="ot">&lt;-</span> <span class="fu">RunLIANA</span>(</span>
+<span id="cb39-3"><a href="#cb39-3" tabindex="-1"></a>  <span class="fu">subset</span>(integrated, stim <span class="sc">==</span> <span class="st">&quot;CTRL&quot;</span>),</span>
+<span id="cb39-4"><a href="#cb39-4" tabindex="-1"></a>  <span class="at">idents_col =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb39-5"><a href="#cb39-5" tabindex="-1"></a>  <span class="at">method     =</span> <span class="st">&quot;consensus&quot;</span>,</span>
+<span id="cb39-6"><a href="#cb39-6" tabindex="-1"></a>  <span class="at">min_cells  =</span> <span class="dv">10</span></span>
+<span id="cb39-7"><a href="#cb39-7" tabindex="-1"></a>)</span>
+<span id="cb39-8"><a href="#cb39-8" tabindex="-1"></a></span>
+<span id="cb39-9"><a href="#cb39-9" tabindex="-1"></a><span class="co"># STIM</span></span>
+<span id="cb39-10"><a href="#cb39-10" tabindex="-1"></a>lr_stim <span class="ot">&lt;-</span> <span class="fu">RunLIANA</span>(</span>
+<span id="cb39-11"><a href="#cb39-11" tabindex="-1"></a>  <span class="fu">subset</span>(integrated, stim <span class="sc">==</span> <span class="st">&quot;STIM&quot;</span>),</span>
+<span id="cb39-12"><a href="#cb39-12" tabindex="-1"></a>  <span class="at">idents_col =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb39-13"><a href="#cb39-13" tabindex="-1"></a>  <span class="at">method     =</span> <span class="st">&quot;consensus&quot;</span>,</span>
+<span id="cb39-14"><a href="#cb39-14" tabindex="-1"></a>  <span class="at">min_cells  =</span> <span class="dv">10</span></span>
+<span id="cb39-15"><a href="#cb39-15" tabindex="-1"></a>)</span>
+<span id="cb39-16"><a href="#cb39-16" tabindex="-1"></a></span>
+<span id="cb39-17"><a href="#cb39-17" tabindex="-1"></a><span class="co"># Top interactions unique to STIM</span></span>
+<span id="cb39-18"><a href="#cb39-18" tabindex="-1"></a>top_ctrl <span class="ot">&lt;-</span> <span class="fu">head</span>(lr_ctrl<span class="sc">$</span>ligand.complex_receptor.complex, <span class="dv">100</span>)</span>
+<span id="cb39-19"><a href="#cb39-19" tabindex="-1"></a>top_stim <span class="ot">&lt;-</span> <span class="fu">head</span>(lr_stim<span class="sc">$</span>ligand.complex_receptor.complex, <span class="dv">100</span>)</span>
+<span id="cb39-20"><a href="#cb39-20" tabindex="-1"></a><span class="fu">setdiff</span>(top_stim, top_ctrl)   <span class="co"># candidate stim-specific interactions</span></span></code></pre></div>
+<p>For a differential ligand-receptor pipeline that formally tests
+condition effects, LIANA’s own <code>liana_deconstruct</code> or
+CellChat’s differential analysis (14.1 below) are the recommended paths
+— <code>RunLIANA()</code> is a starting point.</p>
+<div id="runcellchat" class="section level3">
+<h3>14.1 <code>RunCellChat()</code></h3>
+<p><code>RunCellChat()</code> wraps the full <code>CellChat</code>
+pipeline (<code>createCellChat</code> through <code>aggregateNet</code>)
+into one call, for one Seurat subset at a time — the same
+CTRL/STIM-split pattern as <code>RunLIANA()</code> above, but giving you
+<code>CellChat</code>’s own signaling-pathway-level output and
+comparison plots instead of a flat interaction table. <code>ifnb</code>
+is human, so pass <code>species = &quot;human&quot;</code>; <code>group_col</code>
+points at the same <code>cell_type</code> labels used throughout this
+vignette (<code>RunCellChat()</code>’s default <code>group_col</code> is
+<code>&quot;signaling_group&quot;</code>, so it must be overridden here).</p>
+<div class="sourceCode" id="cb40"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb40-1"><a href="#cb40-1" tabindex="-1"></a>cc_ctrl <span class="ot">&lt;-</span> <span class="fu">RunCellChat</span>(</span>
+<span id="cb40-2"><a href="#cb40-2" tabindex="-1"></a>  <span class="fu">subset</span>(integrated, stim <span class="sc">==</span> <span class="st">&quot;CTRL&quot;</span>),</span>
+<span id="cb40-3"><a href="#cb40-3" tabindex="-1"></a>  <span class="at">label     =</span> <span class="st">&quot;CTRL&quot;</span>,</span>
+<span id="cb40-4"><a href="#cb40-4" tabindex="-1"></a>  <span class="at">group_col =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb40-5"><a href="#cb40-5" tabindex="-1"></a>  <span class="at">species   =</span> <span class="st">&quot;human&quot;</span></span>
+<span id="cb40-6"><a href="#cb40-6" tabindex="-1"></a>)</span>
+<span id="cb40-7"><a href="#cb40-7" tabindex="-1"></a></span>
+<span id="cb40-8"><a href="#cb40-8" tabindex="-1"></a>cc_stim <span class="ot">&lt;-</span> <span class="fu">RunCellChat</span>(</span>
+<span id="cb40-9"><a href="#cb40-9" tabindex="-1"></a>  <span class="fu">subset</span>(integrated, stim <span class="sc">==</span> <span class="st">&quot;STIM&quot;</span>),</span>
+<span id="cb40-10"><a href="#cb40-10" tabindex="-1"></a>  <span class="at">label     =</span> <span class="st">&quot;STIM&quot;</span>,</span>
+<span id="cb40-11"><a href="#cb40-11" tabindex="-1"></a>  <span class="at">group_col =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb40-12"><a href="#cb40-12" tabindex="-1"></a>  <span class="at">species   =</span> <span class="st">&quot;human&quot;</span></span>
+<span id="cb40-13"><a href="#cb40-13" tabindex="-1"></a>)</span></code></pre></div>
+<p><code>cc_ctrl</code>/<code>cc_stim</code> are ordinary
+<code>CellChat</code> objects, so any <code>CellChat</code>
+visualization works directly on them. Merging the two lets
+<code>CellChat</code>’s own comparison functions show what actually
+shifted between conditions:</p>
+<div class="sourceCode" id="cb41"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" tabindex="-1"></a>merged <span class="ot">&lt;-</span> CellChat<span class="sc">::</span><span class="fu">mergeCellChat</span>(<span class="fu">list</span>(<span class="at">CTRL =</span> cc_ctrl, <span class="at">STIM =</span> cc_stim),</span>
+<span id="cb41-2"><a href="#cb41-2" tabindex="-1"></a>                                  <span class="at">add.names =</span> <span class="fu">c</span>(<span class="st">&quot;CTRL&quot;</span>, <span class="st">&quot;STIM&quot;</span>))</span>
+<span id="cb41-3"><a href="#cb41-3" tabindex="-1"></a></span>
+<span id="cb41-4"><a href="#cb41-4" tabindex="-1"></a><span class="co"># Total interactions/strength, CTRL vs STIM</span></span>
+<span id="cb41-5"><a href="#cb41-5" tabindex="-1"></a>CellChat<span class="sc">::</span><span class="fu">compareInteractions</span>(merged, <span class="at">show.legend =</span> <span class="cn">FALSE</span>, <span class="at">group =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">2</span>))</span>
+<span id="cb41-6"><a href="#cb41-6" tabindex="-1"></a></span>
+<span id="cb41-7"><a href="#cb41-7" tabindex="-1"></a><span class="co"># Which signaling pathways gained/lost strength in STIM</span></span>
+<span id="cb41-8"><a href="#cb41-8" tabindex="-1"></a>CellChat<span class="sc">::</span><span class="fu">rankNet</span>(merged, <span class="at">mode =</span> <span class="st">&quot;comparison&quot;</span>, <span class="at">stacked =</span> <span class="cn">TRUE</span>, <span class="at">do.stat =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb41-9"><a href="#cb41-9" tabindex="-1"></a></span>
+<span id="cb41-10"><a href="#cb41-10" tabindex="-1"></a><span class="co"># Bubble plot of specific source -&gt; target interactions, both conditions side by side</span></span>
+<span id="cb41-11"><a href="#cb41-11" tabindex="-1"></a>CellChat<span class="sc">::</span><span class="fu">netVisual_bubble</span>(merged, <span class="at">sources.use =</span> <span class="st">&quot;CD14 Mono&quot;</span>, <span class="at">targets.use =</span> <span class="st">&quot;CD4 T&quot;</span>,</span>
+<span id="cb41-12"><a href="#cb41-12" tabindex="-1"></a>                           <span class="at">comparison =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">2</span>))</span></code></pre></div>
+<p><code>nboot</code> (bootstrap iterations for
+<code>computeCommunProb()</code>’s significance test, default 25) and
+<code>min_cells</code> (minimum group size to keep an interaction,
+default 10) are the two knobs most worth raising for a real analysis —
+the low defaults keep a first pass fast, not to be used as final
+results:</p>
+<div class="sourceCode" id="cb42"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" tabindex="-1"></a>cc_stim_full <span class="ot">&lt;-</span> <span class="fu">RunCellChat</span>(</span>
+<span id="cb42-2"><a href="#cb42-2" tabindex="-1"></a>  <span class="fu">subset</span>(integrated, stim <span class="sc">==</span> <span class="st">&quot;STIM&quot;</span>),</span>
+<span id="cb42-3"><a href="#cb42-3" tabindex="-1"></a>  <span class="at">label     =</span> <span class="st">&quot;STIM&quot;</span>,</span>
+<span id="cb42-4"><a href="#cb42-4" tabindex="-1"></a>  <span class="at">group_col =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb42-5"><a href="#cb42-5" tabindex="-1"></a>  <span class="at">species   =</span> <span class="st">&quot;human&quot;</span>,</span>
+<span id="cb42-6"><a href="#cb42-6" tabindex="-1"></a>  <span class="at">nboot     =</span> <span class="dv">100</span></span>
+<span id="cb42-7"><a href="#cb42-7" tabindex="-1"></a>)</span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="save-with-provenance-savewithprovenance" class="section level2">
+<h2>15. Save with Provenance — <code>SaveWithProvenance()</code></h2>
+<p>Save the annotated object with a JSON provenance sidecar so
+downstream readers can inspect what analysis it went through without
+loading the <code>.rds</code>:</p>
+<div class="sourceCode" id="cb43"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" tabindex="-1"></a><span class="fu">SaveWithProvenance</span>(</span>
+<span id="cb43-2"><a href="#cb43-2" tabindex="-1"></a>  integrated,</span>
+<span id="cb43-3"><a href="#cb43-3" tabindex="-1"></a>  <span class="at">file    =</span> <span class="st">&quot;results/ifnb_integrated.rds&quot;</span>,</span>
+<span id="cb43-4"><a href="#cb43-4" tabindex="-1"></a>  <span class="at">git_dir =</span> <span class="fu">getwd</span>(),</span>
+<span id="cb43-5"><a href="#cb43-5" tabindex="-1"></a>  <span class="at">extra   =</span> <span class="fu">list</span>(<span class="at">project =</span> <span class="st">&quot;ifnb_demo&quot;</span>,</span>
+<span id="cb43-6"><a href="#cb43-6" tabindex="-1"></a>                 <span class="at">analyst =</span> <span class="st">&quot;K. Evensen&quot;</span>,</span>
+<span id="cb43-7"><a href="#cb43-7" tabindex="-1"></a>                 <span class="at">date    =</span> <span class="fu">format</span>(<span class="fu">Sys.Date</span>()))</span>
+<span id="cb43-8"><a href="#cb43-8" tabindex="-1"></a>)</span>
+<span id="cb43-9"><a href="#cb43-9" tabindex="-1"></a><span class="co"># Writes results/ifnb_integrated.rds</span></span>
+<span id="cb43-10"><a href="#cb43-10" tabindex="-1"></a><span class="co">#    AND results/ifnb_integrated_provenance.json</span></span></code></pre></div>
+<p>For a quick summary of the object’s state after all this work:</p>
+<div class="sourceCode" id="cb44"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb44-1"><a href="#cb44-1" tabindex="-1"></a><span class="fu">CellSuiteSummary</span>(integrated,</span>
+<span id="cb44-2"><a href="#cb44-2" tabindex="-1"></a>                 <span class="at">cluster_col =</span> <span class="st">&quot;cell_type&quot;</span>,</span>
+<span id="cb44-3"><a href="#cb44-3" tabindex="-1"></a>                 <span class="at">sample_col  =</span> <span class="st">&quot;sample_id&quot;</span>,</span>
+<span id="cb44-4"><a href="#cb44-4" tabindex="-1"></a>                 <span class="at">top_markers =</span> <span class="dv">5</span>)</span></code></pre></div>
+<hr />
+</div>
+<div id="session-info" class="section level2">
+<h2>16. Session Info</h2>
+<div class="sourceCode" id="cb45"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span></code></pre></div>
+<p>Key packages used in this vignette:</p>
+<table>
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Package</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>SingleCellTools</code></td>
+<td>Doublet calling, QC report/filter, integration, annotation, DE,
+composition, LIANA, provenance</td>
+</tr>
+<tr class="even">
+<td><code>Seurat</code></td>
+<td>Core data structure and analysis functions</td>
+</tr>
+<tr class="odd">
+<td><code>SeuratData</code></td>
+<td><code>ifnb</code> dataset</td>
+</tr>
+<tr class="even">
+<td><code>DoubletFinder</code></td>
+<td>Underlying doublet detection engine</td>
+</tr>
+<tr class="odd">
+<td><code>UCell</code></td>
+<td>Module scoring for annotation and cell-cycle phase</td>
+</tr>
+<tr class="even">
+<td><code>harmony</code></td>
+<td>Batch correction (called via <code>IntegrateLayers</code>)</td>
+</tr>
+<tr class="odd">
+<td><code>DESeq2</code></td>
+<td>Pseudobulk differential expression</td>
+</tr>
+<tr class="even">
+<td><code>speckle</code></td>
+<td>Propeller composition test</td>
+</tr>
+<tr class="odd">
+<td><code>CellTypist</code> (Python, via <code>reticulate</code>)</td>
+<td>Default reference-based annotation</td>
+</tr>
+<tr class="even">
+<td><code>scmap</code></td>
+<td>R-native alternative reference-based annotation</td>
+</tr>
+<tr class="odd">
+<td><code>liana</code></td>
+<td>Ligand-receptor consensus scoring</td>
+</tr>
+<tr class="even">
+<td><code>patchwork</code></td>
+<td>QCComparePlots grid layout</td>
+</tr>
+<tr class="odd">
+<td><code>ks</code></td>
+<td>2D KDE for <code>PlotFeatureDensity</code></td>
+</tr>
+<tr class="even">
+<td><code>jsonlite</code></td>
+<td>Provenance sidecar</td>
+</tr>
+<tr class="odd">
+<td><code>dplyr</code> / <code>ggplot2</code></td>
+<td>Data wrangling and plotting</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>For questions or bug reports, open an issue at <a href="https://github.com/gevensen95/SingleCellTools/issues">github.com/gevensen95/SingleCellTools/issues</a>.</em></p>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
