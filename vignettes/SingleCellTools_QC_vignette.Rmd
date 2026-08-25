@@ -1,0 +1,560 @@
+---
+title: "Quality Control with SingleCellTools"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Quality Control with SingleCellTools}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+**Package:** `SingleCellTools`
+**Author:** K. Garrett Evensen, PhD — Bioinformatics Analyst II, The Salk Institute
+**Version:** 2.8
+**Source:** [github.com/gevensen95/SingleCellTools](https://github.com/gevensen95/SingleCellTools)
+
+---
+
+## Table of Contents
+
+**Part I — Single-cell QC**
+
+1. [How this package thinks about QC](#1-how-this-package-thinks-about-qc)
+2. [Look before you filter](#2-look-before-you-filter)
+   - 2.1 [`PlotQCMetrics()` — the 30-second look](#21-plotqcmetrics--the-30-second-look)
+   - 2.2 [`GenerateQCReport()` — the real report](#22-generateqcreport--the-real-report)
+3. [Choosing cutoffs](#3-choosing-cutoffs)
+4. [`ApplyQCFilters()` — applying them](#4-applyqcfilters--applying-them)
+5. [`QCComparePlots()` — did the filter do what you meant?](#5-qccompareplots--did-the-filter-do-what-you-meant)
+6. [Doublets — `calldoublet()`](#6-doublets--calldoublet)
+7. [Batch effects — `BatchEffectQC()`](#7-batch-effects--batcheffectqc)
+8. [Cell cycle — `assign_cell_cycle_phase()`](#8-cell-cycle--assign_cell_cycle_phase)
+9. [Structural sanity checks](#9-structural-sanity-checks)
+
+**Part II — Spatial QC**
+
+10. [What changes when the data has coordinates](#10-what-changes-when-the-data-has-coordinates)
+11. [Inspecting a spatial object](#11-inspecting-a-spatial-object)
+12. [Metric-based QC still applies](#12-metric-based-qc-still-applies)
+13. [Spatial artifacts](#13-spatial-artifacts)
+    - 13.1 [Visium edge spots — `EdgeDetectionVisium()`](#131-visium-edge-spots--edgedetectionvisium)
+    - 13.2 [Imaging-platform FOV edges — `detect_fov_edges()`](#132-imaging-platform-fov-edges--detect_fov_edges)
+    - 13.3 [Tissue holes — `detect_tissue_holes()`](#133-tissue-holes--detect_tissue_holes)
+14. [Is the annotation spatially coherent? — `SpatialConcordance()`](#14-is-the-annotation-spatially-coherent--spatialconcordance)
+15. [Subsetting without corrupting images](#15-subsetting-without-corrupting-images)
+16. [A spatial QC recipe](#16-a-spatial-qc-recipe)
+
+---
+
+# Part I — Single-cell QC
+
+## 1. How this package thinks about QC
+
+QC here is four separable questions, and it helps to keep them apart because
+they fail differently:
+
+| Question | Tool |
+|---|---|
+| Are these barcodes cells? | `GenerateQCReport()` → `ApplyQCFilters()` |
+| Are they *single* cells? | `calldoublet()` |
+| Is variation between samples technical? | `BatchEffectQC()` |
+| Is variation within a sample a confounder? | `assign_cell_cycle_phase()` |
+
+The metric-based path is deliberately **two-step**: a report that *suggests*
+cutoffs and writes them to a CSV, then a separate call that *applies* them.
+The point is that the CSV is editable. You are expected to look at the report,
+disagree with some of its suggestions, change those numbers, and keep the file
+as the record of what you actually did.
+
+```{r, eval=FALSE}
+library(SingleCellTools)
+library(Seurat)
+
+# objs is a named list of Seurat objects, one per sample
+objs <- CreateRNAObjects(data_dirs, run_doublet_finder = TRUE)
+```
+
+## 2. Look before you filter
+
+### 2.1 `PlotQCMetrics()` — the 30-second look
+
+Violin panels of whatever QC columns exist, split by a grouping variable.
+Use it to decide whether anything is obviously wrong before investing in the
+full report.
+
+```{r, eval=FALSE}
+PlotQCMetrics(obj, group.by = "orig.ident")
+
+# Restrict to specific metrics, control the grid
+PlotQCMetrics(obj,
+              group.by = "sample",
+              qc_cols  = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+              ncol     = 3)
+```
+
+### 2.2 `GenerateQCReport()` — the real report
+
+Renders a standalone HTML report and, crucially, writes a **sidecar CSV** of
+suggested per-sample, per-metric cutoffs next to it
+(`<report>_cutoffs.csv`). That CSV is the input to `ApplyQCFilters()`.
+
+```{r, eval=FALSE}
+GenerateQCReport(objs,
+                 output_file = "qc/qc_report.html",
+                 title       = "Experiment 1 QC",
+                 sample_col  = "orig.ident")
+```
+
+Arguments worth knowing:
+
+```{r, eval=FALSE}
+GenerateQCReport(
+  objs,
+  output_file      = "qc/qc_report.html",
+  metadata_cols    = c("nFeature_RNA", "nCount_RNA",
+                       "percent.mt", "percent.rb", "percent.hb"),
+  mad_multiplier   = 3,      # width of the suggested interval, in MADs
+  log_skewed       = TRUE,   # log-scale metrics whose skew exceeds...
+  log_threshold    = 10,     # ...this
+  complexity_score = TRUE,   # genes-per-UMI, catches low-complexity barcodes
+  doublet_col      = "doublet_finder"
+)
+```
+
+`mad_multiplier` is the main dial. Cutoffs are median ± *k*·MAD per sample per
+metric, so lowering it filters harder. MAD is used rather than SD because the
+outliers you are trying to exclude would otherwise inflate the very statistic
+defining the threshold.
+
+## 3. Choosing cutoffs
+
+Open the HTML, then open the CSV. It has one row per (sample, metric):
+
+```
+sample,metric,suggest_lo,suggest_hi,median,mad,pct_pass
+Alt1,nFeature_RNA,214,3180,641,489,0.94
+Alt1,percent.mt,0,8.7,1.2,2.1,0.96
+...
+```
+
+Edit `suggest_lo` / `suggest_hi` freely — extra columns are ignored by the
+filter and passed through. Some judgement:
+
+- **`percent.mt` deserves a hard ceiling, not a MAD interval.** If a sample is
+  uniformly high-mitochondrial, its median is high and MAD-based cutoffs will
+  happily keep dying cells. Set an absolute value you're willing to defend.
+- **A lower bound on `nCount_RNA` is doing cell-calling**, which the upstream
+  pipeline already did. Be deliberate about overruling it.
+- **Degenerate rows are skipped, not applied.** If a metric is constant across
+  a sample its suggested quantiles coincide, and `suggest_lo == suggest_hi`
+  would keep only cells matching that exact value. `ApplyQCFilters()` detects
+  that (and missing or inverted bounds) and skips *that metric for that
+  sample*, leaving the others in force. Watch for the message — it usually
+  means the metric is uninformative for that sample.
+
+## 4. `ApplyQCFilters()` — applying them
+
+```{r, eval=FALSE}
+objs_filt <- ApplyQCFilters(objs, cutoffs = "qc/qc_report_cutoffs.csv")
+```
+
+Point it at the `.html` and it finds the sidecar CSV itself. Pass a data frame
+instead if you built cutoffs programmatically.
+
+```{r, eval=FALSE}
+res <- ApplyQCFilters(
+  objs,
+  cutoffs         = "qc/qc_report.html",   # sidecar resolved automatically
+  metrics         = c("nFeature_RNA", "percent.mt"),  # subset of the table
+  override        = list(percent.mt = c(0, 5)),       # beats the table
+  filter_doublets = TRUE,
+  return_report   = TRUE
+)
+
+res$obj        # filtered objects
+res$report     # per-sample, per-metric retention
+res$cutoffs    # what was actually applied
+```
+
+`return_report = TRUE` is worth making a habit. `res$report` gives
+`n_before` / `n_after` / `pct_kept` per metric, which is how you notice that
+one metric is doing all the filtering.
+
+A single object with multiple samples in one column works too:
+
+```{r, eval=FALSE}
+ApplyQCFilters(merged, cutoffs = cut_df, sample_col = "sample")
+```
+
+## 5. `QCComparePlots()` — did the filter do what you meant?
+
+Pre/post violins per sample with retention annotated.
+
+```{r, eval=FALSE}
+p <- QCComparePlots(objs, objs_filt)
+p <- QCComparePlots(objs, objs_filt, metrics = c("nCount_RNA", "percent.mt"))
+```
+
+Read it for **shape**, not just counts. A filter that removed a tail is doing
+its job; one that shifted the whole distribution removed a cell population.
+
+Two practical notes:
+
+- Objects in a list may carry per-sample metadata column *names* — most often
+  DoubletFinder's `pANN_<pN>_<pK>_<nExp>`, whose values differ per sample.
+  Columns not shared by every object are dropped with a warning, which is
+  expected and harmless.
+- `counts_size` shrinks the retention labels if they crowd each other on a
+  panel with many samples.
+
+## 6. Doublets — `calldoublet()`
+
+A DoubletFinder wrapper. Adds `doublet_finder` (`"Singlet"`/`"Doublet"`) and
+`doublet_pANN` (the raw score), and strips its own intermediates on the way
+out.
+
+```{r, eval=FALSE}
+obj <- calldoublet(obj, samplenameIndex = 1)
+
+# usually run through the loader instead
+objs <- CreateRNAObjects(data_dirs,
+                         run_doublet_finder = TRUE,
+                         doublet_rate       = 0.075)
+```
+
+**`doublet_rate` is the argument that matters.** It is the assumed doublet
+*formation* rate — the fraction of barcodes expected to be multiplets given
+how many cells were loaded — and it sets how many doublets the classifier
+looks for. It is deliberately **not** `pK`, which is the pANN neighborhood
+size chosen from the data and carries no information about doublet abundance.
+
+Scale it to your recovery rather than accepting the default. For 10X Chromium
+the rate runs at roughly 0.8% per 1,000 cells recovered:
+
+```{r, eval=FALSE}
+# ~4,000 cells recovered -> ~3%
+objs <- CreateRNAObjects(data_dirs, doublet_rate = 0.03)
+
+# per-sample rates, if recovery varies a lot
+objs <- Map(function(o, r) calldoublet(o, doublet_rate = r),
+            objs, c(Alt1 = 0.035, Alt2 = 0.05, PBS1 = 0.04))
+```
+
+Speed knobs, since the pK sweep dominates the runtime:
+
+```{r, eval=FALSE}
+calldoublet(obj,
+            pk_sweep_max_cells = 4000,  # estimate pK on a subsample
+            sweep_cores        = 1)     # paramSweep's own parallelism
+```
+
+Raising `sweep_cores` above 1 while `CreateRNAObjects(workers = n)` is also
+parallelizing oversubscribes the CPU; the loader errors up front if
+`workers * doublet_sweep_cores` exceeds the core count.
+
+Doublet filtering happens inside `ApplyQCFilters()` (`filter_doublets = TRUE`)
+rather than at call time, so labels survive for review.
+
+## 7. Batch effects — `BatchEffectQC()`
+
+Quantifies how mixed your batches are in a reduction, so "did integration
+work" stops being a matter of squinting at a UMAP.
+
+```{r, eval=FALSE}
+pre  <- BatchEffectQC(merged, reduction = "pca",     batch_col = "sample")
+post <- BatchEffectQC(merged, reduction = "harmony", batch_col = "sample")
+
+pre$summary
+post$summary
+```
+
+Run it **before and after** integration. The absolute number means little; the
+change means everything. With `celltype_col` set you also get `per_cluster`,
+which is where over-integration shows up — a cluster that mixed *too* well may
+have had a real biological difference erased.
+
+```{r, eval=FALSE}
+BatchEffectQC(merged, reduction = "harmony",
+              batch_col = "sample", celltype_col = "celltype")
+```
+
+## 8. Cell cycle — `assign_cell_cycle_phase()`
+
+UCell-based scoring, then a per-cell phase call. Works on human or mouse with
+no species argument — gene symbols are matched to the object's features
+case-insensitively, and the defaults come from
+`Seurat::cc.genes.updated.2019`.
+
+```{r, eval=FALSE}
+obj <- assign_cell_cycle_phase(obj)
+table(obj$Phase)
+```
+
+**Read `threshold_quantile` carefully.** A cell is G1 when *both* scores are at
+or below their quantile cutoffs, so the default `0.5` calls roughly 60% of
+cells "cycling" **on any dataset**, quiescent or not. It is a within-dataset
+rank, not an absolute call.
+
+Calibrate it against canonical markers rather than trusting the default:
+
+```{r, eval=FALSE}
+mk  <- intersect(c("Mki67", "Top2a", "Ccnb1", "Birc5"), rownames(obj))
+det <- Matrix::colSums(LayerData(obj, layer = "counts")[mk, , drop = FALSE] > 0)
+
+for (q in c(0.5, 0.75, 0.9, 0.95)) {
+  p <- assign_cell_cycle_phase(obj, threshold_quantile = q)$Phase
+  cat(sprintf("q=%.2f  cycling=%5.1f%%  marker+ among cycling=%5.1f%%\n",
+              q, 100 * mean(p != "G1"), 100 * mean(det[p != "G1"] > 0)))
+}
+```
+
+If precision barely improves as you tighten while recall collapses, the score
+is only weakly discriminative at your depth — in which case **don't
+discretize**. Regress on the continuous scores instead of the `Phase` factor:
+
+```{r, eval=FALSE}
+obj <- SCTransform(obj, vars.to.regress =
+  c("signature_1_S.Score_UCell", "signature_1_G2M.Score_UCell"))
+```
+
+## 9. Structural sanity checks
+
+Cheap, and they catch problems that look like biology later.
+
+```{r, eval=FALSE}
+# Duplicate gene symbols across a list of objects
+check_duplicate_genes(objs)
+
+# Gene ID type (symbol vs Ensembl vs Entrez) -- catches a mismatched reference
+check_gene_ids_across_objects(objs)
+
+# Per-cluster summary: sizes, QC metrics, sample composition
+CellSuiteSummary(merged, cluster_col = "seurat_clusters", sample_col = "sample")
+```
+
+`CellSuiteSummary()` is the fastest way to spot a cluster that is one sample's
+worth of low-quality cells wearing a cluster label.
+
+---
+
+# Part II — Spatial QC
+
+## 10. What changes when the data has coordinates
+
+Everything in Part I still applies — a low-count spot is still a low-count
+spot. Spatial adds three things it cannot see:
+
+1. **Position-dependent artifacts.** Tissue edges, FOV boundaries and holes
+   produce systematically odd measurements that no per-cell metric flags.
+2. **Images that must stay consistent with the cells.** Subsetting a spatial
+   object with plain `subset()` can leave `@images` referencing cells that no
+   longer exist.
+3. **A spatial coherence question.** Is an annotation spatially structured, or
+   scattered like noise?
+
+## 11. Inspecting a spatial object
+
+`SpatialObjectInfo()` returns one row per image — class, cell count, whether
+an actual image is attached or only coordinates. Run it first; most spatial
+confusion is really confusion about what `@images` contains.
+
+```{r, eval=FALSE}
+vis <- CreateVisiumObjects(data_dirs, file_type = "h5")
+SpatialObjectInfo(vis)
+```
+
+Coordinates for every image in one data frame, optionally joined to metadata:
+
+```{r, eval=FALSE}
+coords <- get_all_coords(obj, meta_cols = c("seurat_clusters", "nCount_Spatial"))
+head(coords)
+```
+
+That data frame is the escape hatch — anything the plotting helpers don't
+cover, you can do in `ggplot2` directly from it.
+
+## 12. Metric-based QC still applies
+
+The same report/filter/compare loop works; only the metric names change.
+
+```{r, eval=FALSE}
+GenerateQCReport(vis,
+                 output_file      = "qc/visium_qc.html",
+                 metadata_cols    = c("nFeature_Spatial", "nCount_Spatial",
+                                      "percent.mt"),
+                 spatial_max_cols = 3)
+
+vis_filt <- ApplyQCFilters(vis, cutoffs = "qc/visium_qc_cutoffs.csv")
+QCComparePlots(vis, vis_filt,
+               metrics = c("nCount_Spatial", "nFeature_Spatial"))
+```
+
+`QCComparePlots()` already log-scales `nCount_Spatial` / `nFeature_Spatial` by
+default. `spatial_max_cols` controls the report's spatial panel grid.
+
+One judgement call specific to spatial: a low-count spot at the tissue edge is
+usually an artifact, while a low-count spot in the middle of dense tissue may
+be a genuinely small or quiescent cell type. Filtering on counts alone treats
+them identically, which is the argument for the next section.
+
+## 13. Spatial artifacts
+
+### 13.1 Visium edge spots — `EdgeDetectionVisium()`
+
+Flags spots at the tissue border, where partial coverage depresses counts.
+Note it returns a **data frame**, not a modified object — join it back
+yourself.
+
+```{r, eval=FALSE}
+edges <- EdgeDetectionVisium(seurat.obj = vis[[1]],
+                             search     = "radius",
+                             radius_factor = 1.5)
+head(edges)   # barcode, coordinates, Filter, Filter2, Filter3, Filter4
+```
+
+The four `Filter*` columns are increasingly aggressive definitions of "edge"
+(`"Keep"` / `"Filter"`), so you can pick a stringency rather than accept one:
+
+```{r, eval=FALSE}
+vis[[1]]$edge <- edges$Filter2[match(colnames(vis[[1]]), edges$barcode)]
+vis_core <- SubsetSpatial(vis[[1]], subset = edge == "Keep")
+```
+
+Neighbor search is either `"radius"` (spots within `radius_factor` × the
+inferred spot spacing) or a fixed `neighbors` count. Radius is the safer
+default on tissue with variable spot density.
+
+### 13.2 Imaging-platform FOV edges — `detect_fov_edges()`
+
+For Xenium/CosMx/MERFISH, where the artifact is the *imaging field* boundary
+rather than the tissue border. Returns the object with an integer
+`edge_layer` column: how many erosion passes in a cell sits.
+
+```{r, eval=FALSE}
+obj <- detect_fov_edges(obj, method = "bbox", n_iterations = 2)
+table(obj$edge_layer)
+
+# drop the outermost layer only
+obj_core <- SubsetSpatial(obj, subset = edge_layer > 1)
+```
+
+`method = "bbox"` peels from the FOV bounding box and suits rectangular FOVs.
+`"angular"` flags cells whose neighbors span less than `gap_threshold` radians
+— cells on any boundary, including irregular tissue edges. Use `"angular"`
+when FOVs are not rectangular or have been stitched.
+
+### 13.3 Tissue holes — `detect_tissue_holes()`
+
+Finds interior voids — tears, folds, vessel lumens — which read as
+low-density regions rather than low-count cells.
+
+```{r, eval=FALSE}
+obj <- detect_tissue_holes(obj, min_hole_size = 4, sensitivity = 0.75)
+table(obj$hole_layer)
+```
+
+Raise `sensitivity` to flag more aggressively. `min_hole_size` guards against
+calling every small gap a hole. If a marker reliably marks the structure you
+*don't* want called a hole (a lumen-lining gene, say), `exclude_gene` keeps it
+out:
+
+```{r, eval=FALSE}
+detect_tissue_holes(obj, exclude_gene = "Pecam1",
+                    exclude_gene_threshold = 1)
+```
+
+Both detectors add a label rather than removing cells, deliberately — inspect
+the labels spatially before subsetting on them.
+
+## 14. Is the annotation spatially coherent? — `SpatialConcordance()`
+
+Tests whether cells sharing a label sit near each other more than chance, by
+permutation. This is the closest thing to an objective check that a clustering
+or deconvolution result is spatially real.
+
+```{r, eval=FALSE}
+SpatialConcordance(obj, group.by = "seurat_clusters", k = 6, n_perm = 100)
+```
+
+One row per image, with `observed` (mean same-label neighbor fraction),
+`null_mean`, `z`, `p`, `padj`.
+
+A high `z` says the labels are spatially structured. A `z` near zero says
+they're scattered — which for a tissue-architecture cluster means the cluster
+is probably technical. Run it on a shuffled label as a negative control:
+
+```{r, eval=FALSE}
+obj$shuffled <- sample(obj$seurat_clusters)
+SpatialConcordance(obj, group.by = "shuffled")   # z should be ~0
+```
+
+`exclude` drops labels before scoring — useful for an "Unknown" or low-quality
+class that would otherwise dominate.
+
+## 15. Subsetting without corrupting images
+
+**Use `SubsetSpatial()`, not `subset()`.** Plain subsetting can leave
+`@images` inconsistent with the cells that remain; `SubsetSpatial()` subsets
+every image alongside the expression data and drops images left with no cells,
+with a message.
+
+```{r, eval=FALSE}
+obj_sub <- SubsetSpatial(obj, subset = celltype == "Hepatocyte")
+obj_sub <- SubsetSpatial(obj, cells = keep_barcodes)
+obj_sub <- SubsetSpatial(obj, idents = c("0", "3"))
+obj_sub <- SubsetSpatial(obj, features = keep_genes)   # images untouched
+```
+
+Two related helpers:
+
+```{r, eval=FALSE}
+# Images named image, image.1, image.2... -> meaningful names
+obj <- RenameSpatialImages(obj, group_col = "sample")
+obj <- RenameSpatialImages(obj, new_names = c(image = "slice_A"))
+
+# Shrink an object for sharing: drop images, or keep coordinates only
+obj <- DropSpatialImage(obj, mode = "downgrade")   # coords stay, pixels go
+obj <- DropSpatialImage(obj, mode = "remove")      # everything goes
+```
+
+`mode = "downgrade"` is usually what you want before `saveRDS()` — the hires
+image is often most of the file size, and coordinates are what analysis needs.
+
+## 16. A spatial QC recipe
+
+```{r, eval=FALSE}
+# 1. What am I holding?
+vis <- CreateVisiumObjects(data_dirs, file_type = "h5")
+SpatialObjectInfo(vis)
+check_gene_ids_across_objects(vis)
+
+# 2. Standard metric QC
+GenerateQCReport(vis, output_file = "qc/visium_qc.html",
+                 metadata_cols = c("nFeature_Spatial", "nCount_Spatial",
+                                   "percent.mt"))
+#    -> edit qc/visium_qc_cutoffs.csv here <-
+vis_f <- ApplyQCFilters(vis, cutoffs = "qc/visium_qc_cutoffs.csv",
+                        return_report = TRUE)
+QCComparePlots(vis, vis_f$obj)
+
+# 3. Spatial artifacts -- label, look, then decide
+edges <- EdgeDetectionVisium(seurat.obj = vis_f$obj[[1]])
+vis_f$obj[[1]]$edge <- edges$Filter2[match(colnames(vis_f$obj[[1]]),
+                                           edges$barcode)]
+SpatialDimPlotFixed(vis_f$obj[[1]], group.by = "edge")
+
+# 4. Cluster, then ask whether the clusters are spatially real
+merged <- MergeSeurat(vis_f$obj, spatial = "Visium")
+SpatialConcordance(merged, group.by = "seurat_clusters")
+
+# 5. Shrink before saving
+saveRDS(DropSpatialImage(merged, mode = "downgrade"), "visium_qc.rds")
+```
+
+---
+
+## See also
+
+- The main [SingleCellTools vignette](SingleCellTools_vignette.html) for the
+  full analysis workflow.
+- `?GenerateQCReport`, `?ApplyQCFilters`, `?calldoublet` — every argument
+  above is documented with its rationale.

@@ -29,7 +29,15 @@
 #'   Arguments passed through to `IntegrateLayers`.
 #' @param new_reduction Name of the reduction created by integration.
 #' @param k_anchor,k_weight Arguments required for RPCA/CCA/JointPCA integration.
-#' @param markers Logical; if TRUE, run `FindAllMarkers` and save outputs.
+#' @param markers Logical; if TRUE (default), run
+#'   \code{\link[Seurat]{FindAllMarkers}}, write the full result to
+#'   \code{markers_all.csv}, and draw the top \code{marker_n} markers per
+#'   cluster to \code{marker_plot.pdf} via \code{\link{TopMarkerPlot}} --
+#'   so the panel matches the annotated style and auto-sizing of every other
+#'   marker plot in this package. If no gene survives filtering the plot is
+#'   skipped with a message; the merged object is still returned either way.
+#' @param marker_n Number of top marker genes per cluster to draw when
+#'   \code{markers = TRUE}. Default \code{10}. Ignored otherwise.
 #' @param group_column Metadata column used to compute median nCount per group
 #'   for `SCTransform`'s scale_factor.
 #' @param common_genes_only Logical; if TRUE, subset all input objects to genes
@@ -78,6 +86,7 @@ MergeSeurat <- function(seurat_objects,
                         k_anchor = NULL,
                         k_weight = NULL,
                         markers = TRUE,
+                        marker_n = 10,
                         group_column = 'orig.ident',
                         common_genes_only = FALSE,
                         common_genes_assay = NULL,
@@ -389,51 +398,30 @@ MergeSeurat <- function(seurat_objects,
                                              recorrect_umi = FALSE)
     utils::write.csv(marker_results, 'markers_all.csv')
 
-    p_val_adj <- avg_log2FC <- cluster <- NULL  # silence R CMD check NSE notes
-    markers_filtered <- marker_results %>%
-      dplyr::filter(p_val_adj < 0.05) %>%
-      dplyr::arrange(-avg_log2FC) %>%
-      dplyr::group_by(cluster) %>%
-      dplyr::slice_max(avg_log2FC, n = 10)
-
-    plot_genes <- unique(markers_filtered$gene)
-
-    if (length(plot_genes) == 0L) {
-      message('--- No markers passed p_val_adj < 0.05; skipping marker_plot.pdf ---')
-    } else {
-      # Size the page to the CONTENT rather than a fixed 10x10in. After
-      # coord_flip() genes run down the y axis and clusters across the x, so
-      # a 10-cluster run with 10 markers each is up to 100 gene labels
-      # crammed into 10 inches -- roughly 0.1in per label, well past
-      # illegible. Same coefficients/breakpoints as MarkerPlot()'s
-      # auto-sizing so the two functions produce consistent-looking output.
-      n_genes  <- length(plot_genes)
-      n_idents <- length(unique(Seurat::Idents(obj)))
-      plot_height <- max(6, n_genes * 0.16 + 2)
-      plot_width  <- max(7, n_idents * 0.6 + 3)
-      gene_text_size <- if (n_genes <= 30) 9
-                        else if (n_genes <= 60) 7.5
-                        else if (n_genes <= 100) 6.5
-                        else 5.5
-
-      p_markers <- Seurat::DotPlot(obj, features = plot_genes) +
-        ggplot2::coord_flip() +
-        ggplot2::labs(x = '', y = '') +
-        ggplot2::theme(
-          axis.text.y = ggplot2::element_text(size = gene_text_size),
-          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
-        )
-
-      message(sprintf(
-        '--- Saving marker_plot.pdf (%d genes x %d clusters, %.1f x %.1f in) ---',
-        n_genes, n_idents, plot_width, plot_height))
-      # plot = is explicit rather than relying on ggsave()'s last_plot(),
-      # and limitsize = FALSE because a run with many clusters can legitimately
-      # need a page taller than ggplot2's 50in guard.
-      ggplot2::ggsave('marker_plot.pdf', plot = p_markers,
-                      width = plot_width, height = plot_height,
-                      units = 'in', limitsize = FALSE)
-    }
+    # Hand the table we already have to TopMarkerPlot() rather than
+    # hand-rolling a DotPlot here. Passing `markers = marker_results` means
+    # FindAllMarkers() is NOT re-run, and the panel comes out in the same
+    # annotated style as every other marker plot in the package: right-edge
+    # cluster labels, shared auto-sizing, and the assay-presence /
+    # zero-expression / no-variance filtering that keeps blank and all-grey
+    # rows out of the figure.
+    #
+    # Wrapped in tryCatch() because this is the LAST step of a long and
+    # expensive function -- merging, integration, clustering and the RDS save
+    # have all already happened by now. A marker panel that legitimately
+    # cannot be drawn (nothing clears p_val_adj, or every candidate gene is
+    # filtered out) must not throw away the object this function exists to
+    # return.
+    p_markers <- tryCatch(
+      TopMarkerPlot(obj,
+                    n         = marker_n,
+                    markers   = marker_results,
+                    save_path = 'marker_plot.pdf'),
+      error = function(e) {
+        message('--- Skipping marker_plot.pdf: ', conditionMessage(e), ' ---')
+        NULL
+      }
+    )
   }
 
   return(obj)

@@ -6,24 +6,82 @@
 \usage{
 assign_cell_cycle_phase(
   seurat_obj,
-  s_genes,
-  g2m_genes,
+  s_genes = NULL,
+  g2m_genes = NULL,
+  assay = NULL,
   threshold_quantile = 0.5
 )
 }
 \arguments{
-\item{seurat_obj}{Seurat Object}
+\item{seurat_obj}{A Seurat object.}
 
-\item{s_genes}{S Phase Genes (must be species specific)}
+\item{s_genes}{S-phase genes. \code{NULL} (default) uses
+\code{Seurat::cc.genes.updated.2019$s.genes}. Supplied genes are
+resolved against the object the same way.}
 
-\item{g2m_genes}{G2M Phase Genes (must be species specific)}
+\item{g2m_genes}{G2M-phase genes. \code{NULL} (default) uses
+\code{Seurat::cc.genes.updated.2019$g2m.genes}.}
 
-\item{threshold_quantile}{Threshold for G1 Phase, 0.5 is the recommended threshold}
+\item{assay}{Assay whose features to match against and score.
+\code{NULL} (default) uses \code{DefaultAssay(seurat_obj)}.}
+
+\item{threshold_quantile}{Quantile of each score used as the G1 cutoff.
+Default \code{0.5} (median). A cell at or below both cutoffs is G1;
+otherwise it takes the phase with the higher score.}
 }
 \value{
 The input Seurat object with a new \code{$Phase} metadata column
-(\code{"G1"}, \code{"S"}, or \code{"G2M"} per cell).
+(\code{"G1"}, \code{"S"}, or \code{"G2M"} per cell), alongside the two
+UCell score columns.
 }
 \description{
-This function acts the same as Seurat's CellCycleScoring, but it uses AddModuleScore_UCell
+Acts like Seurat's \code{CellCycleScoring}, but scores the S and G2M gene
+sets with \code{UCell::AddModuleScore_UCell} instead of
+\code{AddModuleScore}, then calls a phase per cell from the two scores.
+}
+\details{
+Called with just an object, it uses Seurat's built-in cell-cycle gene
+lists and works on human or mouse data without being told which:
+
+\preformatted{obj <- assign_cell_cycle_phase(obj)}
+}
+\section{Where the default genes come from}{
+
+\code{Seurat::cc.genes.updated.2019} (43 S, 54 G2M) -- deliberately not
+\code{Seurat::cc.genes}, whose \code{MLF1IP}, \code{FAM64A} and \code{HN1}
+are symbols retired years ago (now \code{CENPU}, \code{PIMREG},
+\code{JPT1}); they match nothing in a current reference, so the old list
+silently loses 3 of its 97 genes.
+}
+
+\section{Species handling}{
+
+Gene symbols are matched against the object's own feature names
+\strong{case-insensitively}, so human (\code{MCM5}) and mouse
+(\code{Mcm5}) objects both work with no \code{species} argument and no
+ortholog table to keep in sync. Whatever casing the object uses is what
+gets scored. This was checked against a 24,593-row human/mouse ortholog
+map: for all 97 cell-cycle genes the case-insensitive match and the
+curated ortholog agree exactly, with no one-to-many ambiguity.
+
+Note this is a property of the cell-cycle gene set, not a general rule.
+Plenty of orthologs are not case-variants (\code{FCGR3A} vs \code{Fcgr3}),
+so do not reach for this trick as a general symbol converter. Genes the
+object doesn't contain are reported and dropped.
+}
+
+\examples{
+\dontrun{
+# Human or mouse -- no species argument needed
+obj <- assign_cell_cycle_phase(obj)
+
+# Override the gene sets
+obj <- assign_cell_cycle_phase(obj, s_genes = my_s, g2m_genes = my_g2m)
+
+table(obj$Phase)
+}
+
+}
+\seealso{
+\code{\link[Seurat]{CellCycleScoring}}
 }

@@ -24,6 +24,7 @@ MergeSeurat(
   k_anchor = NULL,
   k_weight = NULL,
   markers = TRUE,
+  marker_n = 10,
   group_column = "orig.ident",
   common_genes_only = FALSE,
   common_genes_assay = NULL,
@@ -73,7 +74,16 @@ Every other method still goes through \code{IntegrateLayers()} unchanged.}
 
 \item{k_anchor, k_weight}{Arguments required for RPCA/CCA/JointPCA integration.}
 
-\item{markers}{Logical; if TRUE, run \code{FindAllMarkers} and save outputs.}
+\item{markers}{Logical; if TRUE (default), run
+\code{\link[Seurat]{FindAllMarkers}}, write the full result to
+\code{markers_all.csv}, and draw the top \code{marker_n} markers per
+cluster to \code{marker_plot.pdf} via \code{\link{TopMarkerPlot}} --
+so the panel matches the annotated style and auto-sizing of every other
+marker plot in this package. If no gene survives filtering the plot is
+skipped with a message; the merged object is still returned either way.}
+
+\item{marker_n}{Number of top marker genes per cluster to draw when
+\code{markers = TRUE}. Default \code{10}. Ignored otherwise.}
 
 \item{group_column}{Metadata column used to compute median nCount per group
 for \code{SCTransform}'s scale_factor.}
