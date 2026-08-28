@@ -5,6 +5,23 @@
 #' input (cell-cycle phase, spatial maps, edge-spot summary, sample
 #' correlation) are silently skipped.
 #'
+#' \strong{ATAC (Signac) samples}: detected automatically per sample by
+#' checking whether the resolved assay is a \code{ChromatinAssay} -- no
+#' argument needed. \code{CreateATACObjects()}'s QC columns
+#' (\code{TSS.enrichment}, \code{nucleosome_signal}, \code{pct_reads_in_peaks},
+#' \code{blacklist_ratio}, \code{peak_region_fragments}) are auto-appended to
+#' \code{metadata_cols} whenever present, so they ride through the violin,
+#' density, summary, and suggested-cutoffs sections the same as any other
+#' metric -- no ATAC-specific argument needed for those either. Three
+#' sections are gene/transcript-shaped and don't have a clean peak-level
+#' equivalent, so ATAC samples are excluded from them specifically (an
+#' all-ATAC input degrades gracefully to that section's existing
+#' not-applicable message, same as e.g. the cell-cycle section already does
+#' when no \code{Phase} column exists): top expressed genes, the
+#' \code{log10GenesPerUMI} complexity score, and the pseudobulk sample-sample
+#' correlation heatmap. A mixed-modality list (some RNA samples, some ATAC)
+#' is supported -- those three sections just run on the RNA subset.
+#'
 #' Sample identification:
 #' \itemize{
 #'   \item If \code{obj} is a single Seurat object, the per-cell
@@ -51,7 +68,11 @@
 #'   alongside \code{percent.mt} -- silently skipped, like any other
 #'   requested column, on samples/objects that don't have them (e.g. older
 #'   objects built before \code{CreateRNAObjects()} started computing these,
-#'   or non-RNA assays).
+#'   or non-RNA assays). \code{CreateATACObjects()}'s five QC columns
+#'   (\code{TSS.enrichment}, \code{nucleosome_signal}, \code{pct_reads_in_peaks},
+#'   \code{blacklist_ratio}, \code{peak_region_fragments}) are always
+#'   auto-appended when present in the data, regardless of what's passed
+#'   here -- no need to list them explicitly.
 #' @param doublet_col Metadata column holding doublet calls. \code{NULL}
 #'   skips the doublet section.
 #' @param top_n_genes Number of top-expressed genes per sample to display.
@@ -115,9 +136,19 @@ GenerateQCReport <- function(obj,
   # ---- Normalize input ---------------------------------------------------
   # samples: named list of lists, each entry { md, counts (sparse), images }
   # n_genes_per_sample: integer vector
+  # A ChromatinAssay (Signac) is a peak x cell assay, not gene x cell -- the
+  # class name alone tells us this without needing Signac attached, since
+  # inherits()/is() only compare against the object's own class attribute.
+  # Used below to skip sections whose "counts" semantics don't carry over to
+  # peaks (top expressed genes, the complexity/novelty score, pseudobulk
+  # correlation) -- everything else (violins, cutoffs, summary table) is
+  # metric-name-agnostic and applies to ATAC's own QC columns unchanged.
+  .is_chromatin_assay <- function(o, a) inherits(o[[a]], "ChromatinAssay")
+
   if (inherits(obj, "Seurat")) {
     src_obj <- obj
     a       <- if (is.null(assay)) Seurat::DefaultAssay(src_obj) else assay
+    is_atac <- .is_chromatin_assay(src_obj, a)
     md_full <- src_obj@meta.data
     if (sample_col %in% colnames(md_full)) {
       split_key <- as.character(md_full[[sample_col]])
@@ -136,11 +167,12 @@ GenerateQCReport <- function(obj,
     samples <- lapply(names(sample_to_cells), function(nm) {
       cells <- sample_to_cells[[nm]]
       list(
-        name   = nm,
-        md     = md_full[cells, , drop = FALSE],
-        counts = if (!is.null(full_counts)) full_counts[, cells, drop = FALSE] else NULL,
-        images = src_obj@images,
-        cells  = cells
+        name    = nm,
+        md      = md_full[cells, , drop = FALSE],
+        counts  = if (!is.null(full_counts)) full_counts[, cells, drop = FALSE] else NULL,
+        images  = src_obj@images,
+        cells   = cells,
+        is_atac = is_atac
       )
     })
     names(samples) <- names(sample_to_cells)
@@ -153,14 +185,15 @@ GenerateQCReport <- function(obj,
       o <- obj[[nm]]
       a <- if (is.null(assay)) Seurat::DefaultAssay(o) else assay
       list(
-        name   = nm,
-        md     = o@meta.data,
-        counts = tryCatch(
+        name    = nm,
+        md      = o@meta.data,
+        counts  = tryCatch(
           SeuratObject::LayerData(o, assay = a, layer = "counts"),
           error = function(e) NULL
         ),
-        images = o@images,
-        cells  = colnames(o)
+        images  = o@images,
+        cells   = colnames(o),
+        is_atac = .is_chromatin_assay(o, a)
       )
     })
     names(samples) <- names(obj)
@@ -193,6 +226,16 @@ GenerateQCReport <- function(obj,
   }
   resolved <- vapply(metadata_cols, resolve_one, character(1))
   resolved <- unique(na.omit(resolved))
+
+  # Auto-surface CreateATACObjects()'s QC columns the same way Phase/
+  # doublet_col/is_edge are auto-detected below, rather than requiring the
+  # caller to pass an ATAC-specific `metadata_cols`. Only appends names that
+  # actually appear in at least one sample, so RNA-only input is unaffected.
+  atac_metrics <- c("TSS.enrichment", "nucleosome_signal", "pct_reads_in_peaks",
+                    "blacklist_ratio", "peak_region_fragments")
+  atac_metrics_present <- intersect(atac_metrics, all_cols)
+  resolved <- unique(c(resolved, atac_metrics_present))
+
   if (!identical(resolved, metadata_cols)) {
     message("Resolved metadata_cols to: ",
             paste(resolved, collapse = ", "))
@@ -276,13 +319,18 @@ GenerateQCReport <- function(obj,
       percent.mt = if ("percent.mt" %in% colnames(md)) md$percent.mt else NA_real_,
       feat_col   = feat_col,
       count_col  = count_col,
+      is_atac    = isTRUE(s$is_atac),
       stringsAsFactors = FALSE,
       row.names = NULL
     )
   }))
 
   # ---- Top expressed genes per sample -----------------------------------
+  # Skipped for ATAC samples -- "expressed" doesn't have a peak-level
+  # equivalent as directly interpretable as a gene symbol, so this section
+  # only ever reflects RNA (or other gene-indexed) samples in a mixed list.
   top_genes_df <- do.call(rbind, lapply(samples, function(s) {
+    if (isTRUE(s$is_atac)) return(NULL)
     if (is.null(s$counts) || nrow(s$counts) == 0) return(NULL)
     means <- Matrix::rowMeans(s$counts)
     top_idx <- order(means, decreasing = TRUE)[seq_len(min(top_n_genes, length(means)))]
@@ -332,7 +380,11 @@ GenerateQCReport <- function(obj,
   # no template changes; not run through the log-skew transform above since
   # a ratio in (0, 1] has no heavy tail to correct for.
   if (isTRUE(complexity_score) && !is.null(scatter_df)) {
-    ok <- is.finite(scatter_df$nFeature) & is.finite(scatter_df$nCount) &
+    # ATAC rows excluded up front -- "genes detected per UMI" has no
+    # equivalent low-quality-droplet interpretation for "peaks per fragment",
+    # so this score isn't computed for them at all (not just hidden).
+    ok <- !scatter_df$is_atac &
+      is.finite(scatter_df$nFeature) & is.finite(scatter_df$nCount) &
       scatter_df$nFeature > 0 & scatter_df$nCount > 1
     if (any(ok)) {
       comp_vals   <- log10(scatter_df$nFeature[ok]) / log10(scatter_df$nCount[ok])
@@ -434,17 +486,23 @@ GenerateQCReport <- function(obj,
   if (!is.null(edge_summary) && nrow(edge_summary) == 0) edge_summary <- NULL
 
   # ---- Pseudobulk sample-sample correlation -----------------------------
+  # ATAC samples excluded -- peak coordinates aren't the same genomic unit
+  # as genes, and different samples' peak sets (even after CreateATACObjects()'s
+  # shared-peak-set construction) aren't guaranteed comparable the same way
+  # gene symbols are across arbitrary RNA samples, so this section only ever
+  # correlates the RNA (or other gene-indexed) samples in a mixed list.
   cor_mat <- NULL
-  if (length(samples) >= 2) {
-    have_counts <- vapply(samples, function(s) !is.null(s$counts), logical(1))
+  rna_samples <- samples[!vapply(samples, function(s) isTRUE(s$is_atac), logical(1))]
+  if (length(rna_samples) >= 2) {
+    have_counts <- vapply(rna_samples, function(s) !is.null(s$counts), logical(1))
     if (all(have_counts)) {
-      gene_sets    <- lapply(samples, function(s) rownames(s$counts))
+      gene_sets    <- lapply(rna_samples, function(s) rownames(s$counts))
       common_genes <- Reduce(intersect, gene_sets)
       if (length(common_genes) >= 100) {
-        pb <- vapply(samples, function(s) {
+        pb <- vapply(rna_samples, function(s) {
           Matrix::rowSums(s$counts[common_genes, , drop = FALSE])
         }, FUN.VALUE = numeric(length(common_genes)))
-        colnames(pb) <- names(samples)
+        colnames(pb) <- names(rna_samples)
         # CPM-like normalization, then log1p
         size_factors <- colSums(pb)
         size_factors[size_factors == 0] <- 1
@@ -682,7 +740,7 @@ GenerateQCReport <- function(obj,
     "    ggplot2::theme(legend.position = 'none',",
     "                   axis.text.y = ggplot2::element_text(size = 7)) +",
     "    ggplot2::labs(x = NULL, y = 'Mean expression')",
-    "} else cat('No counts available; skipping top-gene plot.')",
+    "} else cat('No counts available (or every sample is ATAC); skipping top-gene plot.')",
     "```",
     "",
     "## Suggested filtering cutoffs",
@@ -731,7 +789,7 @@ GenerateQCReport <- function(obj,
     "",
     "```{r cor, fig.height=5}",
     "if (is.null(b$cor_mat)) {",
-    "  cat('Not enough samples (or shared genes) for a correlation heatmap.')",
+    "  cat('Not enough non-ATAC samples (or shared genes) for a correlation heatmap.')",
     "} else {",
     "  cm <- b$cor_mat",
     "  long <- data.frame(",

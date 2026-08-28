@@ -31,7 +31,8 @@ MergeSeurat(
   banksy = FALSE,
   banksy_lambda = 0.2,
   banksy_k_geom = 15,
-  banksy_assay = NULL
+  banksy_assay = NULL,
+  atac_lsi_first_dim = 2
 )
 }
 \arguments{
@@ -118,6 +119,13 @@ when \code{banksy = TRUE}.}
 \code{use_SCT = TRUE}, else the technology-native assay actually normalized
 above (\code{'Spatial'} or \code{'Xenium'}, matching \code{spatial}). Only used when
 \code{banksy = TRUE}.}
+
+\item{atac_lsi_first_dim}{First LSI component to include in
+\code{FindNeighbors()}/\code{RunUMAP()}'s \code{dims} when ATAC input is detected.
+Default \code{2}, dropping the first component -- by LSI convention it
+usually correlates with sequencing depth rather than biology (see
+Signac's own vignette). Pass \code{1} to include it. Ignored for non-ATAC
+input.}
 }
 \value{
 A merged, integrated, clustered Seurat object.
@@ -126,4 +134,28 @@ A merged, integrated, clustered Seurat object.
 Merges a list of Seurat objects, normalizes (SCT or LogNormalize), runs PCA,
 integrates layers, finds neighbors/clusters, runs UMAP, and (optionally)
 computes per-cluster markers.
+}
+\details{
+\strong{ATAC (Signac) input} is detected automatically -- checked via
+whether the first object's default assay is a \code{ChromatinAssay}; every
+object in \code{seurat_objects} must agree (mixing ATAC and non-ATAC
+objects in one call errors). When detected, \code{use_SCT}/normalization
+and \code{RunPCA()} are replaced entirely by \code{RunATACWrapper()}
+(TF-IDF -> top features -> LSI, Signac's standard ATAC recipe -- peak
+accessibility counts aren't gene-expression counts, so neither
+log-normalization/SCT nor PCA are the right tool), producing an
+\code{"lsi"} reduction instead of \code{"pca"}. \code{integration_reduction}
+defaults to \code{"lsi"} automatically in this case (still overridable).
+By LSI convention the first component usually correlates with sequencing
+depth rather than biology, so downstream \code{FindNeighbors()}/
+\code{RunUMAP()} use \code{dims = atac_lsi_first_dim:max_dims} (default
+\code{2:max_dims}) rather than starting at 1. Only \code{spatial = 'no'}
+and \code{integration = 'HarmonyIntegration'} are supported for ATAC input
+(errors otherwise) -- the merge-time Visium/Xenium assay coercion doesn't
+apply to a ChromatinAssay, and anchor-based integration (RPCA/CCA/JointPCA)
+on LSI space isn't a validated combination here, mirroring the same
+constraint already placed on \code{banksy = TRUE}. \code{markers = TRUE}
+(the default) is silently skipped for ATAC input rather than run with
+RNA-tuned thresholds -- call \code{Signac::FindMarkers()}/
+\code{FindAllMarkers()} directly with ATAC-appropriate settings instead.
 }

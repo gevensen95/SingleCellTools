@@ -35,7 +35,11 @@ violin distributions and use for the cutoff table. Default includes
 alongside \code{percent.mt} -- silently skipped, like any other
 requested column, on samples/objects that don't have them (e.g. older
 objects built before \code{CreateRNAObjects()} started computing these,
-or non-RNA assays).}
+or non-RNA assays). \code{CreateATACObjects()}'s five QC columns
+(\code{TSS.enrichment}, \code{nucleosome_signal}, \code{pct_reads_in_peaks},
+\code{blacklist_ratio}, \code{peak_region_fragments}) are always
+auto-appended when present in the data, regardless of what's passed
+here -- no need to list them explicitly.}
 
 \item{sample_col}{Metadata column used as the sample identifier when
 \code{obj} is a single Seurat object. Default \code{"orig.ident"}.
@@ -86,6 +90,23 @@ input (cell-cycle phase, spatial maps, edge-spot summary, sample
 correlation) are silently skipped.
 }
 \details{
+\strong{ATAC (Signac) samples}: detected automatically per sample by
+checking whether the resolved assay is a \code{ChromatinAssay} -- no
+argument needed. \code{CreateATACObjects()}'s QC columns
+(\code{TSS.enrichment}, \code{nucleosome_signal}, \code{pct_reads_in_peaks},
+\code{blacklist_ratio}, \code{peak_region_fragments}) are auto-appended to
+\code{metadata_cols} whenever present, so they ride through the violin,
+density, summary, and suggested-cutoffs sections the same as any other
+metric -- no ATAC-specific argument needed for those either. Three
+sections are gene/transcript-shaped and don't have a clean peak-level
+equivalent, so ATAC samples are excluded from them specifically (an
+all-ATAC input degrades gracefully to that section's existing
+not-applicable message, same as e.g. the cell-cycle section already does
+when no \code{Phase} column exists): top expressed genes, the
+\code{log10GenesPerUMI} complexity score, and the pseudobulk sample-sample
+correlation heatmap. A mixed-modality list (some RNA samples, some ATAC)
+is supported -- those three sections just run on the RNA subset.
+
 Sample identification:
 \itemize{
 \item If \code{obj} is a single Seurat object, the per-cell

@@ -4,6 +4,29 @@
 #' integrates layers, finds neighbors/clusters, runs UMAP, and (optionally)
 #' computes per-cluster markers.
 #'
+#' \strong{ATAC (Signac) input} is detected automatically -- checked via
+#' whether the first object's default assay is a \code{ChromatinAssay}; every
+#' object in \code{seurat_objects} must agree (mixing ATAC and non-ATAC
+#' objects in one call errors). When detected, \code{use_SCT}/normalization
+#' and \code{RunPCA()} are replaced entirely by \code{RunATACWrapper()}
+#' (TF-IDF -> top features -> LSI, Signac's standard ATAC recipe -- peak
+#' accessibility counts aren't gene-expression counts, so neither
+#' log-normalization/SCT nor PCA are the right tool), producing an
+#' \code{"lsi"} reduction instead of \code{"pca"}. \code{integration_reduction}
+#' defaults to \code{"lsi"} automatically in this case (still overridable).
+#' By LSI convention the first component usually correlates with sequencing
+#' depth rather than biology, so downstream \code{FindNeighbors()}/
+#' \code{RunUMAP()} use \code{dims = atac_lsi_first_dim:max_dims} (default
+#' \code{2:max_dims}) rather than starting at 1. Only \code{spatial = 'no'}
+#' and \code{integration = 'HarmonyIntegration'} are supported for ATAC input
+#' (errors otherwise) -- the merge-time Visium/Xenium assay coercion doesn't
+#' apply to a ChromatinAssay, and anchor-based integration (RPCA/CCA/JointPCA)
+#' on LSI space isn't a validated combination here, mirroring the same
+#' constraint already placed on \code{banksy = TRUE}. \code{markers = TRUE}
+#' (the default) is silently skipped for ATAC input rather than run with
+#' RNA-tuned thresholds -- call \code{Signac::FindMarkers()}/
+#' \code{FindAllMarkers()} directly with ATAC-appropriate settings instead.
+#'
 #' @param seurat_objects A named list of Seurat objects.
 #' @param cell_IDs Character vector of cell ID prefixes (defaults to
 #'   `names(seurat_objects)`).
@@ -65,6 +88,12 @@
 #'   `use_SCT = TRUE`, else the technology-native assay actually normalized
 #'   above (`'Spatial'` or `'Xenium'`, matching `spatial`). Only used when
 #'   `banksy = TRUE`.
+#' @param atac_lsi_first_dim First LSI component to include in
+#'   `FindNeighbors()`/`RunUMAP()`'s `dims` when ATAC input is detected.
+#'   Default `2`, dropping the first component -- by LSI convention it
+#'   usually correlates with sequencing depth rather than biology (see
+#'   Signac's own vignette). Pass `1` to include it. Ignored for non-ATAC
+#'   input.
 #' @return A merged, integrated, clustered Seurat object.
 #' @export
 MergeSeurat <- function(seurat_objects,
@@ -93,9 +122,51 @@ MergeSeurat <- function(seurat_objects,
                         banksy = FALSE,
                         banksy_lambda = 0.2,
                         banksy_k_geom = 15,
-                        banksy_assay = NULL) {
+                        banksy_assay = NULL,
+                        atac_lsi_first_dim = 2) {
+
+  # ---- Detect ATAC (Signac ChromatinAssay) input --------------------------
+  # Every object in one call must be the same modality -- checked up front so
+  # a mixed list fails here with an actionable message rather than partway
+  # through NormalizeData()/RunPCA() on a ChromatinAssay object it was never
+  # designed for. Tolerant of non-Seurat elements (e.g. the plain numeric
+  # placeholders some argument-validation tests pass in to exercise the
+  # `stop()`s below without building real Seurat objects) -- those are
+  # treated as non-ATAC rather than erroring out here.
+  .is_atac_obj <- function(o) {
+    if (!inherits(o, 'Seurat')) return(FALSE)
+    a <- tryCatch(o[[Seurat::DefaultAssay(o)]], error = function(e) NULL)
+    inherits(a, 'ChromatinAssay')
+  }
+  is_atac <- .is_atac_obj(seurat_objects[[1]])
+  if (length(seurat_objects) > 1) {
+    other_is_atac <- vapply(seurat_objects[-1], .is_atac_obj, logical(1))
+    if (any(other_is_atac != is_atac)) {
+      stop('\n\n  Error: `seurat_objects` mixes ATAC (ChromatinAssay) and ',
+           'non-ATAC objects in one call -- MergeSeurat() expects one ',
+           'modality per call. Merge each modality separately.')
+    }
+  }
+  # `integration_reduction` defaults to 'pca', which doesn't exist for ATAC
+  # input (only 'lsi' does) -- switch the default when the caller didn't
+  # explicitly set it themselves.
+  if (is_atac && missing(integration_reduction)) integration_reduction <- 'lsi'
 
   # ---- Argument validation ------------------------------------------------
+  if (isTRUE(is_atac) && spatial != 'no') {
+    stop('\n\n  Error: ATAC (ChromatinAssay) input was detected, but ',
+         'spatial = "', spatial, '". Only spatial = "no" is supported for ',
+         'ATAC input -- the Visium/Xenium merge-time assay coercion doesn\'t ',
+         'apply to a ChromatinAssay.')
+  }
+  if (isTRUE(is_atac) && integration != 'HarmonyIntegration') {
+    stop('\n\n  Error: ATAC (ChromatinAssay) input was detected, but ',
+         'integration = "', integration, '". Only integration = ',
+         '"HarmonyIntegration" is currently supported for ATAC input -- ',
+         'anchor-based integration (RPCA/CCA/JointPCA) on LSI space isn\'t ',
+         'a validated combination here (the same constraint already placed ',
+         'on banksy = TRUE, for the same underlying reason).')
+  }
   if (integration != 'HarmonyIntegration' & new_reduction == 'harmony') {
     stop('\n\n  Error: Integration method is not the default (HarmonyIntegration).\n  Change new_reduction to match integration method')
   }
@@ -257,74 +328,96 @@ MergeSeurat <- function(seurat_objects,
                  add.cell.ids = cell_IDs)
   }
 
-  # ---- Normalize ----------------------------------------------------------
-  message('--- Normalizing data ---')
-  if (use_SCT) {
-    calculate_median <- function(data, group_column, column_name) {
-      data %>%
-        dplyr::group_by(.data[[group_column]]) %>%
-        dplyr::summarise(Median = stats::median(.data[[column_name]], na.rm = TRUE)) %>%
-        dplyr::arrange(Median)
-    }
-    nCount_col <- colnames(obj@meta.data)[stringr::str_detect(colnames(obj@meta.data),
-                                                              'nCount')][1]
-    med_counts <- calculate_median(data = obj@meta.data,
-                                   group_column = group_column,
-                                   column_name = nCount_col)
-    message('  Running SCTransform')
-    obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress,
-                               assay = sct_assay,
-                               scale_factor = med_counts$Median[1])
+  if (isTRUE(is_atac)) {
+    # ---- ATAC: TF-IDF -> top features -> LSI (replaces Normalize + PCA) ----
+    # Peak accessibility counts aren't gene-expression counts, so neither
+    # log-normalization/SCT nor PCA is the right tool here -- RunATACWrapper()
+    # runs Signac's standard TF-IDF -> FindTopFeatures -> RunSVD recipe and
+    # produces an "lsi" reduction in place of "pca".
+    message('--- Running RunATACWrapper() (TF-IDF -> top features -> LSI) ---')
+    obj <- RunATACWrapper(obj, n_components = max_dims)
   } else {
-    message('  Running NormalizeData / FindVariableFeatures / ScaleData')
-    obj <- Seurat::NormalizeData(obj)
-    obj <- Seurat::FindVariableFeatures(obj)
-    obj <- Seurat::ScaleData(obj, vars.to.regress = to_regress)
-  }
-
-  # ---- BANKSY (optional spatial-aware clustering) --------------------------
-  if (isTRUE(banksy)) {
-    if (is.null(banksy_assay)) {
-      # SCTransform always names its output assay "SCT" regardless of
-      # `sct_assay`. Without SCT, NormalizeData()/ScaleData() above ran on
-      # whatever assay was DefaultAssay(obj) after merging -- for spatial
-      # objects that's the technology-native assay ("Spatial"/"Xenium"),
-      # *not* the "RNA" copy created during the merge step above.
-      banksy_assay <- if (use_SCT) {
-        'SCT'
-      } else if (spatial == 'Visium') {
-        'Spatial'
-      } else {
-        'Xenium'
+    # ---- Normalize ----------------------------------------------------------
+    message('--- Normalizing data ---')
+    if (use_SCT) {
+      calculate_median <- function(data, group_column, column_name) {
+        data %>%
+          dplyr::group_by(.data[[group_column]]) %>%
+          dplyr::summarise(Median = stats::median(.data[[column_name]], na.rm = TRUE)) %>%
+          dplyr::arrange(Median)
       }
+      nCount_col <- colnames(obj@meta.data)[stringr::str_detect(colnames(obj@meta.data),
+                                                                'nCount')][1]
+      med_counts <- calculate_median(data = obj@meta.data,
+                                     group_column = group_column,
+                                     column_name = nCount_col)
+      message('  Running SCTransform')
+      obj <- Seurat::SCTransform(obj, vars.to.regress = to_regress,
+                                 assay = sct_assay,
+                                 scale_factor = med_counts$Median[1])
+    } else {
+      message('  Running NormalizeData / FindVariableFeatures / ScaleData')
+      obj <- Seurat::NormalizeData(obj)
+      obj <- Seurat::FindVariableFeatures(obj)
+      obj <- Seurat::ScaleData(obj, vars.to.regress = to_regress)
     }
-    # merge() leaves Seurat v5 assay layers split per input object (e.g.
-    # "data.1"/"data.2" rather than one unified "data" layer) until
-    # JoinLayers() is called -- NormalizeData()/ScaleData() above tolerate
-    # that split fine, but RunBanksy()'s GetAssayData(layer = slot) call
-    # does not ("GetAssayData doesn't work for multiple layers in v5
-    # assay."). Join defensively; a no-op if the assay is already joined
-    # (e.g. a single pre-merged object, or spatial = 'no').
-    obj <- tryCatch(SeuratObject::JoinLayers(obj, assay = banksy_assay),
-                    error = function(e) obj)
-    message('--- Running BANKSY (spatial-aware clustering) ---')
-    obj <- RunBanksyWrapper(obj, lambda = banksy_lambda, assay = banksy_assay,
-                            k_geom = banksy_k_geom, group = group_column,
-                            run_pca = TRUE, npcs = max_dims)
-  } else {
-    # ---- PCA ----------------------------------------------------------------
-    message('--- Running PCA ---')
-    obj <- Seurat::RunPCA(obj)
+
+    # ---- BANKSY (optional spatial-aware clustering) --------------------------
+    if (isTRUE(banksy)) {
+      if (is.null(banksy_assay)) {
+        # SCTransform always names its output assay "SCT" regardless of
+        # `sct_assay`. Without SCT, NormalizeData()/ScaleData() above ran on
+        # whatever assay was DefaultAssay(obj) after merging -- for spatial
+        # objects that's the technology-native assay ("Spatial"/"Xenium"),
+        # *not* the "RNA" copy created during the merge step above.
+        banksy_assay <- if (use_SCT) {
+          'SCT'
+        } else if (spatial == 'Visium') {
+          'Spatial'
+        } else {
+          'Xenium'
+        }
+      }
+      # merge() leaves Seurat v5 assay layers split per input object (e.g.
+      # "data.1"/"data.2" rather than one unified "data" layer) until
+      # JoinLayers() is called -- NormalizeData()/ScaleData() above tolerate
+      # that split fine, but RunBanksy()'s GetAssayData(layer = slot) call
+      # does not ("GetAssayData doesn't work for multiple layers in v5
+      # assay."). Join defensively; a no-op if the assay is already joined
+      # (e.g. a single pre-merged object, or spatial = 'no').
+      obj <- tryCatch(SeuratObject::JoinLayers(obj, assay = banksy_assay),
+                      error = function(e) obj)
+      message('--- Running BANKSY (spatial-aware clustering) ---')
+      obj <- RunBanksyWrapper(obj, lambda = banksy_lambda, assay = banksy_assay,
+                              k_geom = banksy_k_geom, group = group_column,
+                              run_pca = TRUE, npcs = max_dims)
+    } else {
+      # ---- PCA ----------------------------------------------------------------
+      message('--- Running PCA ---')
+      obj <- Seurat::RunPCA(obj)
+    }
   }
 
   # ---- Choose dims (elbow prompt or fixed max_dims) -----------------------
   if (use_elbow_plot) {
-    elbow_plot <- Seurat::ElbowPlot(obj, reduction = if (isTRUE(banksy)) 'pca_banksy' else 'pca')
+    elbow_reduction <- if (isTRUE(is_atac)) {
+      'lsi'
+    } else if (isTRUE(banksy)) {
+      'pca_banksy'
+    } else {
+      'pca'
+    }
+    elbow_plot <- Seurat::ElbowPlot(obj, reduction = elbow_reduction)
     print(elbow_plot)
     dims_to_use <- as.numeric(readline(prompt = 'Enter # of PCs: '))
   } else {
     dims_to_use <- max_dims
   }
+
+  # ATAC's first LSI component usually correlates with sequencing depth
+  # rather than biology (Signac convention) -- start FindNeighbors()/
+  # RunUMAP() at atac_lsi_first_dim (default 2) instead of 1 in that case.
+  dims_start <- if (isTRUE(is_atac)) atac_lsi_first_dim else 1
 
   # ---- Integrate ------------------------------------------------------------
   # HarmonyIntegration always goes through harmony::RunHarmony() directly
@@ -369,11 +462,11 @@ MergeSeurat <- function(seurat_objects,
 
   # ---- Cluster + UMAP -----------------------------------------------------
   message('--- Finding neighbors and clusters ---')
-  obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = 1:dims_to_use)
+  obj <- Seurat::FindNeighbors(obj, reduction = new_reduction, dims = dims_start:dims_to_use)
   obj <- Seurat::FindClusters(obj, resolution = cluster_resolution)
 
   message('--- Running UMAP ---')
-  obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = 1:dims_to_use)
+  obj <- Seurat::RunUMAP(obj, reduction = new_reduction, dims = dims_start:dims_to_use)
 
   # ---- Save RDS (single, deduplicated path) -------------------------------
   if (isTRUE(save_rds_file)) {
@@ -389,7 +482,14 @@ MergeSeurat <- function(seurat_objects,
   ggplot2::ggsave('dimplot_seurat_clusters.pdf', height = 5, width = 7)
 
   # ---- Markers (only place that early-returned before; now always reached)
-  if (isTRUE(markers)) {
+  if (isTRUE(markers) && isTRUE(is_atac)) {
+    message('--- Skipping FindAllMarkers(): ATAC input detected and RNA-tuned ',
+            'thresholds (logfc.threshold, min.pct) don\'t apply to peak ',
+            'accessibility. Call Signac::FindMarkers()/FindAllMarkers() ',
+            'directly with ATAC-appropriate settings (e.g. ',
+            'test.use = "LR", latent.vars = "peak_region_fragments") if you ',
+            'need differential accessibility. ---')
+  } else if (isTRUE(markers)) {
     message('--- Running FindAllMarkers ---')
     marker_results <- Seurat::FindAllMarkers(obj,
                                              logfc.threshold = 1,
