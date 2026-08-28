@@ -49,6 +49,13 @@
 #'   sessions via \code{future::plan(multisession)}, restored on exit. Note
 #'   each worker holds its own copy of that sample's fragments/counts, so
 #'   peak memory scales with \code{workers}.
+#' @param save_filtered_path Only used when \code{interactive = TRUE}: path to
+#'   write the filtered object list to via \code{saveRDS()} once the
+#'   interactive prompts finish, so an interactive session's answers aren't
+#'   lost if the R session ends before you assign the return value elsewhere.
+#'   Default \code{"seurat_objects_filtered.rds"} (written to the working
+#'   directory, matching this function's original behavior). Set to
+#'   \code{NULL} to skip writing a file.
 #' @return A list of filtered Seurat objects
 #' @export
 CreateATACObjectsFilter <-
@@ -59,7 +66,8 @@ CreateATACObjectsFilter <-
            nucleosome_signal_max = 4, TSS.enrichment_min = 2,
            peakwidths_max = 10000,
            peakwidths_min = 20, passed_filters_value = 500,
-           workers = length(data_dirs)) {
+           workers = length(data_dirs),
+           save_filtered_path = "seurat_objects_filtered.rds") {
     workers <- .resolve_workers(workers, n_samples = length(data_dirs),
                                 was_default = missing(workers))
 
@@ -70,6 +78,24 @@ CreateATACObjectsFilter <-
         stop("Package 'future.apply' is required for workers > 1. ",
             "install.packages('future.apply')")
       }
+
+      # Same BLAS/LAPACK thread-clamp as CreateRNAObjects()/CreateATACObjects()
+      # -- see CreateATACObjects.R for why unset = NA / Sys.unsetenv() matter.
+      old_blas_env <- Sys.getenv(c("VECLIB_MAXIMUM_THREADS", "OMP_NUM_THREADS",
+                                   "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"),
+                                 unset = NA)
+      Sys.setenv(VECLIB_MAXIMUM_THREADS = "1", OMP_NUM_THREADS = "1",
+                OPENBLAS_NUM_THREADS = "1", MKL_NUM_THREADS = "1")
+      on.exit({
+        was_set <- !is.na(old_blas_env)
+        if (any(was_set)) {
+          do.call(Sys.setenv, as.list(old_blas_env[was_set]))
+        }
+        if (any(!was_set)) {
+          Sys.unsetenv(names(old_blas_env)[!was_set])
+        }
+      }, add = TRUE)
+
       old_plan <- future::plan(future::multisession, workers = workers)
       on.exit(future::plan(old_plan), add = TRUE)
     }
@@ -77,6 +103,11 @@ CreateATACObjectsFilter <-
     if (filter == FALSE & interactive == TRUE) {
       stop("Error: Set filter=TRUE to use interactiver, otherwise set
   interactive=FALSE to skip filtering")
+    }
+    if (!is.null(treatment) && length(treatment) != length(data_dirs)) {
+      stop(sprintf(
+        "`treatment` has length %d but there are %d `data_dirs` -- these must match one-to-one, or samples would silently get wrong/NA treatment labels via recycling.",
+        length(treatment), length(data_dirs)))
     }
     if (!is.null(object_names) && length(object_names) != length(data_dirs)) {
       stop('`object_names` must be the same length as `data_dirs` (', length(data_dirs),
@@ -127,7 +158,7 @@ CreateATACObjectsFilter <-
     # (and errored outright with exactly 1 sample, since 2:length(x) counts
     # backward to 2:1 when length(x) == 1).
     combined.peaks <- GenomicRanges::reduce(do.call(c, peak_data_list))
-    peakwidths <- width(combined.peaks)
+    peakwidths <- GenomicRanges::width(combined.peaks)
     combined.peaks <- combined.peaks[peakwidths < peakwidths_max &
                                        peakwidths > peakwidths_min]
     message(sprintf('  Peaks within width range [%d, %d]: %d',
@@ -136,7 +167,7 @@ CreateATACObjectsFilter <-
     message('--- Removing peaks on scaffolds (keeping main chromosomes) ---')
     #remove scaffolds not in genome
     main.chroms <- GenomeInfoDb::standardChromosomes(bsgenome_obj)
-    keep.peaks <- as.logical(seqnames(granges(combined.peaks)) %in% main.chroms)
+    keep.peaks <- as.logical(GenomeInfoDb::seqnames(GenomicRanges::granges(combined.peaks)) %in% main.chroms)
     combined.peaks <- combined.peaks[keep.peaks, ]
     message(sprintf('  Peaks after scaffold removal: %d', length(combined.peaks)))
 
@@ -144,9 +175,14 @@ CreateATACObjectsFilter <-
     # extract gene annotations from EnsDb
     annotations <- Signac::GetGRangesFromEnsDb(ensdb = ensdb_obj)
 
-    # change to UCSC style since the data was mapped to hg19
-    seqlevels(annotations) <- paste0('chr', seqlevels(annotations))
-    genome(annotations) <- genome
+    # EnsDb annotations come out in Ensembl seqname style ("1", "2", ..., "MT");
+    # ChromatinAssay/fragment data here is UCSC style ("chr1", "chr2", ...,
+    # "chrM"). seqlevelsStyle<- handles the full mapping (including the
+    # MT -> chrM special case), unlike a manual paste0("chr", ...), which
+    # would produce the wrong "chrMT" and leave every other non-numbered
+    # contig unmapped.
+    GenomeInfoDb::seqlevelsStyle(annotations) <- "UCSC"
+    GenomeInfoDb::genome(annotations) <- genome
 
     message(sprintf('--- Building Seurat ATAC objects per sample%s ---',
                     if (workers > 1) sprintf(' (%d parallel workers)', workers) else ''))
@@ -174,28 +210,30 @@ CreateATACObjectsFilter <-
       md <- md[md$passed_filters > passed_filters_value, ]
 
       # Create fragment objects
-      frag.obj <- CreateFragmentObject(path = paste(dir, '/outs/fragments.tsv.gz', sep = ''),
-                                       cells = rownames(md))
+      frag.obj <- Signac::CreateFragmentObject(path = paste(dir, '/outs/fragments.tsv.gz', sep = ''),
+                                               cells = rownames(md))
 
       # Create Feature matrix objects
-      counts <- FeatureMatrix(
+      counts <- Signac::FeatureMatrix(
         fragments = frag.obj,
         features = combined.peaks,
         cells = rownames(md)
       )
 
-      #Create chromatin assay and final object with QC metics
-      assay <- CreateChromatinAssay(counts, fragments = frag.obj)
-      seurat.obj <- CreateSeuratObject(assay, assay = "ATAC", meta.data=md,
-                                       project = basename(dir))
+      # Create chromatin assay and final object with QC metrics. `genome`
+      # tags the assay's own seqinfo (previously only `annotations` got a
+      # genome tag, leaving the assay itself untagged).
+      assay <- Signac::CreateChromatinAssay(counts, fragments = frag.obj, genome = genome)
+      seurat.obj <- Seurat::CreateSeuratObject(assay, assay = "ATAC", meta.data = md,
+                                               project = basename(dir))
 
       # add the gene information to the object
-      Annotation(seurat.obj) <- annotations
+      Signac::Annotation(seurat.obj) <- annotations
 
-      seurat.obj <- NucleosomeSignal(seurat.obj)
+      seurat.obj <- Signac::NucleosomeSignal(seurat.obj)
       seurat.obj$nucleosome_group <- ifelse(seurat.obj$nucleosome_signal > 4,
                                             'NS > 4', 'NS < 4')
-      seurat.obj <- TSSEnrichment(seurat.obj)
+      seurat.obj <- Signac::TSSEnrichment(seurat.obj)
       seurat.obj$pct_reads_in_peaks <- seurat.obj$peak_region_fragments /
         seurat.obj$passed_filters * 100
       seurat.obj$blacklist_ratio <- seurat.obj$blacklist_region_fragments /
@@ -347,8 +385,10 @@ CreateATACObjectsFilter <-
               blacklist_ratio.plot + nucleosome_signal.plot +
               patchwork::plot_layout(ncol = 3))
 
-      message('--- Saving filtered Seurat objects ---')
-      saveRDS(seurat_objects, 'seurat_objects_filtered.rds')
+      if (!is.null(save_filtered_path)) {
+        message('--- Saving filtered Seurat objects to ', save_filtered_path, ' ---')
+        saveRDS(seurat_objects, save_filtered_path)
+      }
 
       return(seurat_objects)
     } else {

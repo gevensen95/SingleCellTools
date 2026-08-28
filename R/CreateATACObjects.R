@@ -54,6 +54,31 @@ CreateATACObjects <-
         stop("Package 'future.apply' is required for workers > 1. ",
             "install.packages('future.apply')")
       }
+
+      # Same BLAS/LAPACK thread-clamp as CreateRNAObjects() -- FeatureMatrix()
+      # and the fragment-counting step underneath it can multithread
+      # internally, so `workers` background sessions doing that at once would
+      # otherwise oversubscribe the CPU the same way unclamped PCA/scaling
+      # did there. unset = NA distinguishes "never set" from "set to empty
+      # string" so restoring on exit uses Sys.unsetenv() rather than
+      # Sys.setenv(VAR = ""), which would leave a literal empty-string value
+      # behind (see CreateRNAObjects.R for the OMP_NUM_THREADS warning that
+      # causes).
+      old_blas_env <- Sys.getenv(c("VECLIB_MAXIMUM_THREADS", "OMP_NUM_THREADS",
+                                   "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"),
+                                 unset = NA)
+      Sys.setenv(VECLIB_MAXIMUM_THREADS = "1", OMP_NUM_THREADS = "1",
+                OPENBLAS_NUM_THREADS = "1", MKL_NUM_THREADS = "1")
+      on.exit({
+        was_set <- !is.na(old_blas_env)
+        if (any(was_set)) {
+          do.call(Sys.setenv, as.list(old_blas_env[was_set]))
+        }
+        if (any(!was_set)) {
+          Sys.unsetenv(names(old_blas_env)[!was_set])
+        }
+      }, add = TRUE)
+
       old_plan <- future::plan(future::multisession, workers = workers)
       on.exit(future::plan(old_plan), add = TRUE)
     }
@@ -63,6 +88,11 @@ CreateATACObjects <-
     }
     if (isTRUE(add_treatment) && is.null(treatment)) {
       warning('add_treatment = TRUE but `treatment` is NULL -- no Treatment column will be added.')
+    }
+    if (!is.null(treatment) && length(treatment) != length(data_dirs)) {
+      stop(sprintf(
+        "`treatment` has length %d but there are %d `data_dirs` -- these must match one-to-one, or samples would silently get wrong/NA treatment labels via recycling.",
+        length(treatment), length(data_dirs)))
     }
     if (!is.null(object_names) && length(object_names) != length(data_dirs)) {
       stop('`object_names` must be the same length as `data_dirs` (', length(data_dirs),
@@ -101,7 +131,7 @@ CreateATACObjects <-
                                      header = FALSE, col.names = c("chr", "start", "end"),
                                      data.table = FALSE)
       # Make GRanges objects
-      gr <- makeGRangesFromDataFrame(peak_data)
+      gr <- GenomicRanges::makeGRangesFromDataFrame(peak_data)
     })
 
     message('--- Building combined peak set ---')
@@ -113,7 +143,7 @@ CreateATACObjects <-
     # (and errored outright with exactly 1 sample, since 2:length(x) counts
     # backward to 2:1 when length(x) == 1).
     combined.peaks <- GenomicRanges::reduce(do.call(c, peak_data_list))
-    peakwidths <- width(combined.peaks)
+    peakwidths <- GenomicRanges::width(combined.peaks)
     combined.peaks <- combined.peaks[peakwidths < peakwidths_max &
                                        peakwidths > peakwidths_min]
     message(sprintf('  Peaks within width range [%d, %d]: %d',
@@ -121,8 +151,8 @@ CreateATACObjects <-
 
     message('--- Removing peaks on scaffolds (keeping main chromosomes) ---')
     #remove scaffolds not in genome
-    main.chroms <- standardChromosomes(bsgenome_obj)
-    keep.peaks <- as.logical(seqnames(granges(combined.peaks)) %in% main.chroms)
+    main.chroms <- GenomeInfoDb::standardChromosomes(bsgenome_obj)
+    keep.peaks <- as.logical(GenomeInfoDb::seqnames(GenomicRanges::granges(combined.peaks)) %in% main.chroms)
     combined.peaks <- combined.peaks[keep.peaks, ]
     message(sprintf('  Peaks after scaffold removal: %d', length(combined.peaks)))
 
@@ -130,9 +160,14 @@ CreateATACObjects <-
     # extract gene annotations from EnsDb
     annotations <- Signac::GetGRangesFromEnsDb(ensdb = ensdb_obj)
 
-    # change to UCSC style since the data was mapped to hg19
-    seqlevels(annotations) <- paste0('chr', seqlevels(annotations))
-    genome(annotations) <- genome
+    # EnsDb annotations come out in Ensembl seqname style ("1", "2", ..., "MT");
+    # ChromatinAssay/fragment data here is UCSC style ("chr1", "chr2", ...,
+    # "chrM"). seqlevelsStyle<- handles the full mapping (including the
+    # MT -> chrM special case), unlike a manual paste0("chr", ...), which
+    # would produce the wrong "chrMT" and leave every other non-numbered
+    # contig unmapped.
+    GenomeInfoDb::seqlevelsStyle(annotations) <- "UCSC"
+    GenomeInfoDb::genome(annotations) <- genome
 
     message(sprintf('--- Building Seurat ATAC objects per sample%s ---',
                     if (workers > 1) sprintf(' (%d parallel workers)', workers) else ''))
@@ -160,28 +195,30 @@ CreateATACObjects <-
       md <- md[md$passed_filters > passed_filters_value, ]
 
       # Create fragment objects
-      frag.obj <- CreateFragmentObject(path = paste(dir, '/outs/fragments.tsv.gz', sep = ''),
-                                       cells = rownames(md))
+      frag.obj <- Signac::CreateFragmentObject(path = paste(dir, '/outs/fragments.tsv.gz', sep = ''),
+                                               cells = rownames(md))
 
       # Create Feature matrix objects
-      counts <- FeatureMatrix(
+      counts <- Signac::FeatureMatrix(
         fragments = frag.obj,
         features = combined.peaks,
         cells = rownames(md)
       )
 
-      #Create chromatin assay and final object with QC metics
-      assay <- CreateChromatinAssay(counts, fragments = frag.obj)
-      seurat.obj <- CreateSeuratObject(assay, assay = "ATAC", meta.data=md,
-                                       project = basename(dir))
+      # Create chromatin assay and final object with QC metrics. `genome`
+      # tags the assay's own seqinfo (previously only `annotations` got a
+      # genome tag, leaving the assay itself untagged).
+      assay <- Signac::CreateChromatinAssay(counts, fragments = frag.obj, genome = genome)
+      seurat.obj <- Seurat::CreateSeuratObject(assay, assay = "ATAC", meta.data = md,
+                                               project = basename(dir))
 
       # add the gene information to the object
-      Annotation(seurat.obj) <- annotations
+      Signac::Annotation(seurat.obj) <- annotations
 
-      seurat.obj <- NucleosomeSignal(seurat.obj)
+      seurat.obj <- Signac::NucleosomeSignal(seurat.obj)
       seurat.obj$nucleosome_group <- ifelse(seurat.obj$nucleosome_signal > 4,
                                             'NS > 4', 'NS < 4')
-      seurat.obj <- TSSEnrichment(seurat.obj)
+      seurat.obj <- Signac::TSSEnrichment(seurat.obj)
       seurat.obj$pct_reads_in_peaks <- seurat.obj$peak_region_fragments /
         seurat.obj$passed_filters * 100
       seurat.obj$blacklist_ratio <- seurat.obj$blacklist_region_fragments /

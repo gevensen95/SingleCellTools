@@ -20,7 +20,8 @@ CreateATACObjectsFilter(
   peakwidths_max = 10000,
   peakwidths_min = 20,
   passed_filters_value = 500,
-  workers = length(data_dirs)
+  workers = length(data_dirs),
+  save_filtered_path = "seurat_objects_filtered.rds"
 )
 }
 \arguments{
@@ -77,6 +78,14 @@ worker sessions. \code{workers > 1} spins up that many background R
 sessions via \code{future::plan(multisession)}, restored on exit. Note
 each worker holds its own copy of that sample's fragments/counts, so
 peak memory scales with \code{workers}.}
+
+\item{save_filtered_path}{Only used when \code{interactive = TRUE}: path to
+write the filtered object list to via \code{saveRDS()} once the
+interactive prompts finish, so an interactive session's answers aren't
+lost if the R session ends before you assign the return value elsewhere.
+Default \code{"seurat_objects_filtered.rds"} (written to the working
+directory, matching this function's original behavior). Set to
+\code{NULL} to skip writing a file.}
 }
 \value{
 A list of filtered Seurat objects
