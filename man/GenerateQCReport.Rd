@@ -14,6 +14,7 @@ GenerateQCReport(
   doublet_col = "doublet_finder",
   top_n_genes = 20,
   mad_multiplier = 3,
+  atac_aware_cutoffs = TRUE,
   assay = NULL,
   log_skewed = TRUE,
   log_threshold = 10,
@@ -53,6 +54,25 @@ Default 20.}
 
 \item{mad_multiplier}{Multiplier for MAD when suggesting cutoffs.
 Default 3 (the typical "outlier" threshold).}
+
+\item{atac_aware_cutoffs}{Logical; if TRUE (default), the suggested
+cutoff for \code{TSS.enrichment} and \code{pct_reads_in_peaks} drops
+the upper bound (\code{suggest_hi = Inf}), and for
+\code{nucleosome_signal} and \code{blacklist_ratio} drops the lower
+bound (\code{suggest_lo = 0}) -- matching Signac's own vignette
+convention that these are one-sided quality metrics ("more TSS
+enrichment/reads-in-peaks is better", "less nucleosome
+signal/blacklist overlap is better"), not two-sided ranges like
+\code{nCount}. The bound that remains is still computed the same
+data-driven way as every other metric (median ±
+\code{mad_multiplier} * MAD off that sample's own distribution) --
+this does not substitute Signac's fixed tutorial numbers (e.g.
+\code{TSS.enrichment > 4}), which come from one specific PBMC dataset
+and won't generally match another chemistry/instrument's baseline.
+\code{peak_region_fragments} is left two-sided regardless, since both
+too few (empty/low-quality) and too many (potential doublet)
+fragments are meaningful. Only affects these four metric names; has
+no effect on RNA metadata columns.}
 
 \item{assay}{Assay to read counts from for top-expressed genes and the
 correlation heatmap. Default DefaultAssay of each input.}
@@ -96,8 +116,15 @@ argument needed. \code{CreateATACObjects()}'s QC columns
 (\code{TSS.enrichment}, \code{nucleosome_signal}, \code{pct_reads_in_peaks},
 \code{blacklist_ratio}, \code{peak_region_fragments}) are auto-appended to
 \code{metadata_cols} whenever present, so they ride through the violin,
-density, summary, and suggested-cutoffs sections the same as any other
-metric -- no ATAC-specific argument needed for those either. Three
+density, and summary sections the same as any other metric -- no
+ATAC-specific argument needed for those. The suggested-cutoffs section
+(see \code{atac_aware_cutoffs}) treats four of these five as one-sided,
+matching Signac's own vignette convention (\code{TSS.enrichment}/
+\code{pct_reads_in_peaks}: more is better, lower-bound only;
+\code{nucleosome_signal}/\code{blacklist_ratio}: less is better,
+upper-bound only); \code{peak_region_fragments} stays two-sided like
+\code{nCount}, since both too few and too many fragments are meaningful.
+Three
 sections are gene/transcript-shaped and don't have a clean peak-level
 equivalent, so ATAC samples are excluded from them specifically (an
 all-ATAC input degrades gracefully to that section's existing
@@ -131,6 +158,10 @@ Sections included:
 \item Top \code{top_n_genes} expressed genes per sample.
 \item Suggested filtering cutoffs (median ± \code{mad_multiplier} * MAD)
 and the cells that would survive each cutoff. When
+\code{atac_aware_cutoffs = TRUE} (default), four of
+\code{CreateATACObjects()}'s QC metrics get only the bound that
+matches their known "good" direction instead of a two-sided range
+(see \code{atac_aware_cutoffs}). When
 \code{complexity_score = TRUE} (default), a derived
 \code{log10GenesPerUMI} "complexity" metric (see below) rides along
 in this table, and in the violin/density sections above, alongside
