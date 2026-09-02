@@ -56,8 +56,6 @@ Imports:
     edgeR,
     speckle,
     limma,
-    liana,
-    OmnipathR,
     scmap,
     reticulate,
     slingshot,
@@ -75,6 +73,8 @@ Imports:
     parallel
 Suggests:
     ClusterR,
+    liana,
+    OmnipathR,
     SingleR,
     SingleCellExperiment,
     zellkonverter,
