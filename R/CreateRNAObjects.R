@@ -114,9 +114,13 @@
 #'   if that (or an explicit value) exceeds \code{parallel::detectCores()},
 #'   naming the number of cores actually available. Pass \code{workers = 1}
 #'   to run sequentially instead. \code{workers > 1} spins up that many
-#'   background R sessions via \code{future::plan(multisession)}, restored
-#'   on exit. Note each worker holds its own copy of that sample's data, so
-#'   peak memory scales with \code{workers}. Also forces
+#'   parallel workers via \code{future::plan()} -- forked processes
+#'   (\code{future::multicore}) on Unix-likes outside RStudio, or
+#'   background R sessions (\code{future::multisession}) on Windows / in
+#'   RStudio, where forking isn't available -- restored on exit. Forked
+#'   workers share memory with the main process via copy-on-write, but a
+#'   \code{multisession} fallback holds its own copy of each sample's
+#'   data, so peak memory scales with \code{workers} in that case. Also forces
 #'   \code{VECLIB_MAXIMUM_THREADS}/\code{OMP_NUM_THREADS}/
 #'   \code{OPENBLAS_NUM_THREADS}/\code{MKL_NUM_THREADS} to \code{"1"} for
 #'   the duration (restored on exit) so each worker's own BLAS calls don't
@@ -186,19 +190,21 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
     }
 
     # Clamp BLAS/LAPACK's own internal multithreading to 1 thread per worker
-    # BEFORE spinning up the multisession cluster below, so this propagates
-    # to each worker's environment at spawn time (PSOCK workers inherit the
-    # launching process's env vars, but only as of when they're created --
+    # BEFORE spinning up the worker pool below (via .future_backend(), see
+    # workers_utils.R), so this propagates to every worker's environment --
+    # forked `multicore` workers copy the process image (env vars included)
+    # at fork time, and PSOCK `multisession` workers inherit the launching
+    # process's env vars only as of when they're created, so either way
     # setting this after plan() would be too late for already-running
-    # workers). Without this, each worker's own PCA/scaling calls (the
+    # workers. Without this, each worker's own PCA/scaling calls (the
     # dominant cost of both the read step and calldoublet()) try to use
     # every core via multithreaded BLAS -- on a machine using Accelerate/
     # vecLib (the default R BLAS on macOS) or OpenBLAS/MKL, `workers`
-    # background R sessions doing that simultaneously oversubscribe the
-    # CPU and contend with each other for the same cores, which can erase
-    # or even reverse the wall-clock benefit of the outer future-level
-    # parallelism -- confirmed empirically: a 2-directory run took *longer*
-    # than a naive sequential estimate once this contention was in play.
+    # workers doing that simultaneously oversubscribe the CPU and contend
+    # with each other for the same cores, which can erase or even reverse
+    # the wall-clock benefit of the outer future-level parallelism --
+    # confirmed empirically: a 2-directory run took *longer* than a naive
+    # sequential estimate once this contention was in play.
     # Restored on exit like the future plan itself, and skipped entirely
     # when workers == 1 -- with no outer parallelism to contend with, a
     # single sample should get to use every core for its own PCA.
@@ -225,7 +231,7 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
       }
     }, add = TRUE)
 
-    old_plan <- future::plan(future::multisession, workers = workers)
+    old_plan <- future::plan(.future_backend(), workers = workers)
     on.exit(future::plan(old_plan), add = TRUE)
   }
 

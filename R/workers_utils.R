@@ -11,6 +11,33 @@
 # with a concrete suggested value rather than silently letting
 # future::plan(multisession, workers = ...) oversubscribe the machine.
 
+# Picks the future backend for the multi-worker plan() calls in
+# CreateRNAObjects/CreateATACObjects/CreateATACObjectsFilter.
+#
+# future::multisession workers are separate R *processes* talking over
+# local sockets -- every argument going into a worker and every result
+# coming back has to be serialized/deserialized. For the payloads these
+# functions pass around (Seurat/Signac objects, which carry a @commands
+# history slot that grows with every processing step recorded on the
+# object) that serialization cost can dominate and even make more workers
+# *slower* than fewer -- confirmed empirically: an 8-worker multisession
+# run on 8 samples ran for two weeks without finishing, while the same
+# work with future::multicore (forked workers, sharing memory via
+# copy-on-write, no serialization needed) finished in under 9 minutes.
+#
+# future::supportsMulticore() is the right gate rather than a bare
+# Sys.info()[["sysname"]] != "Windows" check: fork-based workers aren't
+# available on Windows at all, and future itself disables multicore
+# inside RStudio by default (forking a process that's running RStudio's
+# own GUI event loop is a known crash risk) -- supportsMulticore()
+# already encodes both exceptions, so this helper just defers to it and
+# falls back to multisession whenever it returns FALSE.
+#' @keywords internal
+#' @noRd
+.future_backend <- function() {
+  if (isTRUE(future::supportsMulticore())) future::multicore else future::multisession
+}
+
 #' @keywords internal
 #' @noRd
 .resolve_workers <- function(workers, n_samples, was_default) {
