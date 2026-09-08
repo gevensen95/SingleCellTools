@@ -181,7 +181,7 @@ test_that("detect_gene_id_type recognizes Ensembl human gene IDs", {
   genes <- sprintf("ENSG%011d", seq_len(10))
   m <- matrix(stats::rpois(10 * 5, 3), nrow = 10, dimnames = list(genes, paste0("c", 1:5)))
   storage.mode(m) <- "double"
-  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(m, "CsparseMatrix"))
+  obj <- SeuratObject::CreateSeuratObject(counts = m)
   res <- detect_gene_id_type(obj, verbose = FALSE)
   expect_equal(res$guess, "ensembl")
 })
@@ -191,7 +191,7 @@ test_that("detect_gene_id_type recognizes Entrez ids", {
   genes <- as.character(1000:1009)
   m <- matrix(stats::rpois(10 * 5, 3), nrow = 10, dimnames = list(genes, paste0("c", 1:5)))
   storage.mode(m) <- "double"
-  obj <- SeuratObject::CreateSeuratObject(counts = methods::as(m, "CsparseMatrix"))
+  obj <- SeuratObject::CreateSeuratObject(counts = m)
   res <- detect_gene_id_type(obj, verbose = FALSE)
   expect_equal(res$guess, "entrez")
 })
@@ -208,7 +208,7 @@ test_that("check_gene_ids_across_objects summarizes multiple objects with mismat
   genes_ens <- sprintf("ENSG%011d", seq_len(10))
   m <- matrix(stats::rpois(10 * 5, 3), nrow = 10, dimnames = list(genes_ens, paste0("c", 1:5)))
   storage.mode(m) <- "double"
-  obj_ens <- SeuratObject::CreateSeuratObject(counts = methods::as(m, "CsparseMatrix"))
+  obj_ens <- SeuratObject::CreateSeuratObject(counts = m)
 
   res <- check_gene_ids_across_objects(list(rna = obj_sym, ref = obj_ens), verbose = FALSE)
   expect_equal(nrow(res$summary), 2)
@@ -247,7 +247,7 @@ test_that("check_duplicate_genes reports duplicated rownames when present", {
   # constructor here. Skip gracefully rather than erroring the test suite;
   # check_duplicate_genes() is still useful for objects that pick up
   # duplicates via other paths (merges, subsets, hand-built assays).
-  obj <- tryCatch(SeuratObject::CreateSeuratObject(counts = methods::as(m, "CsparseMatrix")),
+  obj <- tryCatch(SeuratObject::CreateSeuratObject(counts = m),
                  error = function(e) NULL)
   testthat::skip_if(
     is.null(obj) || !any(duplicated(rownames(obj[["RNA"]]))),
@@ -358,6 +358,27 @@ test_that(".resolve_workers skips validation when detectCores() returns NA", {
   # rather than erroring.
   testthat::local_mocked_bindings(detectCores = function(...) NA_integer_, .package = "parallel")
   expect_equal(.resolve_workers(999, n_samples = 999, was_default = TRUE), 999)
+})
+
+
+# ============================================================================
+# .future_backend() -- picks the `future` backend for the `workers > 1`
+# plan() calls in CreateRNAObjects/CreateATACObjects/CreateATACObjectsFilter.
+# future::supportsMulticore() is mocked so these are deterministic regardless
+# of the platform/RStudio-ness of the machine actually running the tests.
+# ============================================================================
+
+test_that(".future_backend returns future::multicore when fork is supported", {
+  testthat::local_mocked_bindings(supportsMulticore = function(...) TRUE, .package = "future")
+  expect_identical(.future_backend(), future::multicore)
+})
+
+test_that(".future_backend falls back to future::multisession when fork isn't supported", {
+  # Covers both real-world cases this gates: Windows (no fork at all) and
+  # RStudio (future disables multicore there by default -- forking a
+  # process running RStudio's own GUI event loop is a known crash risk).
+  testthat::local_mocked_bindings(supportsMulticore = function(...) FALSE, .package = "future")
+  expect_identical(.future_backend(), future::multisession)
 })
 
 

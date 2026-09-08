@@ -68,10 +68,14 @@
 #'   sample); errors up front if that (or an explicit value) exceeds
 #'   \code{parallel::detectCores()}, naming the number of cores actually
 #'   available. Pass \code{workers = 1} to run sequentially instead.
-#'   \code{workers > 1} spins up that many background R sessions via
-#'   \code{future::plan(multisession)}, restored on exit. Note each worker
-#'   holds its own copy of that sample's data, so peak memory scales with
-#'   \code{workers}.
+#'   \code{workers > 1} spins up that many parallel workers via
+#'   \code{future::plan()} -- forked processes (\code{future::multicore})
+#'   on Unix-likes outside RStudio, or background R sessions
+#'   (\code{future::multisession}) on Windows / in RStudio, where forking
+#'   isn't available -- restored on exit. Forked workers share memory with
+#'   the main process via copy-on-write, but a \code{multisession} fallback
+#'   holds its own copy of each sample's data, so peak memory scales with
+#'   \code{workers} in that case.
 #' @export
 CreateAndIntegrateRNA <-
   function(data_dirs, cells = 3, features = 200,
@@ -120,7 +124,7 @@ CreateAndIntegrateRNA <-
         stop("Package 'future.apply' is required for workers > 1. ",
             "install.packages('future.apply')")
       }
-      old_plan <- future::plan(future::multisession, workers = workers)
+      old_plan <- future::plan(.future_backend(), workers = workers)
       on.exit(future::plan(old_plan), add = TRUE)
     }
 
