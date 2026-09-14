@@ -54,11 +54,6 @@ CreateATACObjects <-
     genome <- match.arg(genome)
 
     if (workers > 1) {
-      if (!requireNamespace("future.apply", quietly = TRUE)) {
-        stop("Package 'future.apply' is required for workers > 1. ",
-            "install.packages('future.apply')")
-      }
-
       # Same BLAS/LAPACK thread-clamp as CreateRNAObjects() -- FeatureMatrix()
       # and the fragment-counting step underneath it can multithread
       # internally, so `workers` background sessions doing that at once would
@@ -83,8 +78,9 @@ CreateATACObjects <-
         }
       }, add = TRUE)
 
-      old_plan <- future::plan(.future_backend(), workers = workers)
-      on.exit(future::plan(old_plan), add = TRUE)
+      # See workers_utils.R -- shared by all six workers-taking loaders.
+      cleanup <- .setup_future_plan(workers)
+      on.exit(cleanup(), add = TRUE)
     }
 
     if(add_treatment == FALSE & is.null(treatment) == FALSE) {

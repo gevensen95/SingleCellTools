@@ -100,12 +100,9 @@ CreateVisiumObjects <- function(data_dirs, treatment = NULL,
   }
 
   if (workers > 1) {
-    if (!requireNamespace("future.apply", quietly = TRUE)) {
-      stop("Package 'future.apply' is required for workers > 1. ",
-           "install.packages('future.apply')")
-    }
-    old_plan <- future::plan(.future_backend(), workers = workers)
-    on.exit(future::plan(old_plan), add = TRUE)
+    # See workers_utils.R -- shared by all six workers-taking loaders.
+    cleanup <- .setup_future_plan(workers)
+    on.exit(cleanup(), add = TRUE)
   }
 
   if (isTRUE(on_disk) && !requireNamespace("BPCells", quietly = TRUE)) {

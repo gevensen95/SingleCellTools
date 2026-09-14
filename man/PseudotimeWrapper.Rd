@@ -2,68 +2,98 @@
 % Please edit documentation in R/PseudotimeWrapper.R
 \name{PseudotimeWrapper}
 \alias{PseudotimeWrapper}
-\title{Pseudotime inference with slingshot}
+\title{Pseudotime inference (slingshot / monocle3 / destiny)}
 \usage{
 PseudotimeWrapper(
   obj,
+  method = c("slingshot", "monocle3", "destiny"),
   reduction = "umap",
   dims = 2,
   cluster_col = "seurat_clusters",
   start_cluster = NULL,
   end_cluster = NULL,
-  prefix = "slingshot"
+  assay = NULL,
+  prefix = NULL,
+  verbose = TRUE
 )
 }
 \arguments{
 \item{obj}{A Seurat object with a reduction and clusters computed.}
 
-\item{reduction}{Reduction to run pseudotime on. UMAP is common for
-visualization but PCA / harmony can give more stable topology.
-Default \code{"umap"}.}
+\item{method}{\code{"slingshot"} (default), \code{"monocle3"}, or
+\code{"destiny"}.}
+
+\item{reduction}{Reduction to run pseudotime on (\code{"slingshot"}/
+\code{"monocle3"}). UMAP is common for visualization; PCA/harmony can
+give more stable topology. Default \code{"umap"}.}
 
 \item{dims}{Number of dimensions from \code{reduction} to use. Default 2
-for UMAP; bump to 10-30 for PCA / harmony.}
+for UMAP; bump to 10-30 for PCA/harmony.}
 
 \item{cluster_col}{Metadata column holding cluster labels. Default
 \code{"seurat_clusters"}.}
 
-\item{start_cluster}{Optional cluster id to fix as the trajectory root.
-\code{NULL} lets slingshot choose (usually the endpoint of a
-minimum-spanning tree).}
+\item{start_cluster}{Optional cluster id to fix as the trajectory root
+(\code{"slingshot"}/\code{"monocle3"}). \code{NULL} lets the method
+choose.}
 
-\item{end_cluster}{Optional cluster id(s) to constrain as terminal
-endpoint(s).}
+\item{end_cluster}{\code{"slingshot"} only: optional cluster id(s) to
+constrain as terminal endpoint(s).}
 
-\item{prefix}{Column name prefix for the pseudotime metadata. Default
-\code{"slingshot"}. Columns \code{<prefix>_Lineage1}, ... are added.}
+\item{assay}{\code{"destiny"} only: assay to compute the diffusion map
+from. Default \code{DefaultAssay(obj)}.}
+
+\item{prefix}{Column name prefix for the per-lineage pseudotime metadata
+columns. \code{NULL} (default) uses \code{method}.}
+
+\item{verbose}{Message progress. Default \code{TRUE}.}
 }
 \value{
-The Seurat object with new metadata columns and
-\code{obj@misc$slingshot} containing the full SlingshotDataSet.
+The Seurat object with new \code{<prefix>_<Lineage>} metadata
+columns, \code{obj@misc$pseudotime} (the standardized
+\code{list(method, pseudotime, weights)} described above), and the
+method's native fitted object under \code{obj@misc$slingshot} /
+\code{obj@misc$monocle3} / \code{obj@misc$destiny}.
 }
 \description{
-Wraps \code{slingshot::slingshot} to fit lineage curves through a
-reduced-dimensional embedding using cluster labels as anchors, and
-writes the resulting per-cell pseudotime values into the Seurat
-object's metadata (one column per lineage).
+Fits a pseudotemporal ordering of cells and writes it into the Seurat
+object's metadata, using one of three backends. Every method also
+writes a standardized structure to \code{obj@misc$pseudotime} --
+\code{list(method, pseudotime, weights)}, both matrices cells x lineages
+-- so downstream tools (\code{\link{RunTradeSeqDE}}) can consume the
+result without caring which method produced it.
 }
 \details{
-Slingshot works well for continuous developmental / differentiation
-processes and doesn't require a graph pre-processing step. For
-branching topologies with multiple end states, it returns one
-pseudotime column per detected lineage (\code{Lineage1},
-\code{Lineage2}, ...).
+\describe{
+\item{\code{"slingshot"} (default)}{Fits lineage curves through a
+reduced-dimensional embedding using cluster labels as anchors. Good
+for continuous developmental/differentiation processes; handles
+branching natively and returns one pseudotime column per detected
+lineage, with real per-cell/per-lineage soft weights
+(\code{slingshot::slingCurveWeights}).}
+\item{\code{"monocle3"}}{Learns a principal graph over the embedding
+(\code{monocle3::learn_graph}) and orders cells along it from a root
+defined by \code{start_cluster}. Handles branching structurally (the
+graph itself branches), but this wrapper reports one combined
+pseudotime column (\code{"Lineage1"}) rather than per-branch curves --
+inspect \code{obj@misc$monocle3} directly for the full graph.
+Requires the \code{monocle3} and \code{SeuratWrappers} packages.}
+\item{\code{"destiny"}}{Diffusion pseudotime (DPT) on a diffusion map
+of the expression data. Lightweight and fast, best for simple
+continuous trajectories without complex branching; reports a single
+\code{"Lineage1"} pseudotime column. Requires the \code{destiny}
+package.}
+}
 }
 \examples{
 \dontrun{
-obj <- PseudotimeWrapper(obj,
-                         reduction     = "umap",
-                         cluster_col   = "seurat_clusters",
+obj <- PseudotimeWrapper(obj, method = "slingshot",
+                         cluster_col = "seurat_clusters",
                          start_cluster = "3")
-# Plot one lineage on UMAP
 FeaturePlot(obj, features = "slingshot_Lineage1")
 
-# Access the trajectory itself
-obj@misc$slingshot
+# Feed straight into RunTradeSeqDE() -- no extra plumbing needed
+obj <- PseudotimeWrapper(obj, method = "monocle3", start_cluster = "3")
+de  <- RunTradeSeqDE(obj)
 }
 }

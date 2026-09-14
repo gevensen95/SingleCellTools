@@ -2,17 +2,24 @@
 
 S3method(print,CellSuiteSummary)
 export(AddGenePositivity)
+export(AlignSpatialSamples)
 export(AnnotateClusters)
+export(AnnotatePeaks)
 export(AnnotateRegions)
 export(AnnotateWithReference)
 export(ApplyQCFilters)
+export(AssignColors)
 export(BatchEffectQC)
 export(BuildMultipleNicheAssays)
+export(CallSuperEnhancers)
 export(CellComposition)
 export(CellSuiteSummary)
+export(ClassifyByReferenceCutoff)
 export(CleanMolSlot)
 export(CombineCellRangerRounds)
 export(CombineParseRounds)
+export(CompareDeconvolution)
+export(CompareLRResults)
 export(CompareMarkers)
 export(CompositionAnalysis)
 export(CompositionBarplot)
@@ -25,13 +32,21 @@ export(CreateAndIntegrateRNA)
 export(CreateRNAObjects)
 export(CreateRNAObjectsFilter)
 export(CreateVisiumObjects)
+export(CreateXeniumObjects)
+export(DemultiplexHashtags)
+export(DistanceToRegion)
 export(DropSpatialImage)
 export(EdgeDetectionVisium)
+export(FetchGeneSets)
 export(FromAnnData)
 export(GenePositivityAnalysis)
 export(GenePositivityEstimationPlot)
 export(GenerateQCReport)
 export(GetHiresVisiumImage)
+export(InferCNVWrapper)
+export(IntegrateModalities)
+export(LinkPeaksToGenes)
+export(LoadWithProvenance)
 export(LoadXenium2)
 export(MakeParseObj)
 export(MarkerHeatmap)
@@ -44,6 +59,7 @@ export(NicheCoExpressEstimationPlot)
 export(Ol_Reliable)
 export(PlotFeatureDensity)
 export(PlotGenePositivity)
+export(PlotNeighborhoodEnrichment)
 export(PlotPolygons)
 export(PlotQCMetrics)
 export(PlotVolcano)
@@ -52,14 +68,29 @@ export(PseudotimeWrapper)
 export(QCComparePlots)
 export(QueryXeniumMolecules)
 export(RCTDCompositionHeatmap)
+export(RemoveAmbientRNA)
 export(RenameSpatialImages)
+export(RunATACMotifEnrichment)
 export(RunATACWrapper)
 export(RunBanksyWrapper)
+export(RunCARD)
 export(RunCellChat)
+export(RunCicero)
+export(RunERegulons)
 export(RunLIANA)
+export(RunNumbat)
+export(RunPathwayEnrichment)
 export(RunRCTD)
+export(RunRNAVelocity)
+export(RunSCENIC)
+export(RunSPOTlight)
+export(RunSingleCellGSEA)
+export(RunStandardPipeline)
+export(RunTFFootprinting)
+export(RunTradeSeqDE)
 export(SaveWithProvenance)
 export(SetImageBoundary)
+export(SpatialAutocorrelation)
 export(SpatialCompositionPlot)
 export(SpatialConcordance)
 export(SpatialDimPlotFixed)
@@ -100,23 +131,34 @@ importFrom(Seurat,
   AggregateExpression,
   Assays,
   AverageExpression,
+  CreateAssayObject,
   DefaultAssay,
   DotPlot,
   Embeddings,
   FetchData,
   FindAllMarkers,
   FindClusters,
+  FindMultiModalNeighbors,
   FindNeighbors,
+  FindSpatiallyVariableFeatures,
   FindVariableFeatures,
+  GetAssayData,
   GetTissueCoordinates,
+  HTODemux,
   Idents,
   IntegrateLayers,
+  MULTIseqDemux,
   NormalizeData,
+  Read10X,
   Reductions,
+  RidgePlot,
   RunPCA,
   RunUMAP,
   SCTransform,
   ScaleData,
+  SetAssayData,
+  SpatiallyVariableFeatures,
+  VariableFeatures,
   as.Seurat,
   as.SingleCellExperiment
 )
@@ -152,6 +194,8 @@ importFrom(ggplot2,
   expansion,
   facet_grid,
   facet_wrap,
+  geom_abline,
+  geom_bar,
   geom_boxplot,
   geom_col,
   geom_hline,
