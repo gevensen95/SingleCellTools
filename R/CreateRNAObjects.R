@@ -184,11 +184,6 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
   }
 
   if (workers > 1) {
-    if (!requireNamespace("future.apply", quietly = TRUE)) {
-      stop("Package 'future.apply' is required for workers > 1. ",
-           "install.packages('future.apply')")
-    }
-
     # Clamp BLAS/LAPACK's own internal multithreading to 1 thread per worker
     # BEFORE spinning up the worker pool below (via .future_backend(), see
     # workers_utils.R), so this propagates to every worker's environment --
@@ -231,8 +226,9 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
       }
     }, add = TRUE)
 
-    old_plan <- future::plan(.future_backend(), workers = workers)
-    on.exit(future::plan(old_plan), add = TRUE)
+    # See workers_utils.R -- shared by all six workers-taking loaders.
+    cleanup <- .setup_future_plan(workers)
+    on.exit(cleanup(), add = TRUE)
   }
 
   if (isTRUE(on_disk) && !requireNamespace("BPCells", quietly = TRUE)) {

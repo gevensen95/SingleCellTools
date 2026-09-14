@@ -48,6 +48,8 @@ vignette: >
    - 7.4 [Estimation Plot — `CompositionEstimationPlot()`](#74-estimation-plot--compositionestimationplot)
 8. [Cell-Cell Communication — `RunLIANA()`](#8-cell-cell-communication--runliana)
 9. [Trajectory Analysis — `PseudotimeWrapper()`](#9-trajectory-analysis--pseudotimewrapper)
+   - 9.1 [Differential Expression Along Pseudotime — `RunTradeSeqDE()`](#91-differential-expression-along-pseudotime--runtradeseqde)
+   - 9.2 [RNA Velocity — `RunRNAVelocity()`](#92-rna-velocity--runrnavelocity)
 10. [Integration Quality — `BatchEffectQC()`](#10-integration-quality--batcheffectqc)
 11. [Visualization — `PlotFeatureDensity()`](#11-visualization--plotfeaturedensity)
 12. [Spatial Workflows](#12-spatial-workflows)
@@ -59,6 +61,10 @@ vignette: >
     - 12.6 [Niche Co-expression — `NicheCoExpress()`](#126-niche-co-expression--nichecoexpress)
     - 12.7 [Estimation Plot — `NicheCoExpressEstimationPlot()`](#127-estimation-plot--nichecoexpressestimationplot)
     - 12.8 [Visium Deconvolution — `RunRCTD()`](#128-visium-deconvolution--runrctd)
+    - 12.9 [Deconvolution Alternatives — `RunCARD()` / `RunSPOTlight()`](#129-deconvolution-alternatives--runcard--runspotlight)
+    - 12.10 [Comparing Deconvolution Methods — `CompareDeconvolution()`](#1210-comparing-deconvolution-methods--comparedeconvolution)
+    - 12.11 [Spatial Autocorrelation — `SpatialAutocorrelation()`](#1211-spatial-autocorrelation--spatialautocorrelation)
+    - 12.12 [Serial-Section Alignment — `AlignSpatialSamples()`](#1212-serial-section-alignment--alignspatialsamples)
 13. [scATAC-seq — `CreateATACObjects()`](#13-scatac-seq--createatacobjects)
 14. [scanpy Interoperability — `ToAnnData()` / `FromAnnData()`](#14-scanpy-interoperability--toanndata--fromanndata)
 15. [Reproducibility](#15-reproducibility)
@@ -70,8 +76,12 @@ vignette: >
     - 16.3 [Spatial Niche Assays](#163-spatial-niche-assays)
     - 16.4 [Spatial Polygon Tools](#164-spatial-polygon-tools)
     - 16.5 [GO Term Children](#165-go-term-children)
-17. [Tips and Common Pitfalls](#17-tips-and-common-pitfalls)
-18. [Session Info](#18-session-info)
+17. [Single-Cell Gene Set Enrichment — `RunSingleCellGSEA()` / `FetchGeneSets()` / `RunPathwayEnrichment()`](#17-single-cell-gene-set-enrichment--runsinglecellgsea--fetchgenesets--runpathwayenrichment)
+18. [Copy-Number and Clonal Analysis — `InferCNVWrapper()` / `RunNumbat()`](#18-copy-number-and-clonal-analysis--infercnvwrapper--runnumbat)
+19. [Hashtag Demultiplexing — `DemultiplexHashtags()`](#19-hashtag-demultiplexing--demultiplexhashtags)
+20. [One-Shot Clustering Pipeline — `RunStandardPipeline()`](#20-one-shot-clustering-pipeline--runstandardpipeline)
+21. [Tips and Common Pitfalls](#21-tips-and-common-pitfalls)
+22. [Session Info](#22-session-info)
 
 ---
 
@@ -1237,11 +1247,16 @@ lr_mouse <- RunLIANA(integrated, idents_col = "cell_type",
 
 ## 9. Trajectory Analysis — `PseudotimeWrapper()`
 
-Slingshot wrapper for pseudotime inference. Fits lineage curves through the specified reduction using cluster labels as anchors, writes one metadata column per detected lineage.
+Fits a pseudotemporal ordering of cells via one of three backends
+(`method = c("slingshot", "monocle3", "destiny")`), all writing the same
+standardized `obj@misc$pseudotime` structure so downstream tools don't care which
+one produced it. `"slingshot"` (default) fits lineage curves through the specified
+reduction using cluster labels as anchors and handles branching natively:
 
 ```{r, eval=FALSE}
 integrated <- PseudotimeWrapper(
   integrated,
+  method        = "slingshot",
   reduction     = "umap",
   dims          = 2,
   cluster_col   = "seurat_clusters",
@@ -1253,6 +1268,52 @@ FeaturePlot(integrated, features = "slingshot_Lineage1")
 
 # The SlingshotDataSet itself, for downstream analysis
 sds <- integrated@misc$slingshot
+```
+
+`method = "monocle3"` learns a principal graph over the embedding instead (handles
+branching structurally, but this wrapper reports one combined pseudotime column
+rather than per-branch curves) and `method = "destiny"` computes diffusion
+pseudotime on a diffusion map (lightweight, best for simple continuous trajectories
+without complex branching) -- swap `method` and everything downstream in this
+section keeps working unchanged, since all three write the same
+`obj@misc$pseudotime` shape:
+
+```{r, eval=FALSE}
+integrated <- PseudotimeWrapper(integrated, method = "monocle3", start_cluster = "3")
+# or: PseudotimeWrapper(integrated, method = "destiny")
+```
+
+### 9.1 Differential Expression Along Pseudotime — `RunTradeSeqDE()`
+
+Consumes `obj@misc$pseudotime` directly -- no extra plumbing needed after any of
+the three methods above -- and fits a GAM per gene along pseudotime via `tradeSeq`,
+testing whether expression changes significantly across it:
+
+```{r, eval=FALSE}
+de <- RunTradeSeqDE(integrated, test = c("associationTest", "startVsEndTest"))
+de$results$associationTest       # per-gene test statistic + p-value/padj
+de$sce                            # the underlying SingleCellExperiment + fitted GAMs
+```
+
+Unlike most functions in this package, `RunTradeSeqDE()` returns a bare list
+(`list(sce, results)`) rather than mutating `integrated` -- there's no natural
+per-cell or per-gene metadata column for a pseudotime-DE result to attach to.
+
+### 9.2 RNA Velocity — `RunRNAVelocity()`
+
+A different kind of trajectory signal: per-cell transcriptional *direction*,
+estimated from spliced/unspliced read counts (a `.loom` file from `velocyto`,
+`kb-python`, or STARsolo's `--soloFeatures Velocyto` output) rather than from an
+embedding + cluster labels. `method = "scvelo"` (default, via `reticulate`) supports
+dynamical-mode latent time; `method = "velocyto.R"` needs no Python at all:
+
+```{r, eval=FALSE}
+integrated <- RunRNAVelocity(integrated, loom_file = "sample.loom", mode = "dynamical")
+FeaturePlot(integrated, features = "velocity_latent_time")
+# integrated@misc$velocity$h5ad -- open in Python for scv.pl.velocity_embedding_stream()
+
+# No Python available
+integrated <- RunRNAVelocity(integrated, loom_file = "sample.loom", method = "velocyto.R")
 ```
 
 ---
@@ -1631,6 +1692,70 @@ res$composition    # cluster x cell-type mean-proportion matrix
 
 Nothing is written back to `visium` — `res` is a plain list, so attach it to metadata yourself if you want it there. See the spatial vignette (§7.6) for a more detailed walkthrough, including flagging ambiguous clusters with `min_score`/`min_margin`.
 
+### 12.9 Deconvolution Alternatives — `RunCARD()` / `RunSPOTlight()`
+
+Two alternatives to RCTD, same reference-based deconvolution idea, different
+underlying methods -- worth having when you want a second opinion or RCTD's
+assumptions don't fit your data well:
+
+```{r, eval=FALSE}
+visium <- RunCARD(visium, reference = pbmc_ref, celltype_col = "cell_type")
+colnames(visium@misc$card_weights)
+SpatialFeaturePlot(visium, features = "card_T_cell")
+
+visium <- RunSPOTlight(visium, reference = pbmc_ref, celltype_col = "cell_type")
+colnames(visium@misc$spotlight_weights)
+```
+
+Both mirror `RunRCTD()`'s output shape (`<method>_<celltype>` proportion columns,
+plus a `<method>_dominant` winner-takes-all label), and `RunSPOTlight()` computes
+marker genes internally via `FindAllMarkers()` if you don't supply your own.
+
+### 12.10 Comparing Deconvolution Methods — `CompareDeconvolution()`
+
+Once you've run two or more of RCTD/CARD/SPOTlight on the same object, this checks
+how much they actually agree:
+
+```{r, eval=FALSE}
+cmp <- CompareDeconvolution(visium, method_1 = "rctd", method_2 = "card")
+cmp$correlation      # per-cell-type correlation between the two methods' proportions
+cmp$plot
+```
+
+Real disagreement between methods on the same data is a legitimate reason to trust
+neither blindly -- this is meant to surface that rather than paper over it.
+
+### 12.11 Spatial Autocorrelation — `SpatialAutocorrelation()`
+
+Cleaner interface to `Seurat::FindSpatiallyVariableFeatures()`: runs Moran's I (or
+mark-variogram), and returns a tidy ranked table instead of leaving the statistics
+buried in `visium[[assay]][[]]`:
+
+```{r, eval=FALSE}
+svg <- SpatialAutocorrelation(visium)
+head(svg$results)
+svg$plot   # SpatialFeaturePlotFixed() of the top spatially variable genes
+```
+
+### 12.12 Serial-Section Alignment — `AlignSpatialSamples()`
+
+Registers tissue coordinates across serial sections onto a common reference frame
+using landmark points you've identified in each section (fiducials, tissue corners,
+or the same anatomical structure annotated per-section) -- there's no automatic
+registration without known correspondence, since that isn't reliable in general:
+
+```{r, eval=FALSE}
+landmarks <- list(
+  matrix(c(100, 120, 400, 410, 90, 500, 95, 505), ncol = 2),  # sample 1 (reference)
+  matrix(c(105, 130, 395, 420, 85, 495, 100, 510), ncol = 2)  # sample 2
+)
+aligned <- AlignSpatialSamples(list(s1 = visium1, s2 = visium2), landmarks = landmarks)
+
+ggplot() +
+  geom_point(data = aligned$s1[[]], aes(aligned_x, aligned_y), color = "blue") +
+  geom_point(data = aligned$s2[[]], aes(aligned_x, aligned_y), color = "red")
+```
+
 ---
 
 ## 13. scATAC-seq — `CreateATACObjects()`
@@ -1904,7 +2029,131 @@ genes_in_terms <- AnnotationDbi::select(
 
 ---
 
-## 17. Tips and Common Pitfalls
+## 17. Single-Cell Gene Set Enrichment — `RunSingleCellGSEA()` / `FetchGeneSets()` / `RunPathwayEnrichment()`
+
+`PseudobulkDE()` + `RunPathwayEnrichment()` (§6.1 + below) is the statistically
+correct way to test gene sets across conditions -- but it needs >= 2 independent
+samples per condition, since pseudobulk aggregation is what makes the test
+respect biological replicates. `RunSingleCellGSEA()` instead scores every cell for
+every gene set (via `UCell` or `AUCell`) and tests the per-cell score distributions
+directly -- works even with a single animal per condition, where pseudobulk
+literally can't run at all. The tradeoff is real: cells from the same sample aren't
+independent observations, so this is more liberal than `PseudobulkDE()`'s test.
+Prefer `PseudobulkDE()` whenever you have >= 2 samples per condition.
+
+```{r, eval=FALSE}
+# species is always required when using `collection` -- never guessed, since
+# gene symbol casing alone can't reliably distinguish some species (mouse vs. rat)
+integrated <- RunSingleCellGSEA(
+  integrated,
+  collection    = "hallmark",
+  species       = "Mus musculus",
+  condition_col = "treatment",
+  ident_1       = "drug",
+  ident_2       = "vehicle"
+)
+integrated@misc$sc_gsea$results
+integrated@misc$sc_gsea$plot
+
+# Per-cluster one-vs-rest instead of a two-group contrast
+integrated <- RunSingleCellGSEA(integrated, collection = "go_bp",
+                                species = "Mus musculus",
+                                cluster_col = "seurat_clusters")
+```
+
+`FetchGeneSets()` is the companion utility both this function and
+`RunPathwayEnrichment()` use internally to fetch named collections (`"hallmark"`,
+`"go_bp"`, `"go_mf"`, `"kegg"`, `"reactome"`, and others -- see `?FetchGeneSets`)
+via `msigdbr` or directly from `GO.db`/`org.*.eg.db` (`source = "godb"`, useful for
+GO terms when you don't want the rest of MSigDB). Call it yourself if you want the
+gene sets outside either wrapper function:
+
+```{r, eval=FALSE}
+gene_sets <- FetchGeneSets("reactome", species = "Mus musculus")
+```
+
+For bulk/pseudobulk-level enrichment instead of per-cell, `RunPathwayEnrichment()`
+takes a `PseudobulkDE()` (or `FindMarkers()`) results table and runs `fgsea`
+(rank-based, uses the whole table) or `enrichR` (hypergeometric against Enrichr's
+hosted libraries, needs internet):
+
+```{r, eval=FALSE}
+de <- PseudobulkDE(integrated, sample_col = "orig.ident", condition_col = "treatment",
+                   ident_1 = "drug", ident_2 = "vehicle")
+pe <- RunPathwayEnrichment(de, collection = "hallmark", species = "Mus musculus")
+pe$plot
+```
+
+---
+
+## 18. Copy-Number and Clonal Analysis — `InferCNVWrapper()` / `RunNumbat()`
+
+`InferCNVWrapper()` wraps `copyKAT` to infer per-cell copy-number profiles and call
+aneuploid (likely malignant) vs. diploid (likely normal) cells directly from
+expression counts -- no matched normal/tumor pair needed, just cells you're
+confident are normal to anchor the baseline:
+
+```{r, eval=FALSE}
+integrated <- InferCNVWrapper(integrated,
+                              normal_cells = colnames(integrated)[integrated$cell_type == "T cell"])
+table(integrated$copykat_call)
+DimPlot(integrated, group.by = "copykat_call")
+```
+
+`RunNumbat()` goes further -- allele-specific copy-number calling (catches
+copy-neutral LOH expression alone can't see) plus a reconstructed clonal
+phylogeny. Its allele-counting/phasing step (`bcftools` + `eagle2` against a 1000
+Genomes reference panel) is external and can't run from inside R -- run
+`pileup_and_phase.R` yourself per numbat's own instructions first, then pass its
+output in:
+
+```{r, eval=FALSE}
+integrated <- RunNumbat(integrated, allele_df = allele_df,   # from pileup_and_phase.R
+                        normal_cells = colnames(integrated)[integrated$cell_type == "T cell"])
+integrated@misc$numbat$nb$plot_phylo_heatmap()
+table(integrated$numbat_clone)
+```
+
+---
+
+## 19. Hashtag Demultiplexing — `DemultiplexHashtags()`
+
+Wraps `Seurat::HTODemux()`/`MULTIseqDemux()` and standardizes either backend's
+output into the same `hash_call`/`hash_global` metadata columns
+(`Singlet`/`Doublet`/`Negative`), with an optional ridge plot for QC:
+
+```{r, eval=FALSE}
+integrated <- DemultiplexHashtags(integrated, method = "HTODemux",
+                                  remove_negative = TRUE, remove_doublets = TRUE)
+table(integrated$hash_global)
+integrated@misc$hashtag_qc_plot
+```
+
+---
+
+## 20. One-Shot Clustering Pipeline — `RunStandardPipeline()`
+
+For a standard workflow with no unusual steps, orchestrates
+normalize -> `FindVariableFeatures()` -> `ScaleData()` -> `RunPCA()` -> optional
+integration (Harmony/CCA) -> `FindNeighbors()` -> `FindClusters()` -> optional
+`RunUMAP()` in one call, optionally hooking into `SaveWithProvenance()` (§15.1) at
+the end:
+
+```{r, eval=FALSE}
+integrated <- RunStandardPipeline(integrated,
+                                  integration_method = "harmony",
+                                  batch_col          = "orig.ident",
+                                  cluster_resolution = 0.8,
+                                  save_provenance    = "results/pbmc_clustered.rds")
+```
+
+Reach for the individual steps directly (§3 onward) when your workflow needs
+something this one-shot version doesn't expose -- it's a convenience for the
+common case, not a replacement for understanding what each step does.
+
+---
+
+## 21. Tips and Common Pitfalls
 
 **Read the `?docs`.** Every function has documented parameters beyond what is shown here. Defaults are sensible but the knobs are worth knowing about — especially `to_regress`, `doublet_normalization`, and `cluster_resolution`.
 
@@ -1932,7 +2181,7 @@ genes_in_terms <- AnnotationDbi::select(
 
 ---
 
-## 18. Session Info
+## 22. Session Info
 
 ```{r, eval=FALSE}
 sessionInfo()

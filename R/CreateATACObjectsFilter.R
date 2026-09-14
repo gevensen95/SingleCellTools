@@ -79,11 +79,6 @@ CreateATACObjectsFilter <-
     genome <- match.arg(genome)
 
     if (workers > 1) {
-      if (!requireNamespace("future.apply", quietly = TRUE)) {
-        stop("Package 'future.apply' is required for workers > 1. ",
-            "install.packages('future.apply')")
-      }
-
       # Same BLAS/LAPACK thread-clamp as CreateRNAObjects()/CreateATACObjects()
       # -- see CreateATACObjects.R for why unset = NA / Sys.unsetenv() matter.
       old_blas_env <- Sys.getenv(c("VECLIB_MAXIMUM_THREADS", "OMP_NUM_THREADS",
@@ -101,8 +96,9 @@ CreateATACObjectsFilter <-
         }
       }, add = TRUE)
 
-      old_plan <- future::plan(.future_backend(), workers = workers)
-      on.exit(future::plan(old_plan), add = TRUE)
+      # See workers_utils.R -- shared by all six workers-taking loaders.
+      cleanup <- .setup_future_plan(workers)
+      on.exit(cleanup(), add = TRUE)
     }
 
     if (filter == FALSE & interactive == TRUE) {

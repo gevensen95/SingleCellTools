@@ -76,6 +76,8 @@
 #'       the per-cell niche labels written to
 #'       \code{obj@meta.data[[niche_col]]} (see Details).}
 #'   }
+#' @seealso \code{\link{PlotNeighborhoodEnrichment}} for a ready-made
+#'   diverging heatmap of the \code{z}/\code{padj} results.
 #' @importFrom Seurat GetTissueCoordinates
 #' @importFrom RANN nn2
 #' @importFrom stats sd p.adjust kmeans dist hclust cutree

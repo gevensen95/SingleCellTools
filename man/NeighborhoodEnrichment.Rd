@@ -111,3 +111,7 @@ Cells not covered by any requested FOV (or with an \code{NA}
 (n\_perm + 1)} and \eqn{p_{down}} symmetrically. The reported p-value is
 \eqn{2 \cdot \min(p_{up}, p_{down})}, capped at 1.
 }
+\seealso{
+\code{\link{PlotNeighborhoodEnrichment}} for a ready-made
+diverging heatmap of the \code{z}/\code{padj} results.
+}

@@ -47,9 +47,16 @@ accessibility.
 8. [Motif Enrichment — `chromVAR`](#8-motif-enrichment--chromvar)
 9. [Differential Accessibility Between Conditions](#9-differential-accessibility-between-conditions)
 10. [Composition Analysis Between Conditions](#10-composition-analysis-between-conditions)
-11. [Peak-to-Gene Links (Optional)](#11-peak-to-gene-links-optional)
-12. [Tips Specific to ATAC Data](#12-tips-specific-to-atac-data)
-13. [Session Info](#13-session-info)
+11. [Peak-to-Gene Links — `LinkPeaksToGenes()`](#11-peak-to-gene-links--linkpeakstogenes)
+12. [Enhancer Annotation and Analysis](#12-enhancer-annotation-and-analysis)
+    - 12.1 [Peak Classification — `AnnotatePeaks()`](#121-peak-classification--annotatepeaks)
+    - 12.2 [Co-Accessibility — `RunCicero()`](#122-co-accessibility--runcicero)
+    - 12.3 [TF Footprinting — `RunTFFootprinting()`](#123-tf-footprinting--runtffootprinting)
+    - 12.4 [Super-Enhancers — `CallSuperEnhancers()`](#124-super-enhancers--callsuperenhancers)
+13. [Gene Regulatory Networks — `RunSCENIC()` / `RunERegulons()`](#13-gene-regulatory-networks--runscenic--runeregulons)
+14. [Joint RNA+ATAC Integration — `IntegrateModalities()`](#14-joint-rnaatac-integration--integratemodalities)
+15. [Tips Specific to ATAC Data](#15-tips-specific-to-atac-data)
+16. [Session Info](#16-session-info)
 
 ---
 
@@ -368,18 +375,16 @@ DefaultAssay(combined) <- "ATAC"   # switch back for peak-level work below
 Gene activity tells you *what genes look accessible*; motif enrichment (via
 `chromVAR`) tells you *which transcription factors' binding sites look accessible*,
 per cell -- useful for spotting a regulatory program driving a cluster or condition
-rather than a single gene. This is plain Signac/chromVAR, not wrapped by
-`SingleCellTools`:
+rather than a single gene. `RunATACMotifEnrichment()` wraps the standard
+Signac/chromVAR sequence (`AddMotifs()` + `RunChromVAR()`) into one call:
 
 ```r
-pfm <- TFBSTools::getMatrixSet(
-  x    = JASPAR2020::JASPAR2020,
-  opts = list(collection = "CORE", tax_group = "vertebrates")
+combined <- RunATACMotifEnrichment(
+  combined,
+  genome = BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10
+  # pfm = NULL fetches JASPAR2020's vertebrate-wide motif set by default;
+  # pass your own TFBSTools::PFMatrixList to use a different database
 )
-
-combined <- AddMotifs(combined, genome = BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10,
-                     pfm = pfm)
-combined <- RunChromVAR(combined, genome = BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10)
 
 DefaultAssay(combined) <- "chromvar"
 # Example: CTCF motif accessibility per cluster (swap in the JASPAR ID you care about)
@@ -388,6 +393,14 @@ VlnPlot(combined, features = "MA0139.1", group.by = "cell_type")
 
 DefaultAssay(combined) <- "ATAC"   # switch back for the rest of this vignette
 ```
+
+Querying vertebrate-wide motifs by default (rather than restricting to one species)
+is standard practice here -- DNA-binding motifs are far more conserved across
+species than the genes encoding the TFs themselves, so this isn't mouse-specific
+despite our data being mouse. Pass `compute_motifs = FALSE` if `combined` already
+has a motif object attached and you only want the `RunChromVAR()` step, or
+`run_chromvar = FALSE` to scan motifs without it (e.g. before
+`RunTFFootprinting()` in §12.3, which only needs the motif scan).
 
 `AddMotifs()`'s querying vertebrate-wide motifs (rather than restricting to one
 species) is standard practice here -- DNA-binding motifs are far more conserved
@@ -456,6 +469,15 @@ pb_atac$results                       # DESeq2 results, one row per peak
 subset(pb_atac$results, padj < 0.05)
 ```
 
+**Gene context for hits.** If you've run `AnnotatePeaks()` (§12.1) on `combined`,
+join `nearest_gene` onto either result directly -- there's no dedicated function for
+this, just a lookup against `combined@misc$peak_annotation`:
+
+```r
+ann <- combined@misc$peak_annotation
+pb_atac$results$nearest_gene <- ann$nearest_gene[match(pb_atac$results$gene, ann$peak)]
+```
+
 ---
 
 ## 10. Composition Analysis Between Conditions
@@ -493,22 +515,168 @@ measures) -- the same plot type is used throughout this package.
 
 ---
 
-## 11. Peak-to-Gene Links (Optional)
+## 11. Peak-to-Gene Links — `LinkPeaksToGenes()`
 
 `Signac::LinkPeaks()` correlates peak accessibility with nearby gene expression
 across cells to nominate candidate regulatory links -- it needs a matched RNA assay
 on the same cells (e.g. a multiome dataset), which this generic ATAC-only walkthrough
-doesn't assume you have. If you do:
+doesn't assume you have. If you do, `LinkPeaksToGenes()` wraps the two-step Signac
+sequence (`RegionStats()` for peak GC content/length, then `LinkPeaks()` itself) into
+one call:
 
 ```r
-combined <- RegionStats(combined, genome = BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10)
-combined <- LinkPeaks(combined, peak.assay = "ATAC", expression.assay = "RNA")
+combined <- LinkPeaksToGenes(
+  combined,
+  genome = BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10
+  # peak_assay/expression_assay = NULL auto-detect the ChromatinAssay and "RNA"
+)
 CoveragePlot(combined, region = "Epcam", extend.upstream = 5000, extend.downstream = 5000)
+
+# The links themselves -- feeds directly into §12's enhancer-promoter analysis
+Signac::Links(combined[["ATAC"]])
 ```
+
+This is also the input `AnnotatePeaks()`, `RunCicero()`, and `RunERegulons()` build
+on below -- run it before §12 if you're following this vignette in order on multiome
+data.
 
 ---
 
-## 12. Tips Specific to ATAC Data
+## 12. Enhancer Annotation and Analysis
+
+Everything so far has treated every accessible peak the same way. These four
+functions add the distinction real enhancer analysis needs: which peaks sit on a
+promoter vs. genuinely distal from any gene (`AnnotatePeaks()`), which distal peaks
+actually correlate with a promoter's activity (`RunCicero()`), which motif matches
+show physical binding evidence rather than just sequence similarity
+(`RunTFFootprinting()`), and which stitched clusters of enhancers are unusually
+active master regulatory loci (`CallSuperEnhancers()`).
+
+### 12.1 Peak Classification — `AnnotatePeaks()`
+
+The foundation piece. Classifies every peak using the gene annotation already
+attached to the `ChromatinAssay` (set by `CreateATACObjects()`'s `genome` argument)
+-- no extra database needed:
+
+```r
+combined <- AnnotatePeaks(combined)
+table(combined@misc$peak_annotation$peak_type)
+#>            distal            exonic          intronic promoter_proximal
+#>             18204              2891              9450              4108
+
+enhancer_peaks <- rownames(combined@misc$peak_annotation)[
+  combined@misc$peak_annotation$is_enhancer]
+```
+
+A fuller genomic-feature breakdown (5'UTR, 3'UTR, downstream) is available via
+`method = "chipseeker"` if you have a matching `TxDb` package installed.
+
+### 12.2 Co-Accessibility — `RunCicero()`
+
+A second, RNA-independent line of evidence for enhancer-promoter pairs: which peaks
+tend to be open together across cells, regardless of any linked gene's expression.
+Needs a genome size table (chromosome name + length) matching your build:
+
+```r
+mm10_sizes <- data.frame(
+  V1 = names(GenomeInfoDb::seqlengths(BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10)),
+  V2 = GenomeInfoDb::seqlengths(BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10)
+)
+combined <- RunCicero(combined, genome_size = mm10_sizes)
+
+combined@misc$cicero$connections            # full Peak1/Peak2/coaccess table
+head(combined@misc$cicero$enhancer_promoter_links)  # resolved via §12.1's peak_annotation
+```
+
+### 12.3 TF Footprinting — `RunTFFootprinting()`
+
+Motif enrichment (§8) tells you a region's DNA sequence matches a TF's motif;
+footprinting looks at the actual Tn5 insertion pattern *within* that region for the
+dip a bound protein leaves behind -- meaningfully stronger evidence of direct
+binding, at the cost of needing more reads and being slower, hence `motifs` is
+required rather than defaulting to "every motif":
+
+```r
+combined <- RunTFFootprinting(
+  combined,
+  motifs = "MA0139.1",   # CTCF, e.g. -- pick TFs you actually care about
+  genome = BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10
+)
+combined@misc$footprint_plot
+```
+
+### 12.4 Super-Enhancers — `CallSuperEnhancers()`
+
+ROSE-style stitching of nearby peaks into candidate regions per cell type, ranked by
+pseudobulk signal to find the small set that stand out as unusually large and active
+-- classic master-regulatory-locus calling, adapted from bulk H3K27ac to per-cell-type
+ATAC signal:
+
+```r
+combined <- CallSuperEnhancers(combined, cluster_col = "cell_type")
+combined@misc$super_enhancers[["Hepatocyte"]]$plot
+se <- combined@misc$super_enhancers[["Hepatocyte"]]$table
+subset(se, is_super_enhancer)
+```
+
+Excludes promoter-proximal peaks before stitching by default (using §12.1's
+annotation) -- ROSE's own convention, since promoter signal at highly-expressed
+genes would otherwise dominate the ranking.
+
+---
+
+## 13. Gene Regulatory Networks — `RunSCENIC()` / `RunERegulons()`
+
+`RunSCENIC()` infers RNA-only transcription-factor regulons (GENIE3/GRNBoost2
+co-expression, optionally pruned by RcisTarget motif enrichment, scored per cell via
+AUCell):
+
+```r
+mouse_tfs <- c("Cebpa", "Hnf4a", "Foxa2", "Stat1", "Ctcf")   # your own curated TF list
+
+combined_rna <- RunSCENIC(combined_rna, tf_list = mouse_tfs)
+combined_rna@misc$scenic$regulons[["Hnf4a"]]
+FeaturePlot(combined_rna, features = "Hnf4a_regulon_aucell")
+```
+
+`RunERegulons()` extends this with the region-level evidence SCENIC+ adds: a TF
+motif match in a peak (§8/§12.3) that peak is itself linked to (§11) --
+TF -> peak -> gene, not just TF -> gene. The default `method = "lite"` assembles
+this purely in R from functions you've already run:
+
+```r
+combined <- RunERegulons(combined)   # requires §11 + §8's motif scan already run
+combined@misc$eregulons$eregulons[["Ctcf"]]
+FeaturePlot(combined, features = "Ctcf_eregulon_aucell")
+```
+
+A `method = "scenicplus"` option exists for the real Python `scenicplus` pipeline,
+but it is honestly limited: that pipeline is multiple notebook stages
+(`pycisTopic` -> `pycistarget` -> SCENIC+ itself), not one callable function, so
+without a `python_driver` you supply yourself it only prepares the input files
+(`.h5ad` + fragments path) rather than pretending to run the whole thing.
+
+---
+
+## 14. Joint RNA+ATAC Integration — `IntegrateModalities()`
+
+For multiome data (matched RNA + ATAC per cell), `IntegrateModalities()` wraps
+Seurat's weighted-nearest-neighbor (WNN) workflow to combine both modalities' own
+reductions into one joint neighbor graph and UMAP, auto-detecting each assay's
+reduction (LSI dims start at 2, skipping the depth-dominated first component, same
+as §4's advice):
+
+```r
+combined <- IntegrateModalities(combined, assays = c("RNA", "ATAC"))
+DimPlot(combined, reduction = "wnn.umap", group.by = "cell_type")
+```
+
+Use this before clustering when you want cell identities informed by both
+modalities at once, rather than clustering on RNA or ATAC alone.
+
+---
+
+## 15. Tips Specific to ATAC Data
 
 **`CreateATACObjects()`/`CreateATACObjectsFilter()` support `genome = "mm10"` (default)
 or `"hg38"`.** Each requires only the matching `EnsDb`/`BSgenome` package pair to be
@@ -549,9 +717,20 @@ existing ones needed to be ATAC-specific in the first place.
 don't hardcode RNA metric names -- point `metadata_cols` at whatever QC columns your
 object actually has.
 
+**`AnnotatePeaks()`'s default `method = "signac"` needs no extra package**, but it
+does need a gene annotation already attached to the `ChromatinAssay` -- which
+`CreateATACObjects()`/`CreateATACObjectsFilter()` set for you via their `genome`
+argument. Building a `ChromatinAssay` by hand (per the note at the top of this
+vignette) means setting `Signac::Annotation(obj[["ATAC"]]) <- ...` yourself first.
+
+**`RunERegulons()`'s default `method = "lite"` is a simplified approximation of real
+SCENIC+**, not a re-implementation of its topic-modeling/`pycistarget` pipeline --
+treat its eRegulons as a fast first pass, not a substitute for the real thing if
+you need publication-grade regulon calls.
+
 ---
 
-## 13. Session Info
+## 16. Session Info
 
 ```r
 sessionInfo()

@@ -12,7 +12,8 @@
 # future::plan(multisession, workers = ...) oversubscribe the machine.
 
 # Picks the future backend for the multi-worker plan() calls in
-# CreateRNAObjects/CreateATACObjects/CreateATACObjectsFilter.
+# CreateRNAObjects/CreateVisiumObjects/CreateAndIntegrateRNA/
+# CreateATACObjects/CreateATACObjectsFilter/MakeParseObj.
 #
 # future::multisession workers are separate R *processes* talking over
 # local sockets -- every argument going into a worker and every result
@@ -34,8 +35,49 @@
 # falls back to multisession whenever it returns FALSE.
 #' @keywords internal
 #' @noRd
-.future_backend <- function() {
-  if (isTRUE(future::supportsMulticore())) future::multicore else future::multisession
+.future_backend <- function(verbose = TRUE) {
+  use_multicore <- isTRUE(future::supportsMulticore())
+  if (isTRUE(verbose)) {
+    # Cheap and easy to check after the fact via system.time()/elapsed-time
+    # comparisons (as happened while diagnosing the two-week multisession
+    # run above) -- but there's no reason a caller should ever have to
+    # infer which backend got picked from timing alone when this can just
+    # say so up front.
+    message(sprintf("Using future backend: %s%s",
+                    if (use_multicore) "multicore" else "multisession",
+                    if (!use_multicore) " (multicore unavailable: Windows, or running inside RStudio)" else ""))
+  }
+  if (use_multicore) future::multicore else future::multisession
+}
+
+# Swaps in the future plan .future_backend() picks for `workers` parallel
+# workers, returning a cleanup closure the caller must register itself via
+# `on.exit(cleanup(), add = TRUE)` -- on.exit() is scoped to the frame that
+# calls it, so registering it *inside* this helper would restore the old
+# plan the moment this helper returns, not when the caller (which still has
+# its whole per-sample loop left to run) eventually returns.
+#
+# Shared by the six workers-taking loader functions (CreateRNAObjects,
+# CreateATACObjects, CreateATACObjectsFilter, CreateVisiumObjects,
+# CreateAndIntegrateRNA, MakeParseObj) -- previously an identical
+# requireNamespace()+plan()+on.exit() stanza, copy-pasted six times (the
+# multicore-vs-multisession fix above needed six manual edits as a result of
+# that duplication). CreateRNAObjects additionally clamps BLAS threads
+# around its own call to this helper -- that part isn't shared, since it's
+# the only one of the six with an empirically-confirmed need for it (see its
+# own comment) -- so this helper only covers the plan swap itself, not any
+# BLAS handling.
+#
+# Only call this when workers > 1.
+#' @keywords internal
+#' @noRd
+.setup_future_plan <- function(workers) {
+  if (!requireNamespace("future.apply", quietly = TRUE)) {
+    stop("Package 'future.apply' is required for workers > 1. ",
+         "install.packages('future.apply')")
+  }
+  old_plan <- future::plan(.future_backend(), workers = workers)
+  function() future::plan(old_plan)
 }
 
 #' @keywords internal

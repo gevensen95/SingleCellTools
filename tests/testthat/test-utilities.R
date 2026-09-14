@@ -370,7 +370,7 @@ test_that(".resolve_workers skips validation when detectCores() returns NA", {
 
 test_that(".future_backend returns future::multicore when fork is supported", {
   testthat::local_mocked_bindings(supportsMulticore = function(...) TRUE, .package = "future")
-  expect_identical(.future_backend(), future::multicore)
+  expect_identical(.future_backend(verbose = FALSE), future::multicore)
 })
 
 test_that(".future_backend falls back to future::multisession when fork isn't supported", {
@@ -378,8 +378,47 @@ test_that(".future_backend falls back to future::multisession when fork isn't su
   # RStudio (future disables multicore there by default -- forking a
   # process running RStudio's own GUI event loop is a known crash risk).
   testthat::local_mocked_bindings(supportsMulticore = function(...) FALSE, .package = "future")
-  expect_identical(.future_backend(), future::multisession)
+  expect_identical(.future_backend(verbose = FALSE), future::multisession)
 })
+
+test_that(".future_backend messages which backend it picked when verbose = TRUE", {
+  testthat::local_mocked_bindings(supportsMulticore = function(...) TRUE, .package = "future")
+  expect_message(.future_backend(verbose = TRUE), "multicore")
+
+  testthat::local_mocked_bindings(supportsMulticore = function(...) FALSE, .package = "future")
+  expect_message(.future_backend(verbose = TRUE), "multisession")
+})
+
+test_that(".future_backend stays silent when verbose = FALSE", {
+  testthat::local_mocked_bindings(supportsMulticore = function(...) TRUE, .package = "future")
+  expect_no_message(.future_backend(verbose = FALSE))
+})
+
+
+# ============================================================================
+# .setup_future_plan() -- shared workers > 1 plan-swap helper used by all six
+# multi-sample loader functions. Returns a cleanup closure rather than
+# calling on.exit() itself (on.exit() is frame-scoped, so it has to be
+# registered by the caller -- see the function's own comment).
+# ============================================================================
+
+test_that(".setup_future_plan swaps in a multi-worker plan and the returned cleanup restores it", {
+  testthat::local_mocked_bindings(supportsMulticore = function(...) FALSE, .package = "future")
+  old <- future::plan()
+  on.exit(future::plan(old), add = TRUE)
+
+  cleanup <- .setup_future_plan(2)
+  expect_true(inherits(future::plan(), "multisession"))
+
+  cleanup()
+  expect_identical(class(future::plan()), class(old))
+})
+
+# (Not tested here: the "future.apply missing" branch requires mocking
+# base::requireNamespace(), which testthat's local_mocked_bindings doesn't
+# support for base-package functions. future.apply is a hard Import of this
+# package anyway, so that branch is defense-in-depth rather than a realistic
+# runtime path.)
 
 
 # ============================================================================
