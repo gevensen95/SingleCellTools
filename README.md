@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/R-%3E%3D%202.10-276DC3?logo=r" alt="R >= 2.10" />
   <img src="https://img.shields.io/badge/Seurat-v5-ff69b4" alt="Seurat v5" />
   <img src="https://img.shields.io/badge/lifecycle-experimental-orange" alt="Lifecycle: experimental" />
-  <a href="doc/SingleCellTools_vignette.md">
+  <a href="vignettes/SingleCellTools_vignette.Rmd">
     <img src="https://img.shields.io/badge/docs-vignette-brightgreen" alt="Vignette" />
   </a>
 </p>
@@ -40,9 +40,13 @@ Key things it does:
 - **Annotates clusters** with cell-type labels (marker scoring via UCell, or SingleR reference mapping) and assigns cells to **anatomical regions** from hand-drawn polygons
 - Computes **cell-type composition** per sample/condition (with optional chi-square / Fisher tests) and plots it
 - Spatial **neighborhood enrichment** between cell types, unsupervised **niche** assignment, and niche-resolved **differential gene co-expression**
-- **Pseudobulk differential expression** (DESeq2) across donors/replicates
+- **Pseudobulk differential expression** (DESeq2) across donors/replicates, gene-set/pathway enrichment (fgsea/Enrichr), and single-cell-level GSEA for datasets too small to pseudobulk
+- Classifies ATAC peaks by genomic context (promoter / genic / **distal-enhancer**), links peaks to genes, builds Cicero co-accessibility networks, calls TF footprints, and does ROSE-style **super-enhancer** calling
+- Infers **gene regulatory networks** &mdash; RNA-only regulons (SCENIC) or joint RNA+ATAC eRegulons (SCENIC+-style)
+- Additional Visium **deconvolution** methods (CARD, SPOTlight) alongside RCTD, with a head-to-head comparison function
+- **Copy-number and clonal analysis** from expression alone (copyKAT) or with allele-specific phasing (numbat)
 - Round-trips Seurat objects to/from **AnnData** (`.h5ad`) via `zellkonverter`
-- A growing set of utilities for cell-cycle scoring, niche analysis, spatial polygons, and annotated dot plots
+- A growing set of utilities for cell-cycle scoring, niche analysis, spatial polygons, hashtag demultiplexing, ambient RNA removal, and annotated dot plots
 
 > For general-purpose pairwise gene co-expression analysis (not tied to spatial niches), see
 > [katlande/scCoExpress](https://github.com/katlande/scCoExpress) &mdash; this package's
@@ -53,12 +57,11 @@ Key things it does:
 
 ## Documentation
 
-- **[Vignette & function reference](doc/SingleCellTools_vignette.md)** — covers every function group with worked examples, parameter tables, and tips for common pitfalls. Also installed as a real package vignette (`vignette("SingleCellTools_vignette", package = "SingleCellTools")` after installing with `build_vignettes = TRUE`).
-- **[QC vignette](doc/SingleCellTools_QC_vignette.md)** — quality control end to end: single-cell in part one (report → edit cutoffs → apply → verify, doublets, batch effects, cell cycle), spatial in part two (object inspection, edge and hole detection, spatial concordance, image-safe subsetting).
-- **[ifnb tutorial](doc/SingleCellTools_vignette_ifnb.md)** — end-to-end walkthrough using the built-in `ifnb` PBMC dataset from `SeuratData`; no raw data download required.
-- **[Spatial tutorial](doc/SingleCellTools_vignette_spatial.md)** — Visium workflow (edge detection, integration, annotation, niche analysis) using the public `stxBrain` mouse brain dataset from `SeuratData`.
-- **[scATAC-seq tutorial](doc/SingleCellTools_vignette_atac.md)** — object creation, QC, LSI, cross-sample integration, gene activity scoring, motif enrichment, and differential accessibility. Supports mouse (`mm10`, default) or human (`hg38`) via `CreateATACObjects()`/`CreateATACObjectsFilter()`'s `genome` argument.
-- **[Working with BPCells](doc/SingleCellTools_vignette_bpcells.md)** — moving large single-cell/spatial datasets to on-disk matrices via `BPCells`: `ConvertToBPCells()`, the `on_disk` argument on `CreateRNAObjects()`/`CreateVisiumObjects()`/`LoadXenium2()`, and what still needs to stay in memory either way.
+- **[Vignette & function reference](vignettes/SingleCellTools_vignette.Rmd)** — covers every function group with worked examples, parameter tables, and tips for common pitfalls. Also installed as a real package vignette (`vignette("SingleCellTools_vignette", package = "SingleCellTools")` after installing with `build_vignettes = TRUE`).
+- **[ifnb tutorial](SingleCellTools_vignette_ifnb.md)** — end-to-end walkthrough using the built-in `ifnb` PBMC dataset from `SeuratData`; no raw data download required.
+- **[Spatial tutorial](SingleCellTools_vignette_spatial.md)** — Visium workflow (edge detection, integration, annotation, niche analysis) using the public `stxBrain` mouse brain dataset from `SeuratData`.
+- **[scATAC-seq tutorial](SingleCellTools_vignette_atac.md)** — object creation, QC, LSI, cross-sample integration, gene activity scoring, motif enrichment, and differential accessibility. Supports mouse (`mm10`, default) or human (`hg38`) via `CreateATACObjects()`/`CreateATACObjectsFilter()`'s `genome` argument.
+- **[Working with BPCells](SingleCellTools_vignette_bpcells.md)** — moving large single-cell/spatial datasets to on-disk matrices via `BPCells`: `ConvertToBPCells()`, the `on_disk` argument on `CreateRNAObjects()`/`CreateVisiumObjects()`/`LoadXenium2()`, and what still needs to stay in memory either way.
 
 ---
 
@@ -158,6 +161,7 @@ MarkerPlot(merged, markers)
 | `LoadXenium2()` | Streamlined Xenium loader. `microns_lazy = TRUE` reads `transcripts.parquet` via `arrow`'s query engine instead of loading the full table, for whole-slide runs. `on_disk = TRUE` moves the counts layer to an on-disk `BPCells` matrix as a final step. |
 | `QueryXeniumMolecules()` | Windowed / gene-subset transcript query against an object loaded with `LoadXenium2(..., microns_lazy = TRUE)`, without re-reading `transcripts.parquet`. |
 | `CreateATACObjects()` / `CreateATACObjectsFilter()` | scATAC-seq object construction (latter with interactive cutoff selection). |
+| `CreateXeniumObjects()` | Batch-load multiple Xenium samples &mdash; a thin multi-sample wrapper around `LoadXenium2()`, in line with the package's other batch loaders (`workers` argument for parallel reads). |
 
 </details>
 
@@ -166,7 +170,7 @@ MarkerPlot(merged, markers)
 
 | Function | What it does |
 |---|---|
-| `calldoublet()` | DoubletFinder wrapper. Pick `LogNormalize` or `SCT`, regress covariates, returns object tagged with `doublet_finder` (plus `doublet_pANN`, the raw score). Strips intermediate layers/reductions on return. `doublet_rate` (default `0.075`) sets the assumed doublet **formation** rate driving `nExp` &mdash; scale it to your recovered cell count (10X is roughly 0.8% per 1,000 cells). `pk_sweep_max_cells` (default `4000`) estimates pK from a random subsample instead of every cell, and `sweep_cores` parallelizes DoubletFinder's own 6-value pN sweep internally &mdash; both aimed at the sweep's per-sample cost, normally the dominant cost of doublet calling. |
+| `calldoublet()` | DoubletFinder wrapper. Pick `LogNormalize` or `SCT`, regress covariates, returns object tagged with `doublet_finder`. Strips intermediate layers/reductions on return. `pk_sweep_max_cells` (default `4000`) estimates pK from a random subsample instead of every cell, and `sweep_cores` parallelizes DoubletFinder's own 6-value pN sweep internally &mdash; both aimed at the sweep's per-sample cost, normally the dominant cost of doublet calling. |
 | `PlotQCMetrics()` | Multi-panel QC figure from a Seurat object (or list) &mdash; auto-detects `nFeature`/`nCount`/`percent.mt`/doublet-calling columns and grouping column (default `orig.ident`), or pass `qc_cols` to specify exactly which columns to plot. |
 | `EdgeDetectionVisium()` | Flags Visium spots at the edge of the capture area, around tissue boundaries, and at tears &mdash; the spots with weird counts that you almost certainly want to drop. |
 | `detect_fov_edges()` | Flags cells near the outer boundary of any spatial FOV (Visium, Xenium, MERFISH, ...) using an angular-gap + local-density test, with iterative ring labeling. |
@@ -179,6 +183,8 @@ MarkerPlot(merged, markers)
 | `check_gene_ids_across_objects()` | Same check across a list &mdash; catches the silent "one object is symbols, another is Ensembl" trap before a merge. |
 | `check_duplicate_genes()` | Reports duplicated feature names per object/assay &mdash; catches the most common cause of the `"duplicate 'row.names' are not allowed"` error during `merge()`. |
 | `CellSuiteSummary()` | One-command project summary: cell/gene counts, per-cluster counts, QC-metric medians/IQRs, top markers per cluster, reductions present, and (optionally) per-sample counts &mdash; everything you'd want at the top of a README or handoff, with a pretty `print()` method. |
+| `RemoveAmbientRNA()` | Removes ambient RNA contamination via `decontX` (data-driven from the filtered counts already in `obj`, default) or `SoupX` (needs the raw, unfiltered droplet matrix via `raw_counts`, and benefits from cluster labels). Relevant wherever one dominant, fragile cell type contributes outsized ambient signal &mdash; hepatocytes in liver, e.g. |
+| `DemultiplexHashtags()` | Demultiplexes pooled samples from hashtag (HTO) or CMO tags via `Seurat::HTODemux()` (clustering-based, default) or `Seurat::MULTIseqDemux()` (quantile-threshold sweep), standardizing both methods' output into common `hash_call`/`hash_global` columns. |
 
 </details>
 
@@ -187,7 +193,7 @@ MarkerPlot(merged, markers)
 
 | Function | What it does |
 |---|---|
-| `MergeSeurat()` | Merge a list, normalize (SCT or LogNormalize), PCA, integrate (`HarmonyIntegration`/`RPCA`/`CCA`/`JointPCA`), cluster, UMAP, and (optionally) run `FindAllMarkers` &mdash; writing the full result to `markers_all.csv` and drawing the top `marker_n` (default 10) genes per cluster to `marker_plot.pdf` via `TopMarkerPlot()`, so the panel is annotated and auto-sized rather than a fixed-size dot plot. Supports spatial assays (`Visium`, `Xenium`); pass `banksy = TRUE` (with `spatial = "Visium"`/`"Xenium"`) to run BANKSY spatial-aware clustering instead of plain PCA. `HarmonyIntegration` calls `harmony::RunHarmony()` directly rather than `Seurat::IntegrateLayers()`, so it works with current `harmony` releases. |
+| `MergeSeurat()` | Merge a list, normalize (SCT or LogNormalize), PCA, integrate (`HarmonyIntegration`/`RPCA`/`CCA`/`JointPCA`), cluster, UMAP, and (optionally) run `FindAllMarkers`. Supports spatial assays (`Visium`, `Xenium`); pass `banksy = TRUE` (with `spatial = "Visium"`/`"Xenium"`) to run BANKSY spatial-aware clustering instead of plain PCA. `HarmonyIntegration` calls `harmony::RunHarmony()` directly rather than `Seurat::IntegrateLayers()`, so it works with current `harmony` releases. |
 | `RunBanksyWrapper()` | Thin wrapper around `SeuratWrappers::RunBanksy()` that resolves spatial x/y coordinates automatically (via `get_all_coords()` for imaging-based FOVs, or Seurat's native spatial framework for Visium) and optionally runs `RunPCA()` on the resulting BANKSY assay. Used internally by `MergeSeurat(banksy = TRUE)`, but can be called directly. |
 | `BatchEffectQC()` | Quantifies batch mixing / integration quality on a reduction (silhouette width by batch and by cell type, kNN batch-mixing ratio, kNN cell-type purity) &mdash; run before and after integration (e.g. `MergeSeurat()`'s Harmony/RPCA/CCA/JointPCA) to check whether it actually helped. |
 | `subset_opt()` | Subset variant written specifically for CosMx/Xenium `FOV` objects (uses their `centroids`/`molecules` sub-slots) &mdash; keeps FOVs in sync with the cell list and optionally cleans the molecules slot afterward. Not for Visium (`VisiumV1`/`VisiumV2`) images; use `SubsetSpatial()` for those. |
@@ -197,6 +203,8 @@ MarkerPlot(merged, markers)
 | `CleanMolSlot()` | For spatial objects, drop molecules not assigned to any FOV from the molecules slot, shrinking the object. |
 | `strip_workflow_artifacts()` | Remove normalized/scaled layers, variable-feature sets, and dimensional reductions (`pca`, `umap`, `harmony`, ...), leaving just counts + metadata &mdash; handy before saving or sharing an object. |
 | `SaveWithProvenance()` | Writes a Seurat object as `.rds` plus a `<name>_provenance.json` sidecar recording package versions, assay/layer/reduction/metadata state, cell/gene counts, and (optionally) the calling script's git SHA &mdash; so a saved object's analysis state is inspectable without loading it. |
+| `LoadWithProvenance()` | Companion to `SaveWithProvenance()`: reads the `.rds`, validates it, and auto-runs `Seurat::UpdateSeuratObject()` if it fails (SeuratObject occasionally adds new S4 slots between versions) &mdash; catches the resulting cryptic `validObject()` error at load time instead of wherever downstream code happens to trigger it first. Also reports the sidecar's provenance info if present. |
+| `IntegrateModalities()` | Weighted-nearest-neighbor integration (`Seurat::FindMultiModalNeighbors()`) across >= 2 modalities that are each already reduced &mdash; CITE-seq (RNA + ADT) or multiome (RNA + ATAC). Does not compute each modality's own reduction; that's expected to already be done (`RunPCA()` for RNA/ADT, `Signac::RunTFIDF()` + `RunSVD()` for ATAC). |
 
 </details>
 
@@ -208,7 +216,7 @@ MarkerPlot(merged, markers)
 | `AddGenePositivity()` | For a vector of genes, adds a logical `<gene>_pos` metadata column per cell. Accepts a single object or a list. |
 | `GenePositivityAnalysis()` | Per-gene, per-sample positivity rates (optionally stratified by cell type/cluster/niche), with an optional chi-square or Fisher's exact test comparing rates across conditions &mdash; the `AddGenePositivity()` counterpart to `CompositionAnalysis()`. |
 | `GenePositivityEstimationPlot()` | Bootstrap effect-size ("estimation") plots (via `dabestr`) for a `GenePositivityAnalysis()` result &mdash; per-gene positivity-rate shift between two conditions with a 95% CI, as a complement to its p-value, in the same spirit as `CompositionEstimationPlot()`. |
-| `assign_cell_cycle_phase()` | Cell-cycle phase assignment via UCell &mdash; like `CellCycleScoring` but with `AddModuleScore_UCell` under the hood. Call it with just an object: gene sets default to `Seurat::cc.genes.updated.2019` (not `cc.genes`, whose `MLF1IP`/`FAM64A`/`HN1` are retired symbols that match nothing current), and symbols are matched to the object's features case-insensitively so human (`MCM5`) and mouse (`Mcm5`) both work with no `species` argument. Genes the object lacks are reported and dropped. |
+| `assign_cell_cycle_phase()` | Cell-cycle phase assignment via UCell &mdash; like `CellCycleScoring` but with `AddModuleScore_UCell` under the hood. |
 | `AnnotateWithReference()` | Reference-based cell-type annotation via one of three backends: CellTypist (Python, no reference needed &mdash; pre-trained model zoo), scANVI (Python, semi-supervised VAE from a labeled reference), or scmap (R-native, Bioconductor). Writes a predicted-label column (and, where available, a confidence-score column) to `@meta.data`. |
 | `AnnotateClusters()` | Assign per-cluster cell-type labels: either average UCell marker-set scores per cluster ("marker" mode) or run SingleR against a reference and take a per-cluster majority vote ("singler" mode), with optional score/margin thresholds for an "Unknown" label. |
 | `CompositionAnalysis()` | Cell counts and within-sample proportions per group (cluster/cell type) and sample, with an optional chi-square or Fisher's exact test comparing distributions across conditions. |
@@ -219,7 +227,15 @@ MarkerPlot(merged, markers)
 | `RunCellChat()` | Wraps the full `CellChat` pipeline (`createCellChat` through `aggregateNet`) into one call for a single Seurat subset (e.g. one condition/sample) &mdash; pairs naturally with `RunLIANA()` for a second, complementary ligand-receptor method. |
 | `call_mixture_states()` | Fits a Gaussian mixture model (via `mclust`) on one or more numeric metadata columns and returns a BIC-selected, ranked state call per row plus posterior-probability confidence/severity scores &mdash; a principled alternative to a hand-picked quantile cutoff on a module/composite score. |
 | `call_stress_states()` | Thin convenience wrapper around `call_mixture_states()` reproducing a fixed legacy column-naming convention (`annotation_first_pass` cell-type column, `stress_composite` score column by default). |
-| `PseudotimeWrapper()` | Wraps `slingshot` to fit lineage curves through a reduced-dimensional embedding (cluster labels as anchors) and writes one pseudotime metadata column per detected lineage, with the full `SlingshotDataSet` stashed in `@misc$slingshot`. |
+| `PseudotimeWrapper()` | Wraps `slingshot` (or `monocle3`/`destiny` via `method =`) to fit lineage curves through a reduced-dimensional embedding (cluster labels as anchors) and writes one pseudotime metadata column per detected lineage, with the full result stashed in `@misc$slingshot`. |
+| `RunTradeSeqDE()` | Differential expression along pseudotime via `tradeSeq`: fits a per-gene negative-binomial GAM against a `PseudotimeWrapper()` trajectory, then tests (`associationTest`/`startVsEndTest`/`diffEndTest`) whether genes change along it or differ between branches/lineages. |
+| `RunRNAVelocity()` | RNA velocity from spliced/unspliced counts via `scVelo` (Python, `reticulate`; supports the recommended `mode = "dynamical"`) or `velocyto.R` (pure R, no Python needed). Input is typically a `.loom` file or a matched spliced/unspliced matrix pair. |
+| `ClassifyByReferenceCutoff()` | Generalizes a "score cells against marker panels, then classify by comparing to a reference-derived quantile cutoff" pattern (originally hand-written for liver zonation calls) into a reusable function &mdash; argmax-vs-cutoff decision rule with an explicit "Unclassified" fallback, and optional per-group cutoffs (`group_by`). |
+| `RunSingleCellGSEA()` | Single-cell-level gene-set enrichment (UCell/AUCell per-cell scores + a distribution test between two conditions or one-vs-rest per cluster) &mdash; works with as few as one sample per condition, unlike `PseudobulkDE()` + `RunPathwayEnrichment()`, at the cost of treating cells as independent observations (read p-values as "detectable in this dataset," not as generalizing to new donors). |
+| `FetchGeneSets()` | Fetches a named gene-set list (Hallmark, GO BP/MF/CC, KEGG, Reactome, and more) from `msigdbr` or directly from `GO.db` (`source = "godb"`, avoids the `msigdbr` dependency), for `RunPathwayEnrichment()`/`RunSingleCellGSEA()`'s `gene_sets` argument. `species` is always required, never guessed. |
+| `RunPathwayEnrichment()` | Gene-set/pathway enrichment on a DE results table (from `PseudobulkDE()` or `FindMarkers()`), via `fgsea` (rank-based over the whole table, offline, default) or `enrichR` (Enrichr web API, needs only the significant genes but requires internet). |
+| `InferCNVWrapper()` | Copy-number inference from expression alone via `copykat`: classifies cells aneuploid (likely malignant) vs. diploid (likely normal) &mdash; no matched normal/tumor pair or genotyping needed. |
+| `RunNumbat()` | Allele-specific copy-number + clonal phylogeny via `numbat`, extending `InferCNVWrapper()` with copy-neutral LOH detection expression alone can't see. Requires an externally-built `allele_df` (numbat's own `pileup_and_phase.R`, via `bcftools` + `eagle2` against a 1000 Genomes panel &mdash; this package can't run that non-R preprocessing step for you). |
 
 </details>
 
@@ -247,6 +263,30 @@ MarkerPlot(merged, markers)
 | `NicheCoExpress()` | Per-sample, per-niche gene-pair co-expression (Manders Overlap Coefficient vs. an abundance-matched background), with differential testing between two conditions and optional cell-type-composition controls. |
 | `plotNicheCoExpress()` | Heatmap of differential co-expression (`delta`, with significance stars) or per-sample score plots for `NicheCoExpress()` results. |
 | `NicheCoExpressEstimationPlot()` | Bootstrap effect-size ("estimation") plots (via `dabestr`) for one or more (niche, gene-pair) combinations from a `NicheCoExpress()` result &mdash; a complement to its Wilcoxon/t-test p-value, in the same spirit as `CompositionEstimationPlot()`. |
+| `AlignSpatialSamples()` | Registers spatial coordinates across serial sections onto a common reference frame using user-identified corresponding landmark points (`method = "procrustes"`, default, or `"affine"`) &mdash; no automatic, correspondence-free registration is attempted, since it isn't reliable in general. |
+| `RunCARD()` | Visium spot deconvolution via `CARD::CARD_deconvolution`, modeling spatial correlation between neighboring spots (a conditional autoregressive prior) for smoother, more spatially coherent proportion maps than `RunRCTD()` &mdash; a natural second opinion via `CompareDeconvolution()`. |
+| `RunSPOTlight()` | Visium spot deconvolution via `SPOTlight::SPOTlight` (NMF-based); faster than `RunRCTD()`/`RunCARD()` and a useful third opinion for `CompareDeconvolution()`. |
+| `CompareDeconvolution()` | Compares any two of `RunRCTD()`/`RunCARD()`/`RunSPOTlight()`'s spot x cell-type proportion matrices the way `CompareMarkers()` compares two DE tables: a merged table, correlation statistics, and a scatter plot. |
+| `SpatialAutocorrelation()` | Spatially variable genes via Moran's I &mdash; a cleaner interface to `Seurat::FindSpatiallyVariableFeatures()` that pulls the per-gene statistics into a tidy ranked table and plots the top hits with `SpatialFeaturePlotFixed()`. |
+| `DistanceToRegion()` | Distance from every cell to the nearest boundary of a named polygon region &mdash; generalizes the polygon machinery behind `AnnotateRegions()` (inside/outside), `detect_fov_edges()`, and `detect_tissue_holes()` into one reusable "how far from structure X" continuous gradient, e.g. distance from a portal tract, tumor margin, or vessel. |
+| `CompareLRResults()` | Compares `RunLIANA()` and `RunCellChat()` ligand-receptor results the same way `CompareMarkers()` compares two DE tables &mdash; matches on source, target, and each side's first gene symbol (a heuristic, since the two tools report multi-subunit complexes differently). |
+
+</details>
+
+<details open>
+<summary><strong>ATAC, enhancers, and gene regulatory networks</strong></summary>
+
+| Function | What it does |
+|---|---|
+| `RunATACWrapper()` | Signac's standard ATAC normalization + dimensionality reduction: TF-IDF &rarr; top features &rarr; SVD ("LSI"), the ATAC-appropriate substitute for RNA's Normalize+PCA. Component 1 usually tracks sequencing depth rather than biology (see `Seurat::DepthCor()`) &mdash; most callers drop it downstream (`MergeSeurat()`'s `atac_lsi_first_dim` does this for you). |
+| `RunATACMotifEnrichment()` | Motif scanning (`Signac::AddMotifs()`, via `motifmatchr`/`TFBSTools`) + per-cell chromVAR accessibility deviations (`Signac::RunChromVAR()`) in one call. Defaults to JASPAR2020's motif set for a given `species`; `compute_motifs`/`run_chromvar` flags let either step run alone. |
+| `LinkPeaksToGenes()` | Wraps `Signac::RegionStats()` + `Signac::LinkPeaks()`: tests each gene's expression against every peak within `distance` of it for a significant correlation across cells &mdash; for multiome or ATAC+RNA-integrated objects. |
+| `AnnotatePeaks()` | Classifies every peak in a `ChromatinAssay` by genomic context (`"promoter_proximal"` / `"exonic"` / `"intronic"` / `"distal"`) &mdash; the foundation piece for anything that wants to talk about "enhancers" rather than just "peaks," feeding `RunERegulons()`, `RunCicero()`, and `CallSuperEnhancers()`. `method = "signac"` (default) uses the object's own attached gene annotation, no new dependency; `method = "chipseeker"` uses `ChIPseeker::annotatePeak()` against an explicit `txdb` for a fuller category breakdown. |
+| `RunCicero()` | Peak-peak co-accessibility network via `cicero` &mdash; a second, RNA-free line of enhancer-promoter evidence that complements (not replaces) `LinkPeaksToGenes()`. If `AnnotatePeaks()` has already run, resolves highly co-accessible promoter/distal peak pairs into `enhancer_promoter_links`. |
+| `RunTFFootprinting()` | Wraps `Signac::Footprint()` + `Signac::PlotFootprint()`: looks at the Tn5 insertion pattern *within* motif-matched regions for the dip left by a physically bound protein &mdash; stronger evidence of direct binding than `RunATACMotifEnrichment()`'s sequence-match alone, at the cost of needing more reads and being slower (so `motifs` is required, not "every motif"). |
+| `CallSuperEnhancers()` | ROSE-style super-enhancer calling from per-cluster pseudobulk ATAC signal: stitches nearby peaks into candidate regions, ranks them by signal, and finds the "hockey stick" inflection point separating ordinary enhancers from a small set of unusually active stitched regions. The cutoff is an explicitly-documented simplified stand-in for ROSE's real tangent-line method, not a faithful reimplementation &mdash; inspect the hockey-stick plot rather than trusting it blindly. |
+| `RunSCENIC()` | RNA-only transcription-factor regulon inference (SCENIC): co-expression modules via `GENIE3` or `GRNBoost2`, optional motif-based pruning via `RcisTarget`, per-cell regulon activity via `AUCell`. `tf_list` is required with no bundled default &mdash; see the docs for why guessing a species' TF list is worse than guessing a gene set. |
+| `RunERegulons()` | Joint RNA+ATAC regulon inference (SCENIC+-style eRegulons): TF &rarr; peak &rarr; gene, not just TF &rarr; gene. `method = "lite"` (default) assembles eRegulons purely in R from `LinkPeaksToGenes()` + `RunATACMotifEnrichment()` output already on the object; `method = "scenicplus"` prepares inputs for the real multi-stage Python pipeline and is upfront when it can't run it for you (points at the scenicplus docs instead of silently doing nothing). |
 
 </details>
 
@@ -277,7 +317,6 @@ MarkerPlot(merged, markers)
 | Function | What it does |
 |---|---|
 | `MarkerPlot()` | Annotated dot plot. Genes are grouped by a `Details` column, identities can be optionally clustered by correlation, and absent or all-zero-expression genes are dropped automatically so you never see a blank row. Text size and a suggested figure size auto-scale with the gene count (large panels get smaller text and a taller suggested height) so a 100+ gene panel doesn't collapse into overlapping labels; pass `save_path` to save directly at that size. |
-| `TopMarkerPlot()` | One call from a clustered object to a labeled marker panel: runs `FindAllMarkers()`, keeps the top `n` genes per cluster, and hands them to `MarkerPlot()` so the styling and auto-sizing match every other marker figure. Pass `markers =` an existing `FindAllMarkers()` table to skip the slow part, or `group_by =` a metadata column to use cell-type labels instead of cluster numbers. A gene topping two clusters is assigned to its best-scoring one (duplicates would plot as repeated rows), and numeric cluster IDs are zero-padded past 9 so `MarkerPlot()`'s alphabetical group ordering matches numeric order. Returns the plot with the full and top-N marker tables attached as attributes. |
 | `MarkerHeatmap()` | Heatmap of the top N markers per cluster (from `FindAllMarkers` or computed on the fly), z-scored across clusters with optional row/column clustering. Pass `genes = c(...)` instead of a markers table/`n` to plot an explicit, curated gene list rather than a data-driven top-N selection. `pseudobulk = TRUE` sums raw counts per cluster and normalizes once instead of averaging per-cell values &mdash; more robust on sparse data (e.g. Visium) where per-cell/per-spot noise is a real concern. |
 | `MarkerPctPlot()` | Sibling to `MarkerPlot()` that isolates percent-positive as a heatmap or sized dot plot (instead of entangling it with average-expression color), organized by the same gene-annotation grouping, with optional identity clustering. |
 | `PlotFeatureDensity()` | Nebulosa-style 2D kernel-density plot of expression (or module scores) on a reduction &mdash; much easier to read than `Seurat::FeaturePlot()`'s grey-to-blue points in dense regions. Optional joint co-expression density panel. |
@@ -288,6 +327,8 @@ MarkerPlot(merged, markers)
 | `stack_polygons()` | Prepares a `PlotPolygons()` plot to be layered into one composite figure with other polygon plots on a shared coordinate range, each keeping its own color scale (as a transparent `patchwork` inset). |
 | `collect_legend()` | Pulls a plot's legend out as a standalone grob &mdash; recovers the legends `stack_polygons()` strips, so they can be laid out separately alongside the combined overlay. |
 | `Ol_Reliable()` | Shared `ggplot2` theme (clean panel borders, subtle gridlines, bold black-and-white facet strips) applied by default across this package's plotting functions. Add it to your own `ggplot()` calls (`+ Ol_Reliable()`) to match. |
+| `AssignColors()` | Builds a named color vector: values you name in `known` get their real color, everything else in `values` falls back to one catch-all color (default `"black"`) &mdash; for `cols =` in `DimPlot()`, `SpatialDimPlot()`, `SpatialDimPlotFixed()`, etc., without hand-rolling `setNames()` overwrite logic each time. |
+| `PlotNeighborhoodEnrichment()` | Diverging heatmap of `NeighborhoodEnrichment()`'s cell-type x cell-type z-score matrix, with significance stars from `padj` &mdash; the same visual convention as `plotNicheCoExpress()`. |
 
 </details>
 
@@ -303,7 +344,7 @@ flowchart LR
     B --> Q[GenerateQCReport]
     C --> D[MergeSeurat / SubsetAndRecluster]
     D --> E[Cluster + UMAP<br/>FindAllMarkers]
-    E --> F[AnnotateClusters<br/>TopMarkerPlot<br/>MarkerPlot / MarkerHeatmap<br/>StackedViolinPlot]
+    E --> F[AnnotateClusters<br/>MarkerPlot / MarkerHeatmap<br/>StackedViolinPlot]
     F --> G[CompositionAnalysis<br/>NeighborhoodEnrichment<br/>NicheCoExpress<br/>PseudobulkDE]
 ```
 
@@ -322,13 +363,14 @@ flowchart LR
 | **Tidyverse** | `dplyr`, `tibble`, `tidyr`, `magrittr`, `readr`, `stringr`, `purrr`, `rlang`, `ggplot2` |
 | **Numerical / spatial** | `Matrix`, `RANN`, `ClusterR`, `irlba`, `RSpectra` |
 | **Plotting** | `RColorBrewer`, `patchwork` |
-| **Optional (Suggests)** | `sf` (`get_cells_in_polygon`, `AnnotateRegions`); `SingleR` + `SingleCellExperiment` (`AnnotateClusters(method = "singler")`); `zellkonverter` + `anndata` + `basilisk` (`FromAnnData` / `ToAnnData`); `harmony` (`MergeSeurat()`'s Harmony integration path); `rmarkdown` + `knitr` (`GenerateQCReport`); `spacexr` (GitHub: `dmcable/spacexr`) for `RunRCTD()` deconvolution; `CellChat` (GitHub: `sqjin/CellChat`) for `RunCellChat()`; `Banksy` (GitHub: `prabhakarlab/Banksy`) + `SeuratWrappers` (GitHub: `satijalab/seurat-wrappers`) for `RunBanksyWrapper()` / `MergeSeurat(banksy = TRUE)`; `dabestr` for the estimation-plot functions (`CompositionEstimationPlot()`, `NicheCoExpressEstimationPlot()`, `GenePositivityEstimationPlot()`); `Nebulosa` (`PlotFeatureDensity()`); `arrow` + `data.table` + `R.utils` (`LoadXenium2(microns_lazy = TRUE)`, `MakeParseObj()`); `png` + `scatterpie` (spatial composition plotting); `org.Mm.eg.db` / `org.Hs.eg.db` + `EnsDb.Mmusculus.v79` + `BSgenome.Mmusculus.UCSC.mm10` or `EnsDb.Hsapiens.v86` + `BSgenome.Hsapiens.UCSC.hg38` (`CreateATACObjects()` / `CreateATACObjectsFilter()`, whichever `genome` you request); `BPCells` (GitHub: `bnprks/BPCells/r`) for `ConvertToBPCells()` and `on_disk = TRUE` on `CreateRNAObjects()`/`CreateVisiumObjects()`/`LoadXenium2()` |
+| **Optional (Suggests)** | `sf` (`get_cells_in_polygon`, `AnnotateRegions`); `SingleR` + `SingleCellExperiment` (`AnnotateClusters(method = "singler")`); `zellkonverter` + `anndata` + `basilisk` (`FromAnnData` / `ToAnnData`); `harmony` (`MergeSeurat()`'s Harmony integration path); `rmarkdown` + `knitr` (`GenerateQCReport`); `spacexr` (GitHub: `dmcable/spacexr`) for `RunRCTD()` deconvolution; `CellChat` (GitHub: `sqjin/CellChat`) for `RunCellChat()`; `Banksy` (GitHub: `prabhakarlab/Banksy`) + `SeuratWrappers` (GitHub: `satijalab/seurat-wrappers`) for `RunBanksyWrapper()` / `MergeSeurat(banksy = TRUE)`; `dabestr` for the estimation-plot functions (`CompositionEstimationPlot()`, `NicheCoExpressEstimationPlot()`, `GenePositivityEstimationPlot()`); `Nebulosa` (`PlotFeatureDensity()`); `arrow` + `data.table` + `R.utils` (`LoadXenium2(microns_lazy = TRUE)`, `MakeParseObj()`); `png` + `scatterpie` (spatial composition plotting); `org.Mm.eg.db` / `org.Hs.eg.db` + `EnsDb.Mmusculus.v79` + `BSgenome.Mmusculus.UCSC.mm10` or `EnsDb.Hsapiens.v86` + `BSgenome.Hsapiens.UCSC.hg38` (`CreateATACObjects()` / `CreateATACObjectsFilter()`, whichever `genome` you request; plus the other `org.*.eg.db` packages for `FetchGeneSets(source = "godb")`'s other supported species); `BPCells` (GitHub: `bnprks/BPCells/r`) for `ConvertToBPCells()` and `on_disk = TRUE` on `CreateRNAObjects()`/`CreateVisiumObjects()`/`LoadXenium2()`; `SoupX` + `celda` (`RemoveAmbientRNA()`); `chromVAR` + `motifmatchr` + `TFBSTools` + `JASPAR2020` (`RunATACMotifEnrichment()`); `GENIE3` + `RcisTarget` (`RunSCENIC()`); `ChIPseeker` (`AnnotatePeaks(method = "chipseeker")`); `cicero` (`RunCicero()`); `numbat` (GitHub: `kharchenkolab/numbat`) for `RunNumbat()`; `copykat` (GitHub: `navinlabcode/copykat`) for `InferCNVWrapper()`; `fgsea` + `enrichR` (`RunPathwayEnrichment()`); `AUCell` + `msigdbr` (single-cell GSEA scoring, gene-set collections); `tradeSeq` (`RunTradeSeqDE()`); `monocle3` (GitHub: `cole-trapnell-lab/monocle3`) + `destiny` (alternate `PseudotimeWrapper()` methods); `velocyto.R` (GitHub: `velocyto-team/velocyto.R`) for `RunRNAVelocity()`; `CARD` (GitHub: `YMa-Lab/CARD`) for `RunCARD()`; `SPOTlight` (GitHub: `MarcElosua/SPOTlight`) for `RunSPOTlight()`; `vegan` (`AlignSpatialSamples(method = "procrustes")`); `BiocParallel` (parallel backend for several of the above) |
 
-`spacexr`, `Banksy`, `SeuratWrappers`, and `BPCells` are GitHub-only and declared under
-`Remotes:` in [`DESCRIPTION`](DESCRIPTION), so `remotes::install_github("gevensen95/SingleCellTools")`
-resolves them automatically -- no separate `install_github()` call needed for those four.
-`DoubletFinder` is the one GitHub-only dependency *not* listed under `Remotes:`, which is why it
-needs the manual install step above. A full list with version pins lives in `DESCRIPTION`.
+`spacexr`, `Banksy`, `SeuratWrappers`, `BPCells`, `copykat`, `monocle3`, `CARD`, `SPOTlight`,
+`velocyto.R`, and `numbat` are GitHub-only and declared under `Remotes:` in
+[`DESCRIPTION`](DESCRIPTION), so `remotes::install_github("gevensen95/SingleCellTools")` resolves
+them automatically -- no separate `install_github()` call needed for those. `DoubletFinder` is the
+one GitHub-only dependency *not* listed under `Remotes:`, which is why it needs the manual install
+step above. A full list with version pins lives in `DESCRIPTION`.
 
 ---
 
