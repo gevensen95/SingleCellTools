@@ -1,6 +1,6 @@
 Package: SingleCellTools
 Title: Wrapper and analysis functions for single cell data
-Version: 3.0
+Version: 2.8
 Authors@R:
     person("K. Garrett", "Evensen", , "kgsevensen@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-6720-2526"))
@@ -135,6 +135,8 @@ Suggests:
     ChIPseeker,
     cicero,
     numbat,
+    ensembldb,
+    Rsamtools,
     testthat (>= 3.1.4)
 VignetteBuilder: knitr
 Config/roxygen2/version: 8.1.0

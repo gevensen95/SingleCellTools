@@ -54,6 +54,17 @@
 #' is matched automatically; \code{genes.tsv.gz} (CellRanger v2 naming) is
 #' also recognized alongside \code{features.tsv.gz}.
 #'
+#' The matrix \emph{folder} itself is looked for under two names:
+#' \code{filtered_feature_bc_matrix} (plain \code{cellranger count}) and
+#' \code{sample_filtered_feature_bc_matrix} (\code{cellranger multi}'s
+#' per-sample output, e.g. under
+#' \code{outs/per_sample_outs/<sample_id>/count/}) -- both checked directly
+#' inside \code{dir} and inside \code{dir/outs}, before falling back to a
+#' \code{.h5} file. This means pointing \code{data_dirs} at a
+#' \code{cellranger multi} per-sample \code{count} directory reads the MTX
+#' folder rather than \code{sample_filtered_feature_bc_matrix.h5}, so
+#' \code{hdf5r} is never required unless no matrix folder is found at all.
+#'
 #' @param data_dirs Path to directories containing matrix.mtx, features.tsv, and
 #'  barcodes.tsv or .h5 files.
 #' @param cells Features must be expressed in at least this many cells
@@ -246,16 +257,29 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
 
   .read_one <- function(dir) {
     # Look for a (possibly sample-prefixed) barcodes/features(or genes)/
-    # matrix triplet directly in `dir`, then in the two conventional
-    # CellRanger subdirectories, before falling back to a .h5 file.
+    # matrix triplet directly in `dir`, then in the matrix-folder candidates
+    # below, before falling back to a .h5 file. Two folder names are tried,
+    # since CellRanger uses different conventions depending on the pipeline:
+    # "filtered_feature_bc_matrix" (plain `cellranger count`) and
+    # "sample_filtered_feature_bc_matrix" (`cellranger multi`'s per-sample
+    # output under outs/per_sample_outs/<sample_id>/count/) -- both checked
+    # directly inside `dir` and inside `dir/outs`, matching how `count`'s
+    # own top-level output additionally nests everything under an `outs/`
+    # subdirectory. Trying the multi-style name here (rather than only
+    # falling through to the .h5 file cellranger multi also writes) avoids
+    # requiring hdf5r at all when a matrix folder is available.
+    matrix_folder_names <- c('filtered_feature_bc_matrix',
+                             'sample_filtered_feature_bc_matrix')
+
     seurat_data <- .read_10x_triplet(dir)
 
-    if (is.null(seurat_data)) {
-      seurat_data <- .read_10x_triplet(paste(dir, 'filtered_feature_bc_matrix', sep = '/'))
+    for (folder_name in matrix_folder_names) {
+      if (!is.null(seurat_data)) break
+      seurat_data <- .read_10x_triplet(file.path(dir, folder_name))
     }
-    if (is.null(seurat_data)) {
-      seurat_data <- .read_10x_triplet(paste(paste(dir, 'outs', sep = '/'),
-                                             'filtered_feature_bc_matrix', sep = '/'))
+    for (folder_name in matrix_folder_names) {
+      if (!is.null(seurat_data)) break
+      seurat_data <- .read_10x_triplet(file.path(dir, 'outs', folder_name))
     }
 
     if (!is.null(seurat_data)) {
@@ -295,7 +319,8 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
     }
 
     stop("Could not find a barcodes/features/matrix triplet or a .h5 file ",
-        "in '", dir, "' (or its filtered_feature_bc_matrix subdirectories).")
+        "in '", dir, "' (or its filtered_feature_bc_matrix / ",
+        "sample_filtered_feature_bc_matrix subdirectories).")
   }
 
   seurat_objects <- if (workers > 1) {
