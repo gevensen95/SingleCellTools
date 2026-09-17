@@ -58,6 +58,10 @@ A data frame with one row per (source, target, ligand, receptor)
 interaction, sorted by aggregated rank. Columns include \code{source},
 \code{target}, \code{ligand.complex}, \code{receptor.complex},
 \code{aggregate_rank}, and the per-method scores that were run.
+\code{aggregate_rank} occasionally can't be computed (see the
+\code{get_agrank} fallback note in the source) -- in that case the
+data frame is instead sorted by \code{mean_rank}, and
+\code{aggregate_rank} is simply absent.
 }
 \description{
 Wraps \code{liana::liana_wrap} + \code{liana::liana_aggregate} to run
@@ -74,9 +78,14 @@ rankings, which is more robust than any single method. Pass
 \strong{Species and resources.} LIANA pulls its ligand-receptor
 resource from OmnipathR. Pass \code{resource = "Consensus"} (default)
 for human OR use \code{liana::show_resources()} to explore. For mouse,
-set \code{use_ortho = TRUE} to have LIANA translate the human resource
-to mouse gene symbols. Genes are matched case-sensitively — check that
-\code{rownames(obj[[assay]])} match the resource's naming convention.
+set \code{use_ortho = TRUE}: with the default \code{resource =
+"Consensus"} this switches to LIANA's built-in, already-mouse-symbol
+\code{"MouseConsensus"} resource; for any other named resource it
+translates that human resource to mouse gene symbols via
+\code{liana::generate_homologs()}. Genes are matched case-sensitively
+— check that \code{rownames(obj[[assay]])} match the resource's naming
+convention (mouse symbols are Title Case, e.g. \code{"Tnf"}, not
+\code{"TNF"}).
 }
 \examples{
 \dontrun{

@@ -82,7 +82,15 @@
 #'   hemoglobin genes while excluding the unrelated \code{"Hbp1"}/\code{"HBP1"}
 #'   gene, a well-known false positive for naive \code{"^Hb"} patterns.
 #' @param treatment Treatment metadata column (e.g., Age, chemical, etc.)
-#' @param object_names Names for the Seurat objects
+#' @param object_names Names for the Seurat objects. If not \code{NULL},
+#'   also used as each object's \code{orig.ident}/\code{project} at creation
+#'   time, so the list name and \code{orig.ident} always agree instead of
+#'   being set independently. If \code{NULL} (default), \code{orig.ident}
+#'   falls back to \code{basename(dir)} (or \code{dirname(dir)} on the
+#'   \code{.h5} fallback path), same as before -- which for a
+#'   \code{cellranger multi} path ending in \code{.../count} means every
+#'   sample's \code{orig.ident} becomes the literal string \code{"count"}.
+#'   Passing \code{object_names} explicitly avoids that.
 #' @param run_doublet_finder Logical; if TRUE (default), run \code{calldoublet}
 #'   on every object and add a \code{doublet_finder} metadata column.
 #' @param doublet_normalization Passed to \code{calldoublet}: one of
@@ -255,7 +263,12 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
   # runs in parallel when workers > 1 (see .read_one below); otherwise a
   # plain sequential lapply, unchanged from before.
 
-  .read_one <- function(dir) {
+  .read_one <- function(dir, name = NULL) {
+    # `name`, when supplied (from `object_names` below), is used as this
+    # object's orig.ident/project instead of the basename(dir)/dirname(dir)
+    # default -- keeps orig.ident in sync with the caller-chosen sample name
+    # rather than whatever the directory itself happens to be called (e.g.
+    # "count" for a `cellranger multi` per-sample output directory).
     # Look for a (possibly sample-prefixed) barcodes/features(or genes)/
     # matrix triplet directly in `dir`, then in the matrix-folder candidates
     # below, before falling back to a .h5 file. Two folder names are tried,
@@ -286,7 +299,7 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
       return(Seurat::CreateSeuratObject(counts = seurat_data,
                                         min.cells = cells,
                                         min.features = features,
-                                        project = basename(dir)))
+                                        project = if (!is.null(name)) name else basename(dir)))
     }
 
     # Anchored on ".h5" (excludes AnnData ".h5ad" files, which end in "ad"
@@ -315,7 +328,7 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
       return(Seurat::CreateSeuratObject(counts = seurat_data,
                                         min.cells = cells,
                                         min.features = features,
-                                        project = dirname(dir)))
+                                        project = if (!is.null(name)) name else dirname(dir)))
     }
 
     stop("Could not find a barcodes/features/matrix triplet or a .h5 file ",
@@ -323,10 +336,29 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
         "sample_filtered_feature_bc_matrix subdirectories).")
   }
 
-  seurat_objects <- if (workers > 1) {
-    future.apply::future_lapply(data_dirs, .read_one, future.seed = TRUE)
+  # If `object_names` is supplied, thread it through to .read_one() as
+  # `name` too, so it becomes each object's orig.ident/project as well as
+  # the list name below -- otherwise the two can silently disagree (list
+  # name "WT-1" from object_names, but orig.ident still "count" or a full
+  # path from basename(dir)/dirname(dir), since those were previously
+  # resolved completely independently of object_names). A NULL per element
+  # when object_names isn't supplied preserves the old default exactly.
+  if (!is.null(object_names) && length(object_names) != length(data_dirs)) {
+    stop(sprintf(
+      "`object_names` has length %d but there are %d `data_dirs` -- these must match one-to-one.",
+      length(object_names), length(data_dirs)))
+  }
+  names_arg <- if (is.null(object_names)) {
+    vector("list", length(data_dirs))
   } else {
-    lapply(data_dirs, .read_one)
+    as.list(object_names)
+  }
+
+  seurat_objects <- if (workers > 1) {
+    future.apply::future_mapply(.read_one, data_dirs, names_arg,
+                                SIMPLIFY = FALSE, future.seed = TRUE)
+  } else {
+    mapply(.read_one, data_dirs, names_arg, SIMPLIFY = FALSE)
   }
   # Name the list elements with the base names of the directories
   if (is.null(object_names) == TRUE) {

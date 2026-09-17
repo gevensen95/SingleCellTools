@@ -8,7 +8,12 @@ CreateATACObjects(
   data_dirs,
   add_treatment = FALSE,
   treatment = NULL,
-  genome = c("mm10", "hg38"),
+  genome = c("mm10", "hg38", "custom"),
+  annotation = NULL,
+  main_chroms = NULL,
+  genome_label = NULL,
+  cellranger_ref = NULL,
+  organism = NULL,
   object_names = NULL,
   peakwidths_max = 10000,
   peakwidths_min = 20,
@@ -23,13 +28,77 @@ CreateATACObjects(
 
 \item{treatment}{Treatment metadata value (vector)}
 
-\item{genome}{One of \code{"mm10"} (default) or \code{"hg38"}. Selects the gene
-annotation (\code{EnsDb.Mmusculus.v79} / \code{EnsDb.Hsapiens.v86}) and genome
+\item{genome}{One of \code{"mm10"} (default), \code{"hg38"}, or
+\code{"custom"}. \code{"mm10"}/\code{"hg38"} select the gene annotation
+(\code{EnsDb.Mmusculus.v79} / \code{EnsDb.Hsapiens.v86}) and genome
 sequence (\code{BSgenome.Mmusculus.UCSC.mm10} / \code{BSgenome.Hsapiens.UCSC.hg38})
 used for scaffold-chromosome filtering and the \code{ChromatinAssay} annotation.
 Both are optional (Suggests) packages -- only the one matching your chosen
 \code{genome} needs to be installed, and you'll get an actionable error naming
-it if it's missing.}
+it if it's missing. For any other species (e.g. rhesus macaque), pass
+\code{genome = "custom"} -- there's no way to auto-resolve an
+annotation/genome-sequence package for an arbitrary species the way
+there is for mouse/human, so this needs either \code{cellranger_ref}
+(recommended -- derives everything from your own cellranger reference
+package) or \code{annotation}/\code{main_chroms} supplied directly.
+See those parameters' docs below.}
+
+\item{annotation}{Only used when \code{genome = "custom"} and
+\code{cellranger_ref} is NOT supplied. A \code{GRanges} of gene
+annotations, e.g. from \code{Signac::GetGRangesFromEnsDb()} on your own
+\code{EnsDb} (for a species without a dedicated \code{EnsDb.*} package,
+build one from an Ensembl GTF via \code{ensembldb::ensDbFromGtf()}).
+Must already use the same chromosome-naming style (e.g. \code{"chr1"}
+vs \code{"1"}) as your \code{peaks.bed}/\code{fragments.tsv.gz} files
+-- unlike the \code{"mm10"}/\code{"hg38"} paths, this is NOT
+auto-converted via \code{seqlevelsStyle()}, since there's no reliable
+way to know which style a custom genome's fragments are in.}
+
+\item{main_chroms}{Only used when \code{genome = "custom"} and
+\code{cellranger_ref} is NOT supplied. Character vector of the
+standard/main chromosome names to keep when filtering out scaffolds
+(e.g. \code{paste0("chr", c(1:20, "X", "Y"))} for rhesus rheMac10,
+matching whatever naming style your peaks use). For
+\code{"mm10"}/\code{"hg38"} this is derived automatically from the
+corresponding \code{BSgenome} package via
+\code{GenomeInfoDb::standardChromosomes()}; there's no BSgenome
+dependency for a custom genome, so it has to be passed explicitly (or
+derived from \code{cellranger_ref} -- see below).}
+
+\item{genome_label}{Required when \code{genome = "custom"}. A short
+string identifying the genome build (e.g. \code{"rheMac10"}), used to
+tag the \code{ChromatinAssay}'s own genome slot the same way
+\code{"mm10"}/\code{"hg38"} do, and as the \code{genomeVersion} when
+\code{cellranger_ref} builds an \code{EnsDb} internally.}
+
+\item{cellranger_ref}{Only used when \code{genome = "custom"}. Path to a
+reference package directory built with \code{cellranger-atac mkref} /
+\code{cellranger-arc mkref} (i.e. the same reference your
+\code{data_dirs} were actually aligned/called against). When supplied,
+\code{annotation} and \code{main_chroms} are derived automatically from
+files already inside it instead of being passed by hand: the gene
+annotation comes from \code{<cellranger_ref>/genes/genes.gtf.gz} (via
+\code{ensembldb::ensDbFromGtf()} + \code{Signac::GetGRangesFromEnsDb()}),
+and \code{main_chroms} comes from the contig names in
+\code{<cellranger_ref>/fasta/*.fa} (indexed with
+\code{Rsamtools::indexFa()} if a \code{.fai} isn't already there),
+filtered down via \code{GenomeInfoDb::standardChromosomes()}. This is
+the recommended way to use a non-mouse/human species like rhesus
+macaque: since the annotation and chromosome list both come from the
+exact same reference files cellranger used, there's no risk of a
+genome-build/assembly mismatch or a chromosome-naming-style mismatch
+against your actual \code{peaks.bed}/\code{fragments.tsv.gz} -- unlike
+downloading a GTF separately and hoping it matches. Requires
+\code{organism} (see below) and \code{genome_label} to also be
+supplied, since a cellranger reference's \code{genes.gtf.gz} isn't
+named the way \code{ensembldb} expects to auto-extract those from a
+filename. Mutually exclusive with passing \code{annotation}/
+\code{main_chroms} directly.}
+
+\item{organism}{Required when \code{genome = "custom"} and
+\code{cellranger_ref} is supplied. A short organism name/label (e.g.
+\code{"Macaca_mulatta"}) recorded in the \code{EnsDb} built from
+\code{cellranger_ref}'s GTF -- metadata only, not used for matching.}
 
 \item{object_names}{Optional character vector of names for the returned list,
 the same length as \code{data_dirs}. \code{NULL} (default) uses
