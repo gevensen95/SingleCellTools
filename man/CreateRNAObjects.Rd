@@ -51,7 +51,15 @@ gene, a well-known false positive for naive \code{"^Hb"} patterns.}
 
 \item{treatment}{Treatment metadata column (e.g., Age, chemical, etc.)}
 
-\item{object_names}{Names for the Seurat objects}
+\item{object_names}{Names for the Seurat objects. If not \code{NULL},
+also used as each object's \code{orig.ident}/\code{project} at creation
+time, so the list name and \code{orig.ident} always agree instead of
+being set independently. If \code{NULL} (default), \code{orig.ident}
+falls back to \code{basename(dir)} (or \code{dirname(dir)} on the
+\code{.h5} fallback path), same as before -- which for a
+\code{cellranger multi} path ending in \code{.../count} means every
+sample's \code{orig.ident} becomes the literal string \code{"count"}.
+Passing \code{object_names} explicitly avoids that.}
 
 \item{run_doublet_finder}{Logical; if TRUE (default), run \code{calldoublet}
 on every object and add a \code{doublet_finder} metadata column.}
@@ -152,4 +160,15 @@ or be prefixed with a sample name, e.g.
 Supplementary Files from GEO. Any prefix in front of the standard suffix
 is matched automatically; \code{genes.tsv.gz} (CellRanger v2 naming) is
 also recognized alongside \code{features.tsv.gz}.
+
+The matrix \emph{folder} itself is looked for under two names:
+\code{filtered_feature_bc_matrix} (plain \code{cellranger count}) and
+\code{sample_filtered_feature_bc_matrix} (\code{cellranger multi}'s
+per-sample output, e.g. under
+\code{outs/per_sample_outs/<sample_id>/count/}) -- both checked directly
+inside \code{dir} and inside \code{dir/outs}, before falling back to a
+\code{.h5} file. This means pointing \code{data_dirs} at a
+\code{cellranger multi} per-sample \code{count} directory reads the MTX
+folder rather than \code{sample_filtered_feature_bc_matrix.h5}, so
+\code{hdf5r} is never required unless no matrix folder is found at all.
 }
