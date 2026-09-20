@@ -35,16 +35,31 @@
 #'   -- unlike the \code{"mm10"}/\code{"hg38"} paths, this is NOT
 #'   auto-converted via \code{seqlevelsStyle()}, since there's no reliable
 #'   way to know which style a custom genome's fragments are in.
-#' @param main_chroms Only used when \code{genome = "custom"} and
-#'   \code{cellranger_ref} is NOT supplied. Character vector of the
-#'   standard/main chromosome names to keep when filtering out scaffolds
-#'   (e.g. \code{paste0("chr", c(1:20, "X", "Y"))} for rhesus rheMac10,
-#'   matching whatever naming style your peaks use). For
+#' @param main_chroms Only used when \code{genome = "custom"}. Character
+#'   vector of the standard/main chromosome names to keep when filtering out
+#'   scaffolds (e.g. \code{paste0("chr", c(1:20, "X", "Y"))} for rhesus
+#'   rheMac10, matching whatever naming style your peaks use). For
 #'   \code{"mm10"}/\code{"hg38"} this is derived automatically from the
 #'   corresponding \code{BSgenome} package via
-#'   \code{GenomeInfoDb::standardChromosomes()}; there's no BSgenome
-#'   dependency for a custom genome, so it has to be passed explicitly (or
-#'   derived from \code{cellranger_ref} -- see below).
+#'   \code{GenomeInfoDb::standardChromosomes()}. Without \code{cellranger_ref},
+#'   this has to be passed explicitly -- there's no BSgenome dependency for a
+#'   custom genome to derive it from. \strong{With \code{cellranger_ref}},
+#'   this is normally derived automatically the same way (from the
+#'   reference's own \code{fasta/*.fa} contig names, via
+#'   \code{GenomeInfoDb::standardChromosomes()}) and does NOT need to be
+#'   passed -- but MAY still be supplied explicitly as an override, and then
+#'   takes precedence over that auto-detection. This override path exists
+#'   because \code{standardChromosomes()}'s \code{chr1}/\code{1},
+#'   \code{chrX}/\code{X}, \code{chrM}/\code{MT} heuristic doesn't recognize
+#'   accession-style contig names (e.g. NCBI RefSeq \code{"NC_133406.1"}),
+#'   which some genome assemblies -- including custom T2T builds -- use
+#'   throughout, with no scaffolds to exclude at all; auto-detection then
+#'   matches zero "standard" names and errors rather than guessing. Every
+#'   name passed here is validated against the reference's own \code{.fai}
+#'   index, so a typo or a name from the wrong assembly fails immediately
+#'   with a clear error instead of silently keeping zero peaks on that
+#'   "chromosome" later. (\code{annotation}, unlike \code{main_chroms}, stays
+#'   mutually exclusive with \code{cellranger_ref} -- see that param's doc.)
 #' @param genome_label Required when \code{genome = "custom"}. A short
 #'   string identifying the genome build (e.g. \code{"rheMac10"}), used to
 #'   tag the \code{ChromatinAssay}'s own genome slot the same way
@@ -71,8 +86,10 @@
 #'   \code{organism} (see below) and \code{genome_label} to also be
 #'   supplied, since a cellranger reference's \code{genes.gtf.gz} isn't
 #'   named the way \code{ensembldb} expects to auto-extract those from a
-#'   filename. Mutually exclusive with passing \code{annotation}/
-#'   \code{main_chroms} directly.
+#'   filename. Mutually exclusive with passing \code{annotation} directly
+#'   (ambiguous which gene annotation should win) -- but \code{main_chroms}
+#'   MAY still be passed alongside \code{cellranger_ref}, as an override; see
+#'   its own doc above.
 #' @param organism Required when \code{genome = "custom"} and
 #'   \code{cellranger_ref} is supplied. A short organism name/label (e.g.
 #'   \code{"Macaca_mulatta"}) recorded in the \code{EnsDb} built from
@@ -188,9 +205,14 @@ CreateATACObjects <-
         # chromosome-naming-style mismatch risk the way there is when
         # supplying `annotation`/`main_chroms` from a separately-downloaded
         # GTF -- see the cellranger_ref doc above.
-        if (!is.null(annotation) || !is.null(main_chroms)) {
-          stop("Pass either `cellranger_ref` OR `annotation`/`main_chroms` ",
-              "directly, not both -- it's ambiguous which should win.")
+        if (!is.null(annotation)) {
+          stop("Pass either `cellranger_ref` OR `annotation` directly, not ",
+              "both -- it's ambiguous which gene annotation should win. ",
+              "`main_chroms` MAY still be supplied alongside `cellranger_ref` ",
+              "-- see its doc -- as an override for when this genome's ",
+              "contig names don't follow the chr1/1, chrX/X, chrM/MT ",
+              "convention GenomeInfoDb::standardChromosomes() expects (e.g. ",
+              "NCBI RefSeq accession-style names like 'NC_133406.1').")
         }
         if (is.null(organism) || !nzchar(organism)) {
           stop("genome = 'custom' with `cellranger_ref` requires `organism` ",
@@ -233,15 +255,45 @@ CreateATACObjects <-
         fai <- data.table::fread(fai_path, header = FALSE, data.table = FALSE,
                                  col.names = c("name", "length", "offset",
                                               "linebases", "linewidth"))
-        ref_seqinfo <- GenomeInfoDb::Seqinfo(seqnames   = fai$name,
-                                             seqlengths = fai$length,
-                                             genome     = genome_label)
-        main.chroms <- GenomeInfoDb::standardChromosomes(ref_seqinfo)
-        if (length(main.chroms) == 0) {
-          stop("GenomeInfoDb::standardChromosomes() matched none of the ",
-              "contig names in '", fasta_path, "' -- pass `main_chroms` ",
-              "directly instead if this genome's chromosomes don't follow ",
-              "the usual chr1/1, chrX/X, chrM/MT naming conventions.")
+
+        if (!is.null(main_chroms)) {
+          # Explicit override -- skip the naming-convention heuristic below
+          # entirely. Needed for assemblies whose contigs use accession-style
+          # names (e.g. NCBI RefSeq "NC_133406.1") that
+          # GenomeInfoDb::standardChromosomes() doesn't recognize as
+          # "standard" even when, as in that case, every contig in the file
+          # genuinely is a real chromosome (or the mitochondrial genome) with
+          # no scaffolds to exclude -- confirmed via the fasta index itself
+          # (`cut -f1 <fai> | ...`), not assumed from the accession format
+          # alone. Validated against the fasta index so a typo'd or
+          # copy-pasted-from-elsewhere name fails loudly here rather than
+          # silently keeping zero peaks on that "chromosome" downstream.
+          unknown_chroms <- setdiff(main_chroms, fai$name)
+          if (length(unknown_chroms) > 0) {
+            stop("`main_chroms` includes name(s) not found in '", fasta_path,
+                "': ", paste(unknown_chroms, collapse = ", "))
+          }
+          main.chroms <- main_chroms
+          message(sprintf('--- Using user-supplied main_chroms (%d contigs) ---',
+                          length(main.chroms)))
+        } else {
+          ref_seqinfo <- GenomeInfoDb::Seqinfo(seqnames   = fai$name,
+                                               seqlengths = fai$length,
+                                               genome     = genome_label)
+          main.chroms <- GenomeInfoDb::standardChromosomes(ref_seqinfo)
+          if (length(main.chroms) == 0) {
+            stop(
+              "GenomeInfoDb::standardChromosomes() matched none of the ",
+              "contig names in '", fasta_path, "' -- e.g. accession-style ",
+              "names like 'NC_133406.1' aren't recognized by its chr1/1, ",
+              "chrX/X, chrM/MT heuristic. Pass `main_chroms` explicitly ",
+              "instead (this IS supported alongside `cellranger_ref` -- only ",
+              "`annotation` is mutually exclusive with it). If this assembly ",
+              "has no scaffolds to exclude, use every contig in the index: ",
+              "main_chroms = data.table::fread('", fai_path,
+              "', header = FALSE)$V1"
+            )
+          }
         }
 
         message(sprintf(
