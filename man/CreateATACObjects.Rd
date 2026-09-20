@@ -54,16 +54,31 @@ vs \code{"1"}) as your \code{peaks.bed}/\code{fragments.tsv.gz} files
 auto-converted via \code{seqlevelsStyle()}, since there's no reliable
 way to know which style a custom genome's fragments are in.}
 
-\item{main_chroms}{Only used when \code{genome = "custom"} and
-\code{cellranger_ref} is NOT supplied. Character vector of the
-standard/main chromosome names to keep when filtering out scaffolds
-(e.g. \code{paste0("chr", c(1:20, "X", "Y"))} for rhesus rheMac10,
-matching whatever naming style your peaks use). For
+\item{main_chroms}{Only used when \code{genome = "custom"}. Character
+vector of the standard/main chromosome names to keep when filtering out
+scaffolds (e.g. \code{paste0("chr", c(1:20, "X", "Y"))} for rhesus
+rheMac10, matching whatever naming style your peaks use). For
 \code{"mm10"}/\code{"hg38"} this is derived automatically from the
 corresponding \code{BSgenome} package via
-\code{GenomeInfoDb::standardChromosomes()}; there's no BSgenome
-dependency for a custom genome, so it has to be passed explicitly (or
-derived from \code{cellranger_ref} -- see below).}
+\code{GenomeInfoDb::standardChromosomes()}. Without \code{cellranger_ref},
+this has to be passed explicitly -- there's no BSgenome dependency for a
+custom genome to derive it from. \strong{With \code{cellranger_ref}},
+this is normally derived automatically the same way (from the
+reference's own \code{fasta/*.fa} contig names, via
+\code{GenomeInfoDb::standardChromosomes()}) and does NOT need to be
+passed -- but MAY still be supplied explicitly as an override, and then
+takes precedence over that auto-detection. This override path exists
+because \code{standardChromosomes()}'s \code{chr1}/\code{1},
+\code{chrX}/\code{X}, \code{chrM}/\code{MT} heuristic doesn't recognize
+accession-style contig names (e.g. NCBI RefSeq \code{"NC_133406.1"}),
+which some genome assemblies -- including custom T2T builds -- use
+throughout, with no scaffolds to exclude at all; auto-detection then
+matches zero "standard" names and errors rather than guessing. Every
+name passed here is validated against the reference's own \code{.fai}
+index, so a typo or a name from the wrong assembly fails immediately
+with a clear error instead of silently keeping zero peaks on that
+"chromosome" later. (\code{annotation}, unlike \code{main_chroms}, stays
+mutually exclusive with \code{cellranger_ref} -- see that param's doc.)}
 
 \item{genome_label}{Required when \code{genome = "custom"}. A short
 string identifying the genome build (e.g. \code{"rheMac10"}), used to
@@ -92,8 +107,10 @@ downloading a GTF separately and hoping it matches. Requires
 \code{organism} (see below) and \code{genome_label} to also be
 supplied, since a cellranger reference's \code{genes.gtf.gz} isn't
 named the way \code{ensembldb} expects to auto-extract those from a
-filename. Mutually exclusive with passing \code{annotation}/
-\code{main_chroms} directly.}
+filename. Mutually exclusive with passing \code{annotation} directly
+(ambiguous which gene annotation should win) -- but \code{main_chroms}
+MAY still be passed alongside \code{cellranger_ref}, as an override; see
+its own doc above.}
 
 \item{organism}{Required when \code{genome = "custom"} and
 \code{cellranger_ref} is supplied. A short organism name/label (e.g.

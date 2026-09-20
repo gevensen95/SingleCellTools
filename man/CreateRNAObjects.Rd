@@ -90,14 +90,11 @@ to always sweep on every cell.}
 
 \item{doublet_sweep_cores}{Passed to \code{calldoublet} as
 \code{sweep_cores} -- lets \code{DoubletFinder::paramSweep} parallelize
-internally across its 6 pN values, on top of (not instead of) the
-per-sample parallelism \code{workers} already provides. Default
-\code{1} (off). Because this function already parallelizes across
-samples via \code{workers}, raising \code{doublet_sweep_cores} without
-lowering \code{workers} to match oversubscribes the CPU (\code{workers
-* doublet_sweep_cores} concurrent processes) -- this errors up front if
-that product exceeds \code{parallel::detectCores()}, the same way
-\code{workers} alone does.}
+internally across its 6 pN values. Default \code{1} (off). Doublet
+detection itself always runs one sample at a time regardless of
+\code{workers} (see \code{workers} below), so this is the only lever
+left for parallelizing that step; raising it errors up front if it
+exceeds \code{parallel::detectCores()}.}
 
 \item{filter_doublets}{Logical; if TRUE, subset each object to
 \code{doublet_finder == "Singlet"} after doublet calling. Default
@@ -105,26 +102,35 @@ that product exceeds \code{parallel::detectCores()}, the same way
 
 \item{workers}{Number of parallel workers to use (via
 \code{future.apply}) for reading/creating each sample's Seurat object
-and for the per-sample \code{calldoublet} calls -- the two most
-expensive steps, and both fully independent across samples. Defaults
-to \code{length(data_dirs)} (one worker per sample); errors up front
-if that (or an explicit value) exceeds \code{parallel::detectCores()},
+-- the one step this actually parallelizes. Defaults to
+\code{length(data_dirs)} (one worker per sample); errors up front if
+that (or an explicit value) exceeds \code{parallel::detectCores()},
 naming the number of cores actually available. Pass \code{workers = 1}
 to run sequentially instead. \code{workers > 1} spins up that many
 parallel workers via \code{future::plan()} -- forked processes
 (\code{future::multicore}) on Unix-likes outside RStudio, or
 background R sessions (\code{future::multisession}) on Windows / in
-RStudio, where forking isn't available -- restored on exit. Forked
-workers share memory with the main process via copy-on-write, but a
-\code{multisession} fallback holds its own copy of each sample's
-data, so peak memory scales with \code{workers} in that case. Also forces
-\code{VECLIB_MAXIMUM_THREADS}/\code{OMP_NUM_THREADS}/
-\code{OPENBLAS_NUM_THREADS}/\code{MKL_NUM_THREADS} to \code{"1"} for
-the duration (restored on exit) so each worker's own BLAS calls don't
-also try to multithread across every core -- without this,
+RStudio, where forking isn't available -- torn down again as soon as
+this step finishes. Forked workers share memory with the main process
+via copy-on-write, but a \code{multisession} fallback holds its own
+copy of each sample's data, so peak memory scales with \code{workers}
+in that case. Also forces \code{VECLIB_MAXIMUM_THREADS}/
+\code{OMP_NUM_THREADS}/\code{OPENBLAS_NUM_THREADS}/
+\code{MKL_NUM_THREADS} to \code{"1"} for the duration of this step
+only (restored immediately after) so each worker's own BLAS calls
+don't also try to multithread across every core -- without this,
 \code{workers} background sessions each doing multithreaded PCA/scaling
 simultaneously oversubscribe the CPU and can fully erase (or worse)
-the wall-clock benefit of running in parallel at all.}
+the wall-clock benefit of running in parallel at all.
+
+\strong{Doublet detection (below) deliberately ignores this argument
+and always runs one sample at a time.} Threading \code{workers}
+through to the per-sample \code{calldoublet} calls too (as earlier
+versions of this function did) was measured to make that step
+\emph{slower} with \code{workers > 1} than sequential, even with the
+BLAS clamp above in place -- not just a smaller win than hoped for,
+an actual regression. Use \code{doublet_sweep_cores} if you want
+parallelism during that step instead.}
 
 \item{on_disk}{Logical; if \code{TRUE}, move each returned object's RNA
 counts layer to an on-disk BPCells matrix via \code{\link{ConvertToBPCells}}

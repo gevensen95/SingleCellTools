@@ -114,39 +114,45 @@
 #'   to always sweep on every cell.
 #' @param doublet_sweep_cores Passed to \code{calldoublet} as
 #'   \code{sweep_cores} -- lets \code{DoubletFinder::paramSweep} parallelize
-#'   internally across its 6 pN values, on top of (not instead of) the
-#'   per-sample parallelism \code{workers} already provides. Default
-#'   \code{1} (off). Because this function already parallelizes across
-#'   samples via \code{workers}, raising \code{doublet_sweep_cores} without
-#'   lowering \code{workers} to match oversubscribes the CPU (\code{workers
-#'   * doublet_sweep_cores} concurrent processes) -- this errors up front if
-#'   that product exceeds \code{parallel::detectCores()}, the same way
-#'   \code{workers} alone does.
+#'   internally across its 6 pN values. Default \code{1} (off). Doublet
+#'   detection itself always runs one sample at a time regardless of
+#'   \code{workers} (see \code{workers} below), so this is the only lever
+#'   left for parallelizing that step; raising it errors up front if it
+#'   exceeds \code{parallel::detectCores()}.
 #' @param filter_doublets Logical; if TRUE, subset each object to
 #'   \code{doublet_finder == "Singlet"} after doublet calling. Default
 #'   \code{FALSE} so the doublet labels are preserved for downstream review.
 #' @param workers Number of parallel workers to use (via
 #'   \code{future.apply}) for reading/creating each sample's Seurat object
-#'   and for the per-sample \code{calldoublet} calls -- the two most
-#'   expensive steps, and both fully independent across samples. Defaults
-#'   to \code{length(data_dirs)} (one worker per sample); errors up front
-#'   if that (or an explicit value) exceeds \code{parallel::detectCores()},
+#'   -- the one step this actually parallelizes. Defaults to
+#'   \code{length(data_dirs)} (one worker per sample); errors up front if
+#'   that (or an explicit value) exceeds \code{parallel::detectCores()},
 #'   naming the number of cores actually available. Pass \code{workers = 1}
 #'   to run sequentially instead. \code{workers > 1} spins up that many
 #'   parallel workers via \code{future::plan()} -- forked processes
 #'   (\code{future::multicore}) on Unix-likes outside RStudio, or
 #'   background R sessions (\code{future::multisession}) on Windows / in
-#'   RStudio, where forking isn't available -- restored on exit. Forked
-#'   workers share memory with the main process via copy-on-write, but a
-#'   \code{multisession} fallback holds its own copy of each sample's
-#'   data, so peak memory scales with \code{workers} in that case. Also forces
-#'   \code{VECLIB_MAXIMUM_THREADS}/\code{OMP_NUM_THREADS}/
-#'   \code{OPENBLAS_NUM_THREADS}/\code{MKL_NUM_THREADS} to \code{"1"} for
-#'   the duration (restored on exit) so each worker's own BLAS calls don't
-#'   also try to multithread across every core -- without this,
+#'   RStudio, where forking isn't available -- torn down again as soon as
+#'   this step finishes. Forked workers share memory with the main process
+#'   via copy-on-write, but a \code{multisession} fallback holds its own
+#'   copy of each sample's data, so peak memory scales with \code{workers}
+#'   in that case. Also forces \code{VECLIB_MAXIMUM_THREADS}/
+#'   \code{OMP_NUM_THREADS}/\code{OPENBLAS_NUM_THREADS}/
+#'   \code{MKL_NUM_THREADS} to \code{"1"} for the duration of this step
+#'   only (restored immediately after) so each worker's own BLAS calls
+#'   don't also try to multithread across every core -- without this,
 #'   \code{workers} background sessions each doing multithreaded PCA/scaling
 #'   simultaneously oversubscribe the CPU and can fully erase (or worse)
 #'   the wall-clock benefit of running in parallel at all.
+#'
+#'   \strong{Doublet detection (below) deliberately ignores this argument
+#'   and always runs one sample at a time.} Threading \code{workers}
+#'   through to the per-sample \code{calldoublet} calls too (as earlier
+#'   versions of this function did) was measured to make that step
+#'   \emph{slower} with \code{workers > 1} than sequential, even with the
+#'   BLAS clamp above in place -- not just a smaller win than hoped for,
+#'   an actual regression. Use \code{doublet_sweep_cores} if you want
+#'   parallelism during that step instead.
 #' @param on_disk Logical; if \code{TRUE}, move each returned object's RNA
 #'   counts layer to an on-disk BPCells matrix via \code{\link{ConvertToBPCells}}
 #'   as the very last step, after doublet calling/QC. Requires the
@@ -185,24 +191,33 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                               was_default = missing(workers))
   doublet_normalization <- match.arg(doublet_normalization)
 
-  # doublet_sweep_cores parallelizes *inside* each calldoublet() call, on top
-  # of the `workers`-many calldoublet() calls already running concurrently --
-  # workers * doublet_sweep_cores concurrent processes, not just `workers`.
-  # .resolve_workers() already guards `workers` alone against
-  # detectCores(); this extends the same "error with a concrete suggested
-  # value" discipline to the combined oversubscription case rather than
-  # silently letting it contend for cores.
-  if (isTRUE(run_doublet_finder) && workers > 1 && doublet_sweep_cores > 1) {
+  # Doublet detection always runs one sample at a time (see below) --
+  # `workers` no longer applies to it, so the only thing that can
+  # oversubscribe the CPU during that phase is doublet_sweep_cores itself
+  # (DoubletFinder::paramSweep's internal parallelism across pN values).
+  if (isTRUE(run_doublet_finder) && doublet_sweep_cores > 1) {
     n_cores <- suppressWarnings(parallel::detectCores())
-    if (!is.na(n_cores) && (workers * doublet_sweep_cores) > n_cores) {
+    if (!is.na(n_cores) && doublet_sweep_cores > n_cores) {
       stop(sprintf(
-        "workers (%d) * doublet_sweep_cores (%d) = %d concurrent processes exceeds the %d core(s) available on this machine. Lower one of them -- e.g. doublet_sweep_cores = %d.",
-        workers, doublet_sweep_cores, workers * doublet_sweep_cores, n_cores,
-        max(1, n_cores %/% workers)))
+        "doublet_sweep_cores (%d) exceeds the %d core(s) available on this machine.",
+        doublet_sweep_cores, n_cores))
     }
   }
 
-  if (workers > 1) {
+  # BLAS-clamp + future plan are scoped to just the object-creation step
+  # below (reading + CreateSeuratObject) via this local helper, rather than
+  # to the whole function via a function-level on.exit as before. Doublet
+  # detection (further down) always runs sequentially now, so it should get
+  # the *opposite* treatment -- full BLAS multithreading available, and no
+  # future workers left sitting around idle (a multisession plan's workers
+  # each hold their own copy of whatever they last touched, so leaving the
+  # pool up needlessly through a step that no longer uses it just holds
+  # extra memory for no benefit). on.exit() here is inside this nested
+  # function, so it fires when *it* returns (right after the read step),
+  # not at CreateRNAObjects()'s own exit.
+  .with_object_creation_parallelism <- function(fn) {
+    if (workers <= 1) return(fn())
+
     # Clamp BLAS/LAPACK's own internal multithreading to 1 thread per worker
     # BEFORE spinning up the worker pool below (via .future_backend(), see
     # workers_utils.R), so this propagates to every worker's environment --
@@ -211,17 +226,14 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
     # process's env vars only as of when they're created, so either way
     # setting this after plan() would be too late for already-running
     # workers. Without this, each worker's own PCA/scaling calls (the
-    # dominant cost of both the read step and calldoublet()) try to use
-    # every core via multithreaded BLAS -- on a machine using Accelerate/
-    # vecLib (the default R BLAS on macOS) or OpenBLAS/MKL, `workers`
-    # workers doing that simultaneously oversubscribe the CPU and contend
-    # with each other for the same cores, which can erase or even reverse
-    # the wall-clock benefit of the outer future-level parallelism --
+    # dominant cost of the read step) try to use every core via
+    # multithreaded BLAS -- on a machine using Accelerate/vecLib (the
+    # default R BLAS on macOS) or OpenBLAS/MKL, `workers` workers doing
+    # that simultaneously oversubscribe the CPU and contend with each
+    # other for the same cores, which can erase or even reverse the
+    # wall-clock benefit of the outer future-level parallelism --
     # confirmed empirically: a 2-directory run took *longer* than a naive
     # sequential estimate once this contention was in play.
-    # Restored on exit like the future plan itself, and skipped entirely
-    # when workers == 1 -- with no outer parallelism to contend with, a
-    # single sample should get to use every core for its own PCA.
     # unset = NA (rather than the default "") lets us tell "this var was
     # never set" apart from "this var was explicitly set to an empty
     # string" -- restoring an unset var via Sys.setenv(VAR = "") does NOT
@@ -235,7 +247,12 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
                                unset = NA)
     Sys.setenv(VECLIB_MAXIMUM_THREADS = "1", OMP_NUM_THREADS = "1",
               OPENBLAS_NUM_THREADS = "1", MKL_NUM_THREADS = "1")
+
+    # See workers_utils.R -- shared by all six workers-taking loaders.
+    cleanup <- .setup_future_plan(workers)
+
     on.exit({
+      cleanup()
       was_set <- !is.na(old_blas_env)
       if (any(was_set)) {
         do.call(Sys.setenv, as.list(old_blas_env[was_set]))
@@ -243,11 +260,9 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
       if (any(!was_set)) {
         Sys.unsetenv(names(old_blas_env)[!was_set])
       }
-    }, add = TRUE)
+    })
 
-    # See workers_utils.R -- shared by all six workers-taking loaders.
-    cleanup <- .setup_future_plan(workers)
-    on.exit(cleanup(), add = TRUE)
+    fn()
   }
 
   if (isTRUE(on_disk) && !requireNamespace("BPCells", quietly = TRUE)) {
@@ -354,12 +369,14 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
     as.list(object_names)
   }
 
-  seurat_objects <- if (workers > 1) {
-    future.apply::future_mapply(.read_one, data_dirs, names_arg,
-                                SIMPLIFY = FALSE, future.seed = TRUE)
-  } else {
-    mapply(.read_one, data_dirs, names_arg, SIMPLIFY = FALSE)
-  }
+  seurat_objects <- .with_object_creation_parallelism(function() {
+    if (workers > 1) {
+      future.apply::future_mapply(.read_one, data_dirs, names_arg,
+                                  SIMPLIFY = FALSE, future.seed = TRUE)
+    } else {
+      mapply(.read_one, data_dirs, names_arg, SIMPLIFY = FALSE)
+    }
+  })
   # Name the list elements with the base names of the directories
   if (is.null(object_names) == TRUE) {
     names(seurat_objects) <- basename(data_dirs)
@@ -396,28 +413,26 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
 
   # ---- Doublet detection --------------------------------------------------
   # This is normally the dominant cost of the whole function (DoubletFinder's
-  # pK parameter sweep fits many models per sample), and each sample's call
-  # is fully independent of every other's, so it parallelizes cleanly.
+  # pK parameter sweep fits many models per sample). Each sample's call is
+  # fully independent of every other's, so in principle it parallelizes
+  # cleanly across samples -- but in practice, doing that (via `workers`,
+  # as this function used to) was measured to run *slower* than one sample
+  # at a time, so it's deliberately always sequential now. See the
+  # `workers` param doc above for the reasoning.
   if (isTRUE(run_doublet_finder)) {
-    message(sprintf('--- Calling doublets with DoubletFinder (%s)%s ---',
+    # Always sequential (plain mapply), regardless of `workers` -- see the
+    # `workers` and `doublet_sweep_cores` docs above for why: threading
+    # `workers` through to this step too was measured to be *slower* than
+    # running samples one at a time, not just a smaller win than expected.
+    # Use doublet_sweep_cores for parallelism within this step instead.
+    message(sprintf('--- Calling doublets with DoubletFinder (%s), 1 worker (sequential)%s ---',
                     doublet_normalization,
-                    if (workers > 1) sprintf(', %d parallel workers', workers) else ''))
+                    if (doublet_sweep_cores > 1) sprintf(', sweep_cores = %d', doublet_sweep_cores) else ''))
     sample_labels <- names(seurat_objects)
     n_samples     <- length(seurat_objects)
 
-    # NB: mapply/future_mapply over `seurat_objects` (rather than lapply-ing
-    # over an index into a captured `seurat_objects` list) so each worker
-    # only ever receives the one sample it's processing. Indexing into a
-    # shared list from inside the worker function would instead export the
-    # *entire* list of objects to *every* worker, multiplying peak memory
-    # by `workers` for no reason.
     .call_one <- function(obj, i, lab) {
-      # Per-sample progress messages only make sense when running
-      # sequentially -- with workers > 1 these run in background sessions
-      # and wouldn't surface here in order anyway.
-      if (workers == 1) {
-        message(sprintf('  [%d/%d] %s', i, n_samples, lab))
-      }
+      message(sprintf('  [%d/%d] %s', i, n_samples, lab))
       out <- calldoublet(obj,
                          samplenameIndex    = i,
                          normalization      = doublet_normalization,
@@ -429,23 +444,14 @@ CreateRNAObjects <- function(data_dirs, cells = 3, features = 200,
       if (isTRUE(filter_doublets)) {
         n_before <- ncol(out)
         out      <- subset(out, doublet_finder == "Singlet")
-        if (workers == 1) {
-          message(sprintf('    %s: dropped %d doublets (%d singlets remaining)',
-                          lab, n_before - ncol(out), ncol(out)))
-        }
+        message(sprintf('    %s: dropped %d doublets (%d singlets remaining)',
+                        lab, n_before - ncol(out), ncol(out)))
       }
       out
     }
 
-    results <- if (workers > 1) {
-      future.apply::future_mapply(
-        .call_one, seurat_objects, seq_len(n_samples), sample_labels,
-        SIMPLIFY = FALSE, future.seed = TRUE
-      )
-    } else {
-      mapply(.call_one, seurat_objects, seq_len(n_samples), sample_labels,
-             SIMPLIFY = FALSE)
-    }
+    results <- mapply(.call_one, seurat_objects, seq_len(n_samples), sample_labels,
+                      SIMPLIFY = FALSE)
     seurat_objects <- setNames(results, sample_labels)
   }
 
