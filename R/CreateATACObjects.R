@@ -335,6 +335,46 @@ CreateATACObjects <-
         }
         GenomeInfoDb::seqlengths(gtf_gr) <- fai_lengths[GenomeInfoDb::seqlevels(gtf_gr)]
 
+        # ensembldb::ensDbFromGRanges()'s own internal validity check compares
+        # each exon's GTF-stated `exon_number` against the order it computes
+        # itself from genomic position; when `exon_number` is missing for any
+        # exon, that comparison produces NA instead of TRUE/FALSE, and its own
+        # `if (any(Different))` check crashes with a confusing "missing value
+        # where TRUE/FALSE needed" -- e.g. every entry on a manually
+        # converted/appended contig (mtDNA annotations merged in from a
+        # different source than the rest of the GTF are a common way this
+        # happens, since mitochondrial gene models are usually single-exon
+        # and easy to lose an `exon_number` attribute for during conversion).
+        # Rather than require every custom genome's GTF to already carry a
+        # complete `exon_number` for every exon, compute it ourselves for
+        # whatever's missing -- 1-based rank by genomic position within each
+        # transcript, ascending for +/* strand and descending for - strand
+        # (the standard 5'->3' exon-numbering convention) -- before handing
+        # the GRanges to ensDbFromGRanges().
+        is_exon <- gtf_gr$type == "exon"
+        if (is.null(gtf_gr$exon_number)) {
+          gtf_gr$exon_number <- rep(NA_character_, length(gtf_gr))
+        }
+        needs_exon_number <- is_exon & (is.na(gtf_gr$exon_number) |
+                                        !nzchar(gtf_gr$exon_number))
+        if (any(needs_exon_number)) {
+          affected_tx <- unique(gtf_gr$transcript_id[needs_exon_number])
+          message(sprintf(
+            paste('--- %d exon(s) across %d transcript(s) had no exon_number',
+                 'in the GTF -- computing one from genomic position ---'),
+            sum(needs_exon_number), length(affected_tx)))
+          fix_idx  <- which(is_exon & gtf_gr$transcript_id %in% affected_tx)
+          tx_id    <- gtf_gr$transcript_id[fix_idx]
+          is_minus <- as.character(GenomicRanges::strand(gtf_gr))[fix_idx] == "-"
+          pos_key  <- ifelse(is_minus, -GenomicRanges::start(gtf_gr)[fix_idx],
+                             GenomicRanges::start(gtf_gr)[fix_idx])
+          ordered_idx <- fix_idx[order(tx_id, pos_key)]
+          gtf_gr$exon_number[ordered_idx] <- as.character(ave(
+            seq_along(ordered_idx), gtf_gr$transcript_id[ordered_idx],
+            FUN = seq_along
+          ))
+        }
+
         ensdb_path <- ensembldb::ensDbFromGRanges(
           x             = gtf_gr,
           outfile       = tempfile(fileext = ".sqlite"),
