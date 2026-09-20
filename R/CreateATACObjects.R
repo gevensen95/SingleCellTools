@@ -383,7 +383,17 @@ CreateATACObjects <-
           version       = 1L
         )
         ensdb_obj   <- ensembldb::EnsDb(ensdb_path)
-        annotations <- Signac::GetGRangesFromEnsDb(ensdb = ensdb_obj)
+        # standard.chromosomes = FALSE -- GetGRangesFromEnsDb()'s own default
+        # (TRUE) applies GenomeInfoDb::keepStandardChromosomes() internally,
+        # which uses the same chr1/1, chrX/X, chrM/MT heuristic that doesn't
+        # recognize this genome's NCBI RefSeq accession-style contig names
+        # (e.g. "NC_133406.1") -- with every contig unrecognized, it filters
+        # out all of them, and GetGRangesFromEnsDb() returns NULL instead of
+        # a GRanges. main.chroms was already derived/validated from this same
+        # reference's own .fai index above, so this redundant filtering is
+        # both unnecessary and actively destructive here -- skip it.
+        annotations <- Signac::GetGRangesFromEnsDb(ensdb = ensdb_obj,
+                                                    standard.chromosomes = FALSE)
         # No seqlevelsStyle conversion here, deliberately -- annotations and
         # main.chroms both trace back to this same reference's own files, so
         # whatever naming convention it used, they already agree with each
