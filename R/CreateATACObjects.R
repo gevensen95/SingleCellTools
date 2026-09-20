@@ -71,8 +71,13 @@
 #'   \code{data_dirs} were actually aligned/called against). When supplied,
 #'   \code{annotation} and \code{main_chroms} are derived automatically from
 #'   files already inside it instead of being passed by hand: the gene
-#'   annotation comes from \code{<cellranger_ref>/genes/genes.gtf.gz} (via
-#'   \code{ensembldb::ensDbFromGtf()} + \code{Signac::GetGRangesFromEnsDb()}),
+#'   annotation comes from \code{<cellranger_ref>/genes/genes.gtf.gz}, imported
+#'   via \code{rtracklayer::import()} with seqlengths filled in from this
+#'   genome's own \code{.fai} index (deliberately \emph{not}
+#'   \code{ensembldb::ensDbFromGtf()} directly -- that leaves seqlengths NA
+#'   and then tries to fetch them from Ensembl over FTP, which fails for a
+#'   non-Ensembl custom assembly and/or without outbound internet), then
+#'   \code{ensembldb::ensDbFromGRanges()} + \code{Signac::GetGRangesFromEnsDb()},
 #'   and \code{main_chroms} comes from the contig names in
 #'   \code{<cellranger_ref>/fasta/*.fa} (indexed with
 #'   \code{Rsamtools::indexFa()} if a \code{.fai} isn't already there),
@@ -296,11 +301,42 @@ CreateATACObjects <-
           }
         }
 
+        if (!requireNamespace("rtracklayer", quietly = TRUE)) {
+          stop("'rtracklayer' is required for `cellranger_ref`. Install with: ",
+              "BiocManager::install('rtracklayer')")
+        }
+
         message(sprintf(
           '--- Building EnsDb from %s (organism = %s, genomeVersion = %s) ---',
           genes_gtf, organism, genome_label))
-        ensdb_path <- ensembldb::ensDbFromGtf(
-          gtf           = genes_gtf,
+
+        # ensembldb::ensDbFromGtf() imports the GTF with rtracklayer::import(),
+        # which leaves every seqlength NA (a GTF has no sequence-length
+        # header) -- ensDbFromGRanges() then notices the NAs and tries to
+        # fill them in by fetching seqlengths from Ensembl over FTP. That
+        # makes no sense for a non-Ensembl custom assembly like this one
+        # (there's no real "release" to fetch -- the FTP paths it tries are
+        # built from the placeholder `version = 1L` below) and fails outright
+        # on a compute node without outbound internet, which then cascades
+        # into a fatal, confusingly-unrelated "missing value where TRUE/FALSE
+        # needed" error from ensembldb's own internal exon-ordering check
+        # once it's left holding NA seqlengths. Importing the GTF ourselves
+        # and setting real seqlengths -- from this genome's own .fai index,
+        # the same one main.chroms was already validated against above --
+        # before handing it to ensDbFromGRanges() avoids the fetch entirely:
+        # it only fires when a seqlength is still NA.
+        gtf_gr <- rtracklayer::import(genes_gtf, format = "gtf")
+        fai_lengths <- setNames(fai$length, fai$name)
+        missing_lengths <- setdiff(GenomeInfoDb::seqlevels(gtf_gr), names(fai_lengths))
+        if (length(missing_lengths) > 0) {
+          stop("'", genes_gtf, "' references contig(s) not found in this ",
+              "genome's .fai index (", fai_path, "): ",
+              paste(missing_lengths, collapse = ", "))
+        }
+        GenomeInfoDb::seqlengths(gtf_gr) <- fai_lengths[GenomeInfoDb::seqlevels(gtf_gr)]
+
+        ensdb_path <- ensembldb::ensDbFromGRanges(
+          x             = gtf_gr,
           outfile       = tempfile(fileext = ".sqlite"),
           organism      = organism,
           genomeVersion = genome_label,
