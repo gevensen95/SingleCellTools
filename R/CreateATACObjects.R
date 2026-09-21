@@ -422,6 +422,31 @@ CreateATACObjects <-
       }
       message(sprintf('--- Using custom annotation/genome (%s, %d chromosomes) ---',
                       genome_tag, length(main.chroms)))
+
+      # Signac::CreateChromatinAssay()'s `genome` argument, when given a
+      # plain string, calls GenomeInfoDb::Seqinfo(genome = <string>) to
+      # build a Seqinfo automatically -- which only works for a genome ID
+      # that's registered with UCSC/NCBI ("mm10", "hg38", ...). genome_tag
+      # here is this build's own genome_label, which isn't registered
+      # anywhere, so that call fails downstream (per-sample, inside the
+      # parallel workers, where the error is much harder to trace back to
+      # this line) with '"<genome_label>" is not a registered NCBI
+      # assembly or UCSC genome'. GenomeInfoDb::Seqinfo() only makes that
+      # registry lookup when `seqnames` is NULL -- passing `seqnames`
+      # explicitly (main.chroms, already validated above) builds the
+      # Seqinfo directly instead, tagged with genome_tag as a plain label
+      # rather than something it tries to resolve. Real seqlengths are
+      # included when available (from this genome's own .fai index, via
+      # `cellranger_ref`); NA seqlengths are fine otherwise -- Seqinfo
+      # supports them and CreateChromatinAssay doesn't require real ones.
+      genome_lengths <- if (exists("fai_lengths", inherits = FALSE)) {
+        unname(fai_lengths[main.chroms])
+      } else {
+        unname(GenomeInfoDb::seqlengths(annotations)[main.chroms])
+      }
+      assay_genome <- GenomeInfoDb::Seqinfo(seqnames   = main.chroms,
+                                            seqlengths = genome_lengths,
+                                            genome     = genome_tag)
     } else {
       genome_pkgs <- switch(
         genome,
@@ -456,6 +481,10 @@ CreateATACObjects <-
 
       main.chroms <- GenomeInfoDb::standardChromosomes(bsgenome_obj)
       genome_tag  <- genome
+      # "mm10"/"hg38" ARE registered UCSC genome IDs, so the plain string
+      # works fine as CreateChromatinAssay()'s `genome` argument here --
+      # see the custom-genome branch above for why that's not true there.
+      assay_genome <- genome_tag
     }
     GenomeInfoDb::genome(annotations) <- genome_tag
 
@@ -547,7 +576,7 @@ CreateATACObjects <-
       # tags the assay's own seqinfo (previously only `annotations` got a
       # genome tag, leaving the assay itself untagged) -- "mm10"/"hg38" for
       # the built-in paths, or the caller's own `genome_label` for custom.
-      assay <- Signac::CreateChromatinAssay(counts, fragments = frag.obj, genome = genome_tag)
+      assay <- Signac::CreateChromatinAssay(counts, fragments = frag.obj, genome = assay_genome)
       seurat.obj <- Seurat::CreateSeuratObject(assay, assay = "ATAC", meta.data = md,
                                                project = basename(dir))
 
