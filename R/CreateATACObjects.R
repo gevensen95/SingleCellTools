@@ -492,7 +492,18 @@ CreateATACObjects <-
     # remove scaffolds not in genome -- main.chroms/annotations/genome_tag
     # were already resolved above (mm10/hg38 auto-detected, or supplied
     # directly for genome = "custom").
-    keep.peaks <- as.logical(GenomeInfoDb::seqnames(GenomicRanges::granges(combined.peaks)) %in% main.chroms)
+    # as.character() first, deliberately -- GenomeInfoDb::seqnames() returns
+    # an Rle, and the Bioconductor-aware `%in%`/match method that knows how
+    # to handle an Rle is only installed as an S4 generic when BiocGenerics/
+    # S4Vectors are actually attached via library(), not just loaded as a
+    # dependency (which is all that's guaranteed here -- callers aren't
+    # required to have attached them). Without that, the bare `%in%` below
+    # silently resolves to base::`%in%` (literally match(x, table, nomatch =
+    # 0L)), which can't handle an Rle and fails with the confusing "'match'
+    # requires vector arguments". Comparing plain character vectors on both
+    # sides sidesteps the whole issue, regardless of what the caller has
+    # attached.
+    keep.peaks <- as.character(GenomeInfoDb::seqnames(GenomicRanges::granges(combined.peaks))) %in% main.chroms
     combined.peaks <- combined.peaks[keep.peaks, ]
     message(sprintf('  Peaks after scaffold removal: %d', length(combined.peaks)))
 
