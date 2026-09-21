@@ -160,6 +160,35 @@ GenerateQCReport <- function(obj,
     stop("Package 'knitr' is required. install.packages('knitr')")
   }
 
+  # ---- Fail fast if the output file(s) already exist -----------------------
+  # rmarkdown::render() (specifically yaml::yaml.load(..., eval.expr = TRUE)
+  # inside its own YAML front-matter parsing) has been observed to crash R
+  # outright with a native segfault -- not an ordinary, catchable R error --
+  # when `output_file` (and/or its sidecar cutoffs CSV, written just below
+  # this function's own render() call) already exists on disk. Confirmed
+  # empirically: the crash reproduces specifically when these files are
+  # already present from a prior run, and not otherwise. Rather than
+  # silently overwrite (which wouldn't avoid the crash anyway) or let a
+  # segfault take down the whole R session -- along with whatever expensive
+  # upstream work produced `obj`, if it wasn't already saved to disk -- check
+  # up front and fail with an ordinary error instead.
+  resolved_output_file <- normalizePath(output_file, mustWork = FALSE)
+  resolved_cutoffs_csv <- paste0(
+    sub("\\.html?$", "", resolved_output_file, ignore.case = TRUE),
+    "_cutoffs.csv")
+  existing_outputs <- c(resolved_output_file, resolved_cutoffs_csv)
+  existing_outputs <- existing_outputs[file.exists(existing_outputs)]
+  if (length(existing_outputs) > 0) {
+    stop(
+      "GenerateQCReport() output file(s) already exist -- refusing to ",
+      "proceed: ", paste(existing_outputs, collapse = ", "), ". ",
+      "Rendering onto an existing output_file/cutoffs CSV has been observed ",
+      "to segfault R (a crash inside yaml::yaml.load() during ",
+      "rmarkdown::render(), not an ordinary R error) rather than just ",
+      "overwriting -- move or delete the existing file(s), or pass a ",
+      "different `output_file`, before retrying.")
+  }
+
   call_text <- paste(deparse(match.call(), width.cutoff = 80L),
                      collapse = "\n")
 
