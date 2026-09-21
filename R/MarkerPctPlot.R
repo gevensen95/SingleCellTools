@@ -121,6 +121,23 @@ MarkerPctPlot <- function(obj,
   genes$Details <- as.character(genes$Details)
 
   # Drop genes not present in the requested assay
+  # ---- Drop duplicate gene entries (keep first occurrence) ----------------
+  # `genes` maps each gene to exactly one Details group. A gene listed under
+  # two different Details groups (e.g. a marker genuinely shared between two
+  # subtypes/cell types) reaches .pull_dotplot_data()'s own
+  # `factor(features.plot, levels = features)` call with a duplicated level
+  # and crashes with a cryptic, hard-to-trace "factor level [n] is
+  # duplicated" error -- fail predictably here instead: keep the first
+  # occurrence (its first-listed Details group) and warn about the rest,
+  # rather than silently guessing or crashing deep inside plot internals.
+  dup_genes <- unique(genes$Gene[duplicated(genes$Gene)])
+  if (length(dup_genes) > 0) {
+    message(sprintf(
+      "  %d gene(s) listed under more than one Details group -- keeping only the first occurrence: %s",
+      length(dup_genes), paste(dup_genes, collapse = ", ")))
+    genes <- genes[!duplicated(genes$Gene), , drop = FALSE]
+  }
+
   in_assay <- intersect(genes$Gene, rownames(obj[[assay]]))
   dropped_missing <- setdiff(genes$Gene, in_assay)
   if (length(dropped_missing)) {
