@@ -92,8 +92,13 @@ reference package directory built with \code{cellranger-atac mkref} /
 \code{data_dirs} were actually aligned/called against). When supplied,
 \code{annotation} and \code{main_chroms} are derived automatically from
 files already inside it instead of being passed by hand: the gene
-annotation comes from \code{<cellranger_ref>/genes/genes.gtf.gz} (via
-\code{ensembldb::ensDbFromGtf()} + \code{Signac::GetGRangesFromEnsDb()}),
+annotation comes from \code{<cellranger_ref>/genes/genes.gtf.gz}, imported
+via \code{rtracklayer::import()} with seqlengths filled in from this
+genome's own \code{.fai} index (deliberately \emph{not}
+\code{ensembldb::ensDbFromGtf()} directly -- that leaves seqlengths NA
+and then tries to fetch them from Ensembl over FTP, which fails for a
+non-Ensembl custom assembly and/or without outbound internet), then
+\code{ensembldb::ensDbFromGRanges()} + \code{Signac::GetGRangesFromEnsDb()},
 and \code{main_chroms} comes from the contig names in
 \code{<cellranger_ref>/fasta/*.fa} (indexed with
 \code{Rsamtools::indexFa()} if a \code{.fai} isn't already there),
