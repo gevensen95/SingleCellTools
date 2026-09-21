@@ -910,6 +910,18 @@ GenerateQCReport <- function(obj,
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
 
   message(sprintf("--- Rendering report to %s ---", output_file))
+  # Best-effort: activate the `pandoc` R package's own managed pandoc binary
+  # for this render, if that package is installed. rmarkdown::render()
+  # requires a working pandoc on PATH (or found via RSTUDIO_PANDOC), which
+  # often isn't available on an HPC compute node without a system-wide
+  # install -- the `pandoc` package can download/manage its own copy
+  # independent of that. Guarded behind requireNamespace() since `pandoc`
+  # is a Suggests, not a hard dependency: if it's not installed, silently
+  # fall back to whatever rmarkdown::render() finds on its own (unchanged
+  # prior behavior).
+  if (requireNamespace("pandoc", quietly = TRUE)) {
+    pandoc::pandoc_activate(rmarkdown = TRUE)
+  }
   rmarkdown::render(
     input       = rmd_path,
     output_file = out_name,
