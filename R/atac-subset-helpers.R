@@ -56,11 +56,55 @@
 
 #' @keywords internal
 #' @noRd
+.find_top_features_assay <- function(object, assay = NULL, min.cutoff = "q5",
+                                      verbose = TRUE, ...) {
+  # Faithful copy of Signac:::FindTopFeatures.Assay (confirmed via
+  # getS3method("FindTopFeatures", "Assay") against the installed Signac),
+  # with its one GetAssayData(object, slot = "counts") call -- now defunct
+  # under current SeuratObject, same root cause as everywhere else in this
+  # file, see the file header -- replaced by direct methods::slot() access.
+  # `counts` is a standard slot on the classic (non-Assay5) `Assay` class
+  # produced by `methods::as(x, "Assay")`, so this is an exact, safe
+  # equivalent; everything below this line is unchanged from Signac's own
+  # logic and operates on `data.use`, a plain matrix, not an Assay object,
+  # so it never hits the broken GetAssayData() call.
+  data.use <- methods::slot(object, "counts")
+  if (Signac:::IsMatrixEmpty(x = data.use)) {
+    if (verbose) {
+      message("Count slot empty")
+    }
+    return(object)
+  }
+  hvf.info <- Signac::FindTopFeatures(object = data.use, assay = assay,
+                                       min.cutoff = min.cutoff, verbose = verbose, ...)
+  if (utils::packageVersion(pkg = "SeuratObject") < "4.9.9") {
+    object[[names(x = hvf.info)]] <- hvf.info
+  } else {
+    object[names(x = hvf.info)] <- hvf.info
+  }
+  if (is.null(x = min.cutoff)) {
+    SeuratObject::VariableFeatures(object = object) <- rownames(x = hvf.info)
+  } else if (is.numeric(x = min.cutoff)) {
+    SeuratObject::VariableFeatures(object = object) <- rownames(
+      x = hvf.info[hvf.info$count > min.cutoff, ])
+  } else if (is.na(x = min.cutoff)) {
+    return(object)
+  } else {
+    percentile.use <- as.numeric(x = sub(pattern = "q", replacement = "",
+                                          x = as.character(x = min.cutoff))) / 100
+    SeuratObject::VariableFeatures(object = object) <- rownames(
+      x = hvf.info[hvf.info$percentile > percentile.use, ])
+  }
+  return(object)
+}
+
+#' @keywords internal
+#' @noRd
 .subset_chromatin_assay <- function(x, features = NULL, cells = NULL) {
   standardassay <- methods::as(object = x, Class = "Assay")
   standardassay <- subset(x = standardassay, features = features, cells = cells)
-  standardassay <- Signac::FindTopFeatures(object = standardassay,
-                                           min.cutoff = NA, verbose = FALSE)
+  standardassay <- .find_top_features_assay(object = standardassay,
+                                             min.cutoff = NA, verbose = FALSE)
   ranges.keep <- GenomicRanges::granges(x = x)
   if (!is.null(x = features)) {
     idx.keep <- rownames(x = x) %in% features
