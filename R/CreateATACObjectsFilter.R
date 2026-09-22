@@ -301,13 +301,14 @@ CreateATACObjectsFilter <-
       message('--- Filtering ATAC objects (non-interactive) ---')
       subsetted_objs <- lapply(seurat_objects, function(obj) {
         # Subset based on the threshold
-        subset(obj, subset =
+        keep_cells <- with(obj@meta.data,
                  peak_region_fragments > peak_region_fragments_min &
                  peak_region_fragments < peak_region_fragments_max &
                  pct_reads_in_peaks > pct_reads_in_peaks_min &
                  blacklist_ratio < blacklist_ratio_max &
                  nucleosome_signal < nucleosome_signal_max &
                  TSS.enrichment > TSS.enrichment_min)
+        .safe_subset_cells(obj, colnames(obj)[keep_cells])
       })
 
       message('--- Generating filtered ATAC QC plots ---')
@@ -340,34 +341,34 @@ CreateATACObjectsFilter <-
           threshold <- as.numeric(readline(prompt = paste("Enter quantile threshold for", param, " (0 to 1): ")))
           seurat_objects <- lapply(seurat_objects, function(obj) {
             if (param == "min pct_reads_in_peaks") {
-              subset(obj, subset = pct_reads_in_peaks > quantile(obj$pct_reads_in_peaks, threshold))
+              .safe_subset_cells(obj, colnames(obj)[obj$pct_reads_in_peaks > quantile(obj$pct_reads_in_peaks, threshold)])
             } else if (param == "min peak_region_fragments") {
-              subset(obj, subset = peak_region_fragments > quantile(obj$peak_region_fragments, threshold))
+              .safe_subset_cells(obj, colnames(obj)[obj$peak_region_fragments > quantile(obj$peak_region_fragments, threshold)])
             } else if (param == "max peak_region_fragments") {
-              subset(obj, subset = peak_region_fragments < quantile(obj$peak_region_fragments, threshold))
+              .safe_subset_cells(obj, colnames(obj)[obj$peak_region_fragments < quantile(obj$peak_region_fragments, threshold)])
             } else if (param == "min TSS.enrichment") {
-              subset(obj, subset = TSS.enrichment > quantile(obj$TSS.enrichment, threshold))
+              .safe_subset_cells(obj, colnames(obj)[obj$TSS.enrichment > quantile(obj$TSS.enrichment, threshold)])
             } else if (param == "max blacklist_ratio") {
-              subset(obj, subset = blacklist_ratio < quantile(obj$blacklist_ratio, threshold))
+              .safe_subset_cells(obj, colnames(obj)[obj$blacklist_ratio < quantile(obj$blacklist_ratio, threshold)])
             } else if (param == "max nucleosome_signal") {
-              subset(obj, subset = nucleosome_signal < quantile(obj$nucleosome_signal, threshold))
+              .safe_subset_cells(obj, colnames(obj)[obj$nucleosome_signal < quantile(obj$nucleosome_signal, threshold)])
             }
           })
         } else if (tolower(use_quantile) == "no") {
           threshold <- as.numeric(readline(prompt = paste("Enter threshold for", param, ": ")))
           seurat_objects <- lapply(seurat_objects, function(obj) {
             if (param == "min pct_reads_in_peaks") {
-              subset(obj, subset = pct_reads_in_peaks > threshold)
+              .safe_subset_cells(obj, colnames(obj)[obj$pct_reads_in_peaks > threshold])
             } else if (param == "min peak_region_fragments") {
-              subset(obj, subset = peak_region_fragments > threshold)
+              .safe_subset_cells(obj, colnames(obj)[obj$peak_region_fragments > threshold])
             } else if (param == "max peak_region_fragments") {
-              subset(obj, subset = peak_region_fragments < threshold)
+              .safe_subset_cells(obj, colnames(obj)[obj$peak_region_fragments < threshold])
             } else if (param == "min TSS.enrichment") {
-              subset(obj, subset = TSS.enrichment > threshold)
+              .safe_subset_cells(obj, colnames(obj)[obj$TSS.enrichment > threshold])
             } else if (param == "max blacklist_ratio") {
-              subset(obj, subset = blacklist_ratio < threshold)
+              .safe_subset_cells(obj, colnames(obj)[obj$blacklist_ratio < threshold])
             } else if (param == "max nucleosome_signal") {
-              subset(obj, subset = nucleosome_signal < threshold)
+              .safe_subset_cells(obj, colnames(obj)[obj$nucleosome_signal < threshold])
             }
           })
         }
