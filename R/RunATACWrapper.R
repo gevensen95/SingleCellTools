@@ -77,7 +77,26 @@ RunATACWrapper <- function(obj,
 
   # ---- Top features ----------------------------------------------------------
   message(sprintf('--- Finding top features (min.cutoff = %s) ---', min_cutoff))
-  obj <- Signac::FindTopFeatures(obj, assay = assay, min.cutoff = min_cutoff)
+  # Signac::FindTopFeatures() on a Seurat object dispatches down to
+  # Signac:::FindTopFeatures.Assay() for a ChromatinAssay (it has no
+  # ChromatinAssay-specific S3 method, so dispatch falls through to the
+  # classic-Assay method) -- and that function writes the count/percentile
+  # columns it computes back via object[names(hvf.info)] <- hvf.info, which
+  # for a ChromatinAssay dispatches into SetAssayData.ChromatinAssay() /
+  # the LayerData replacement method for ChromatinAssay, where a
+  # slot %in% slotNames(x = object) check assumes slot is a single string
+  # but receives the whole multi-element names(hvf.info) vector, crashing
+  # with "the condition has length > 1" (confirmed via traceback() against
+  # a real HPC run). This is the identical defunct-API incompatibility
+  # that atac-subset-helpers.R's .find_top_features_assay() already works
+  # around -- reached here through Signac's public entry point rather than
+  # our own ChromatinAssay-subset workaround. Route through that same
+  # helper directly instead of letting Signac::FindTopFeatures() walk the
+  # broken dispatch chain.
+  assay_obj <- obj[[assay]]
+  assay_obj <- .find_top_features_assay(object = assay_obj, assay = assay,
+                                        min.cutoff = min_cutoff, verbose = verbose)
+  obj[[assay]] <- assay_obj
 
   # ---- SVD (LSI) --------------------------------------------------------------
   message(sprintf('--- Running SVD (n = %d, reduction.name = %s) ---',
