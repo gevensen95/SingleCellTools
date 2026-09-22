@@ -77,11 +77,18 @@
   }
   hvf.info <- Signac::FindTopFeatures(object = data.use, assay = assay,
                                        min.cutoff = min.cutoff, verbose = verbose, ...)
-  if (utils::packageVersion(pkg = "SeuratObject") < "4.9.9") {
-    object[[names(x = hvf.info)]] <- hvf.info
-  } else {
-    object[names(x = hvf.info)] <- hvf.info
-  }
+  # Direct slot access instead of Signac's original double-bracket or
+  # single-bracket assignment of hvf.info onto object -- see file header.
+  # Both of those forms route through Assay indexing-assignment dispatch
+  # that, under the SeuratObject version actually installed here, ends up
+  # in the LayerData replacement method, which expects a matrix or
+  # dgCMatrix value -- not the meta.features data.frame columns
+  # (count/percentile) hvf.info actually is. Writing meta.features
+  # directly sidesteps that dispatch entirely and is exactly what those
+  # two assignment forms were trying to do.
+  meta.features <- methods::slot(object, "meta.features")
+  meta.features[, names(x = hvf.info)] <- hvf.info
+  methods::slot(object, "meta.features") <- meta.features
   if (is.null(x = min.cutoff)) {
     SeuratObject::VariableFeatures(object = object) <- rownames(x = hvf.info)
   } else if (is.numeric(x = min.cutoff)) {
