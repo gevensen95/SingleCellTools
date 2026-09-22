@@ -209,13 +209,13 @@ ApplyQCFilters <- function(obj,
         cells_samp <- rownames(obj@meta.data)[
           as.character(obj@meta.data[[sample_col]]) == samp
         ]
-        sub <- subset(obj, cells = cells_samp)
+        sub <- .safe_subset_cells(obj, cells_samp)
         one <- .filter_one(sub, samp, cutoffs_df, verbose,
                            filter_doublets, doublet_col, doublet_value)
         keep_all    <- c(keep_all, colnames(one$obj))
         report_list <- c(report_list, list(one$report))
       }
-      result    <- subset(obj, cells = keep_all)
+      result    <- .safe_subset_cells(obj, keep_all)
       report_df <- do.call(rbind, report_list)
     } else {
       # Single sample — figure out which cutoff row to use
@@ -279,7 +279,7 @@ ApplyQCFilters <- function(obj,
       is_doublet[is.na(is_doublet)] <- FALSE
       n_doublet  <- sum(is_doublet)
       if (n_doublet > 0) {
-        so <- subset(so, cells = colnames(so)[!is_doublet])
+        so <- .safe_subset_cells(so, colnames(so)[!is_doublet])
         if (verbose) {
           message(sprintf("  [%s] dropped %d doublet(s) (%.1f%% of %d)",
                           sample_name, n_doublet,
@@ -401,7 +401,7 @@ ApplyQCFilters <- function(obj,
                     length(metric_report)))
   }
 
-  filtered <- subset(so, cells = cells[keep])
+  filtered <- .safe_subset_cells(so, cells[keep])
   metric_df <- do.call(rbind, metric_report)
   # Prepend the doublet row (if we ran doublet filtering) so it shows up
   # first in the retention report — reflects that it happened before the
