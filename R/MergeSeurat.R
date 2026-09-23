@@ -445,9 +445,23 @@ MergeSeurat <- function(seurat_objects,
     harmony_reduction <- if (isTRUE(banksy)) 'pca_banksy' else integration_reduction
     message(sprintf('--- Running Harmony directly on the %s embedding ---',
                     harmony_reduction))
+    # harmony::RunHarmony.Seurat() unconditionally calls Seurat::ProjectDim()
+    # afterward (project.dim = TRUE by default) to compute projected feature
+    # loadings for the new reduction -- that reads from the assay's
+    # scale.data layer. ATAC/LSI objects never populate scale.data (Signac's
+    # TF-IDF -> FindTopFeatures -> RunSVD recipe has no ScaleData() step), so
+    # ProjectDim() gets a 0x0 matrix there and crashes with "non-conformable
+    # arguments" multiplying it against the harmony-corrected embedding
+    # (confirmed via recover() against a real HPC run: data.use was 0 x 0
+    # while the actual `data` layer was populated fine at 355270 x 91501 --
+    # ProjectDim() reads scale.data, not data). Skip that projection step for
+    # ATAC, where it can never succeed; leave it enabled (the default) for
+    # RNA/PCA, where scale.data is expected to exist and the projected
+    # loadings are a genuinely useful byproduct.
     obj <- harmony::RunHarmony(obj, group.by.vars = group_column,
                                reduction.use = harmony_reduction,
-                               reduction.save = new_reduction)
+                               reduction.save = new_reduction,
+                               project.dim = !isTRUE(is_atac))
   } else {
     message(sprintf('--- Integrating layers (method: %s) ---', integration))
     obj <- Seurat::IntegrateLayers(object = obj,
