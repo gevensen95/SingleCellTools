@@ -26,15 +26,21 @@
 #'   package) or \code{annotation}/\code{main_chroms} supplied directly.
 #'   See those parameters' docs below.
 #' @param annotation Only used when \code{genome = "custom"} and
-#'   \code{cellranger_ref} is NOT supplied. A \code{GRanges} of gene
-#'   annotations, e.g. from \code{Signac::GetGRangesFromEnsDb()} on your own
-#'   \code{EnsDb} (for a species without a dedicated \code{EnsDb.*} package,
-#'   build one from an Ensembl GTF via \code{ensembldb::ensDbFromGtf()}).
-#'   Must already use the same chromosome-naming style (e.g. \code{"chr1"}
-#'   vs \code{"1"}) as your \code{peaks.bed}/\code{fragments.tsv.gz} files
-#'   -- unlike the \code{"mm10"}/\code{"hg38"} paths, this is NOT
-#'   auto-converted via \code{seqlevelsStyle()}, since there's no reliable
-#'   way to know which style a custom genome's fragments are in.
+#'   \code{cellranger_ref} is NOT supplied. Either a \code{GRanges} of gene
+#'   annotations directly (e.g. from \code{Signac::GetGRangesFromEnsDb()} on
+#'   your own \code{EnsDb}, or \code{\link{BuildATACAnnotation}}'s return
+#'   value), OR a single file path (\code{character(1)}) to an \code{.rds}
+#'   file containing one -- e.g. what \code{\link{BuildATACAnnotation}}
+#'   saves via its \code{save_path} argument. Passing a path lets you build
+#'   the annotation once and reuse the saved file across every
+#'   \code{CreateATACObjects()} call for that genome, rather than rebuilding
+#'   it (or re-passing a large in-memory object) each time. Either way, the
+#'   annotation must already use the same chromosome-naming style (e.g.
+#'   \code{"chr1"} vs \code{"1"}) as your \code{peaks.bed}/
+#'   \code{fragments.tsv.gz} files -- unlike the \code{"mm10"}/\code{"hg38"}
+#'   paths, this is NOT auto-converted via \code{seqlevelsStyle()}, since
+#'   there's no reliable way to know which style a custom genome's
+#'   fragments are in.
 #' @param main_chroms Only used when \code{genome = "custom"}. Character
 #'   vector of the standard/main chromosome names to keep when filtering out
 #'   scaffolds (e.g. \code{paste0("chr", c(1:20, "X", "Y"))} for rhesus
@@ -401,12 +407,45 @@ CreateATACObjects <-
         genome_tag <- genome_label
       } else {
         # ---- Manual custom path: annotation/main_chroms supplied directly ----
-        if (is.null(annotation) || !methods::is(annotation, "GRanges")) {
+        if (is.null(annotation)) {
           stop("genome = 'custom' requires either `cellranger_ref`, or ",
-              "`annotation` (a GRanges of gene annotations, e.g. from ",
-              "Signac::GetGRangesFromEnsDb() on your own EnsDb) already in ",
-              "the same chromosome-naming style as your peaks.bed/",
-              "fragments.tsv.gz files.")
+              "`annotation` (a GRanges of gene annotations -- e.g. from ",
+              "Signac::GetGRangesFromEnsDb() on your own EnsDb, or ",
+              "BuildATACAnnotation()'s return value -- or a path to an ",
+              ".rds file containing one, e.g. what BuildATACAnnotation() ",
+              "saves via its `save_path` argument) already in the same ",
+              "chromosome-naming style as your peaks.bed/fragments.tsv.gz ",
+              "files.")
+        }
+        # `annotation` may be given as a path (character) instead of a
+        # GRanges directly -- e.g. the save_path BuildATACAnnotation() wrote
+        # to. Load it here so the rest of this branch can treat `annotation`
+        # uniformly as a GRanges from this point on. Keep the original path
+        # string around (annotation_path) purely for error messages, since
+        # `annotation` itself gets overwritten by readRDS()'s result below.
+        if (is.character(annotation)) {
+          if (length(annotation) != 1) {
+            stop("`annotation` was given as a character vector of length ",
+                length(annotation), " -- it must be a single file path ",
+                "(or a GRanges object directly), not a vector of paths.")
+          }
+          annotation_path <- annotation
+          if (!file.exists(annotation_path)) {
+            stop("`annotation` was given as a path, but no file exists at '",
+                annotation_path, "'.")
+          }
+          annotation <- readRDS(annotation_path)
+          if (!methods::is(annotation, "GRanges")) {
+            stop("The file at '", annotation_path, "' didn't contain a ",
+                "GRanges object (got a `", class(annotation)[1], "`) -- ",
+                "`annotation` must be a GRanges, or a path to an .rds file ",
+                "(e.g. saved by BuildATACAnnotation()) containing one.")
+          }
+        } else if (!methods::is(annotation, "GRanges")) {
+          stop("`annotation` must be a GRanges object, or a path to an ",
+              ".rds file containing one (e.g. saved by ",
+              "BuildATACAnnotation()) -- got a `", class(annotation)[1],
+              "`.")
         }
         if (is.null(main_chroms) || length(main_chroms) == 0) {
           stop("genome = 'custom' requires either `cellranger_ref`, or ",
