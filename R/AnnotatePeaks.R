@@ -99,7 +99,23 @@ AnnotatePeaks <- function(obj,
                       length(peaks_gr)))
     }
     closest <- Signac::ClosestFeature(obj, regions = peaks_gr)
-    closest <- closest[match(seq_along(peaks_gr), seq_len(nrow(closest))), , drop = FALSE]
+    # Signac::ClosestFeature() silently drops any query region whose
+    # seqlevel isn't present in the attached gene annotation (see the
+    # "seqlevels ... will be removed" warning it emits above) -- so
+    # nrow(closest) can be smaller than length(peaks_gr), and the
+    # surviving rows aren't necessarily the first nrow(closest) peaks in
+    # order. Realigning via match(seq_along(peaks_gr), seq_len(nrow(closest)))
+    # assumed exactly that (a no-op for indices <= nrow(closest), NA
+    # afterward), which silently mis-assigns genes to the wrong peaks
+    # whenever the dropped peaks aren't all contiguous at the very end of
+    # peaks_gr -- confirmed on a real dataset where the attached
+    # annotation only covered 1 of 22 chromosomes. closest$query_region
+    # carries the actual peak coordinates ClosestFeature() computed each
+    # row for ("seqnames-start-end", the same format as peak_names), so
+    # realign on that instead: every dropped peak correctly gets NA, and
+    # every surviving peak lines up with its own row regardless of where
+    # in the list it fell.
+    closest <- closest[match(peak_names, closest$query_region), , drop = FALSE]
 
     peak_type <- ifelse(
       closest$distance == 0 & !is.na(closest$type) & closest$type == "exon", "exonic",
