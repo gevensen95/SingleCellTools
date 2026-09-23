@@ -394,11 +394,6 @@ CreateATACObjects <-
         # both unnecessary and actively destructive here -- skip it.
         annotations <- Signac::GetGRangesFromEnsDb(ensdb = ensdb_obj,
                                                     standard.chromosomes = FALSE)
-        message(sprintf(
-          '--- DEBUG: annotations has %d seqlevel(s) right after GetGRangesFromEnsDb(): %s ---',
-          length(GenomeInfoDb::seqlevels(annotations)),
-          paste(GenomeInfoDb::seqlevels(annotations), collapse = ', ')
-        ))
         # No seqlevelsStyle conversion here, deliberately -- annotations and
         # main.chroms both trace back to this same reference's own files, so
         # whatever naming convention it used, they already agree with each
@@ -586,17 +581,7 @@ CreateATACObjects <-
                                                project = basename(dir))
 
       # add the gene information to the object
-      message(sprintf(
-        '--- DEBUG: annotations has %d seqlevel(s) right before attaching (idx %d): %s ---',
-        length(GenomeInfoDb::seqlevels(annotations)), idx,
-        paste(GenomeInfoDb::seqlevels(annotations), collapse = ', ')
-      ))
       Signac::Annotation(seurat.obj) <- annotations
-      message(sprintf(
-        '--- DEBUG: seurat.obj Annotation has %d seqlevel(s) right after attaching (idx %d): %s ---',
-        length(GenomeInfoDb::seqlevels(Signac::Annotation(seurat.obj[[Seurat::DefaultAssay(seurat.obj)]]))), idx,
-        paste(GenomeInfoDb::seqlevels(Signac::Annotation(seurat.obj[[Seurat::DefaultAssay(seurat.obj)]])), collapse = ', ')
-      ))
 
       seurat.obj <- Signac::NucleosomeSignal(seurat.obj)
       seurat.obj$nucleosome_group <- ifelse(seurat.obj$nucleosome_signal > 4,
