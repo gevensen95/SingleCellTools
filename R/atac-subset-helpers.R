@@ -44,6 +44,10 @@
 # entirely. .safe_subset_cells() is the dispatcher used by callers: it
 # routes ChromatinAssay-backed objects through this workaround and leaves
 # every other object type on ordinary subset() (unaffected by this bug).
+# .subset_atac_seurat() also carries over any OTHER assays present (e.g. an
+# "ACTIVITY" gene-activity assay added via Signac::GeneActivity() after the
+# fact) -- see its own comment below for why that's safe to do with plain
+# subset() rather than needing the same workaround.
 #
 # NOTE: the very first line of .subset_chromatin_assay() (`standardassay <-
 # subset(x = standardassay, ...)`, subsetting the *plain* Assay produced by
@@ -152,21 +156,46 @@
 #' @keywords internal
 #' @noRd
 .subset_atac_seurat <- function(so, cells) {
-  assays_present <- SeuratObject::Assays(so)
-  if (length(assays_present) > 1) {
-    stop(
-      "Safe ATAC-aware cell subsetting (the workaround for Signac's ",
-      "subset.ChromatinAssay() calling the now-defunct ",
-      "GetAssayData(slot = ...) -- see .subset_chromatin_assay()) only ",
-      "supports a single-assay Seurat object. Found ",
-      length(assays_present), " assays: ",
-      paste(assays_present, collapse = ", "), ".")
-  }
   a <- SeuratObject::DefaultAssay(so)
+  if (!methods::is(so[[a]], "ChromatinAssay")) {
+    stop("`.subset_atac_seurat()` expects the default assay ('", a, "') ",
+        "to be a ChromatinAssay -- got a `", class(so[[a]])[1], "`. ",
+        "Call `.safe_subset_cells()` instead; it only routes ",
+        "ChromatinAssay-default objects here and leaves everything else ",
+        "on ordinary subset().")
+  }
   new_assay <- .subset_chromatin_assay(so[[a]], cells = cells)
   meta <- so@meta.data[cells, , drop = FALSE]
-  Seurat::CreateSeuratObject(counts = new_assay, assay = a,
-                             meta.data = meta, project = so@project.name)
+  new_so <- Seurat::CreateSeuratObject(counts = new_assay, assay = a,
+                                       meta.data = meta, project = so@project.name)
+
+  # Carry over any OTHER assays -- e.g. an "ACTIVITY" gene-activity assay
+  # added after the fact via Signac::GeneActivity() (a plain Assay/Assay5,
+  # not a ChromatinAssay). CreateSeuratObject() above only knows about the
+  # one ChromatinAssay just rebuilt, so every other assay has to be
+  # subset and reattached separately here, or it would silently vanish
+  # from the returned object. A non-ChromatinAssay assay doesn't hit the
+  # GetAssayData(slot = ...) bug this file works around (that bug is
+  # specific to ChromatinAssay's own bias/positionEnrichment slots), so
+  # ordinary subset() on it directly is safe -- same reasoning the first
+  # line of .subset_chromatin_assay() already relies on for its own
+  # standardassay <- subset(...) call. If a *different* ChromatinAssay
+  # happens to be present (e.g. two ATAC modalities), route it through
+  # .subset_chromatin_assay() too rather than assume it's safe.
+  other_assays <- setdiff(SeuratObject::Assays(so), a)
+  for (other in other_assays) {
+    other_obj <- so[[other]]
+    new_so[[other]] <- if (methods::is(other_obj, "ChromatinAssay")) {
+      .subset_chromatin_assay(other_obj, cells = cells)
+    } else {
+      subset(other_obj, cells = cells)
+    }
+  }
+  if (length(other_assays) > 0) {
+    SeuratObject::DefaultAssay(new_so) <- a
+  }
+
+  new_so
 }
 
 #' @keywords internal
