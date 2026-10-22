@@ -13,6 +13,7 @@ PlotFeatureDensity(
   layer = "data",
   n_grid = 200,
   joint = FALSE,
+  split.by = NULL,
   colors = c("lightgrey", "#FEB24C", "#F03B20", "#BD0026"),
   ncol = NULL,
   pt_size = 0.3
@@ -38,16 +39,33 @@ anything in \code{obj@meta.data} is used directly.}
 smoother, slower).}
 
 \item{joint}{If TRUE, plot a "joint" density combining all requested
-features (co-expression signal) as an additional panel. Default FALSE.}
+features (co-expression signal) as an additional panel. Default FALSE.
+When combined with \code{split.by}, the joint panel is computed
+separately within each split group.}
+
+\item{split.by}{Optional metadata column name to split cells by (same
+idea as \code{Seurat::FeaturePlot(split.by = )}). Each level becomes
+its own column of panels, with \code{features} (and the \code{joint}
+panel, if requested) as rows -- a \code{facet_grid(feature ~
+split.by)} layout instead of the default \code{facet_wrap(~
+feature)}. The density grid for every panel is still evaluated over
+the FULL embedding's x/y range (not just that group's cells), so
+panels stay spatially aligned and comparable side by side; only the
+weighting (which cells contribute density) and the faint background
+scatter are restricted per group. Cells with \code{NA} in this column
+are dropped with a warning. Default \code{NULL} (no split).}
 
 \item{colors}{Character vector of colors for the density gradient.
 Default \code{c("lightgrey", "#FEB24C", "#F03B20", "#BD0026")}.}
 
-\item{ncol}{Number of columns in the facet grid. Default \code{NULL}
-(ggplot picks).}
+\item{ncol}{Number of columns in the facet grid. Ignored when
+\code{split.by} is set (that layout is a 2D grid driven by
+\code{feature} and \code{split.by}, not a wrapped single row).
+Default \code{NULL} (ggplot picks).}
 
 \item{pt_size}{Size of the underlying scatter of cells (drawn faintly
-beneath the density). Default 0.3. Set to 0 to hide.}
+beneath the density). With \code{split.by}, each panel's scatter is
+restricted to that group's own cells. Default 0.3. Set to 0 to hide.}
 }
 \value{
 A \code{ggplot} object.
@@ -70,5 +88,6 @@ PlotFeatureDensity(obj, features = c("CD3D", "CD4", "CD8A"))
 PlotFeatureDensity(obj, features = c("CD3D", "CD4"), joint = TRUE)
 PlotFeatureDensity(obj, features = "module_score_Bcell",
                    reduction = "harmony")
+PlotFeatureDensity(obj, features = c("CD3D", "CD4"), split.by = "genotype")
 }
 }

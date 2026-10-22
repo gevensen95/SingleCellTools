@@ -23,12 +23,28 @@
 #'   smoother, slower).
 #' @param joint If TRUE, plot a "joint" density combining all requested
 #'   features (co-expression signal) as an additional panel. Default FALSE.
+#'   When combined with \code{split.by}, the joint panel is computed
+#'   separately within each split group.
+#' @param split.by Optional metadata column name to split cells by (same
+#'   idea as \code{Seurat::FeaturePlot(split.by = )}). Each level becomes
+#'   its own column of panels, with \code{features} (and the \code{joint}
+#'   panel, if requested) as rows -- a \code{facet_grid(feature ~
+#'   split.by)} layout instead of the default \code{facet_wrap(~
+#'   feature)}. The density grid for every panel is still evaluated over
+#'   the FULL embedding's x/y range (not just that group's cells), so
+#'   panels stay spatially aligned and comparable side by side; only the
+#'   weighting (which cells contribute density) and the faint background
+#'   scatter are restricted per group. Cells with \code{NA} in this column
+#'   are dropped with a warning. Default \code{NULL} (no split).
 #' @param colors Character vector of colors for the density gradient.
 #'   Default \code{c("lightgrey", "#FEB24C", "#F03B20", "#BD0026")}.
-#' @param ncol Number of columns in the facet grid. Default \code{NULL}
-#'   (ggplot picks).
+#' @param ncol Number of columns in the facet grid. Ignored when
+#'   \code{split.by} is set (that layout is a 2D grid driven by
+#'   \code{feature} and \code{split.by}, not a wrapped single row).
+#'   Default \code{NULL} (ggplot picks).
 #' @param pt_size Size of the underlying scatter of cells (drawn faintly
-#'   beneath the density). Default 0.3. Set to 0 to hide.
+#'   beneath the density). With \code{split.by}, each panel's scatter is
+#'   restricted to that group's own cells. Default 0.3. Set to 0 to hide.
 #' @return A \code{ggplot} object.
 #' @examples
 #' \dontrun{
@@ -36,9 +52,10 @@
 #' PlotFeatureDensity(obj, features = c("CD3D", "CD4"), joint = TRUE)
 #' PlotFeatureDensity(obj, features = "module_score_Bcell",
 #'                    reduction = "harmony")
+#' PlotFeatureDensity(obj, features = c("CD3D", "CD4"), split.by = "genotype")
 #' }
 #' @importFrom Seurat DefaultAssay Embeddings FetchData
-#' @importFrom ggplot2 aes coord_fixed element_text facet_wrap geom_point ggplot labs scale_color_gradientn stat_density_2d theme theme_bw
+#' @importFrom ggplot2 aes coord_fixed element_text facet_grid facet_wrap geom_point ggplot labs scale_color_gradientn stat_density_2d theme theme_bw
 #' @export
 PlotFeatureDensity <- function(obj,
                                features,
@@ -48,6 +65,7 @@ PlotFeatureDensity <- function(obj,
                                layer     = "data",
                                n_grid    = 200,
                                joint     = FALSE,
+                               split.by  = NULL,
                                colors    = c("lightgrey", "#FEB24C",
                                              "#F03B20", "#BD0026"),
                                ncol      = NULL,
@@ -79,58 +97,113 @@ PlotFeatureDensity <- function(obj,
   })
   names(expr_list) <- features
 
-  # Compute density per feature on the FULL grid (min_density = 0). The
-  # low-density rows are dropped per panel below, and separately after the
-  # joint product -- never before it. Thresholding first is what broke the
-  # joint panel: each feature keeps a different subset of grid points, so
-  # the density vectors have different lengths, and multiplying them made R
-  # recycle -- pairing feature A's density at one grid point with feature
-  # B's at an unrelated one, and emitting "longer object length is not a
-  # multiple of shorter object length". The panel rendered, it was just wrong.
-  dens_full <- lapply(features, function(f) {
-    .weighted_kde(emb, weight = expr_list[[f]], n_grid = n_grid,
-                  min_density = 0)
-  })
-  names(dens_full) <- features
+  # ---- split.by: resolve groups, drop NA cells, reduce to one code path --
+  # No split.by is treated as a single implicit group containing every
+  # cell -- the density/joint logic below runs exactly once either way,
+  # so the split and non-split cases can't silently drift apart.
+  if (is.null(split.by)) {
+    keep <- rep(TRUE, nrow(emb))
+    group_f <- factor(rep("__all__", nrow(emb)))
+  } else {
+    if (!split.by %in% colnames(obj@meta.data)) {
+      stop("`split.by` column '", split.by, "' not found in obj@meta.data.")
+    }
+    split_vals <- obj@meta.data[[split.by]]
+    keep <- !is.na(split_vals)
+    if (any(!keep)) {
+      warning(sum(!keep), " cell(s) have NA in `split.by` ('", split.by,
+              "') and were dropped.", call. = FALSE)
+    }
+    group_f <- if (is.factor(split_vals)) {
+      droplevels(split_vals[keep])
+    } else {
+      factor(split_vals[keep])
+    }
+    if (!is.null(ncol)) {
+      message("`ncol` is ignored when `split.by` is set ",
+              "(layout uses facet_grid(feature ~ split.by)).")
+    }
+  }
+  if (any(!keep)) {
+    emb <- emb[keep, , drop = FALSE]
+    expr_list <- lapply(expr_list, function(x) x[keep])
+  }
+  group_levels <- levels(group_f)
+
+  # Grid bounds come from the FULL (post NA-drop) embedding, computed once,
+  # so every panel -- whether split or not -- shares the same spatial
+  # extent and is directly comparable. Each group is only ever restricted
+  # in which cells WEIGHT the density, never in the grid it's evaluated on.
+  x_range <- range(emb[, 1])
+  y_range <- range(emb[, 2])
 
   .trim <- function(d) d[d$density > 0.02, , drop = FALSE]
 
-  dens_list <- lapply(features, function(f) {
-    d <- .trim(dens_full[[f]])
-    d$feature <- f
-    d
-  })
-  dens_df <- do.call(rbind, dens_list)
+  # Compute density (+ optional joint panel) once per group. With no
+  # split.by this runs exactly once, over every cell -- identical to the
+  # previous (pre-split.by) behavior.
+  panel_list <- lapply(group_levels, function(g) {
+    idx_g <- which(as.character(group_f) == g)
+    emb_g <- emb[idx_g, , drop = FALSE]
 
-  # Joint panel: product of per-feature densities, re-normalized
-  if (isTRUE(joint) && length(features) >= 2L) {
-    # Every feature is evaluated on the same lattice (same embedding, same
-    # x/y range, same gridsize), so the untrimmed grids line up row for row.
-    # Verify rather than assume: .weighted_kde() short-circuits to a 0-row
-    # frame for a feature that is zero everywhere, and multiplying through
-    # that would silently drop the joint panel's meaning.
-    ref <- dens_full[[1]]
-    aligned <- nrow(ref) > 0 && all(vapply(dens_full, function(d) {
-      nrow(d) == nrow(ref) &&
-        isTRUE(all.equal(d$x, ref$x)) && isTRUE(all.equal(d$y, ref$y))
-    }, logical(1)))
+    dens_full <- lapply(features, function(f) {
+      .weighted_kde(emb_g, weight = expr_list[[f]][idx_g], n_grid = n_grid,
+                    min_density = 0, x_range = x_range, y_range = y_range)
+    })
+    names(dens_full) <- features
 
-    if (!aligned) {
-      warning("Skipping the joint density panel: the per-feature density ",
-              "grids don't align (usually because one requested feature is ",
-              "zero in every cell). The individual panels are unaffected.",
-              call. = FALSE)
-    } else {
-      joint_grid <- ref[, c("x", "y")]
-      joint_grid$density <- Reduce(`*`, lapply(dens_full, `[[`, "density"))
-      if (max(joint_grid$density) > 0) {
-        joint_grid$density <- joint_grid$density / max(joint_grid$density)
+    # The low-density rows are dropped per panel below, and separately
+    # after the joint product -- never before it. Thresholding first is
+    # what broke the joint panel: each feature keeps a different subset of
+    # grid points, so the density vectors have different lengths, and
+    # multiplying them made R recycle -- pairing feature A's density at
+    # one grid point with feature B's at an unrelated one, and emitting
+    # "longer object length is not a multiple of shorter object length".
+    # The panel rendered, it was just wrong.
+    dens_list <- lapply(features, function(f) {
+      d <- .trim(dens_full[[f]])
+      d$feature <- f
+      d
+    })
+    dens_df_g <- do.call(rbind, dens_list)
+
+    # Joint panel: product of per-feature densities, re-normalized
+    if (isTRUE(joint) && length(features) >= 2L) {
+      # Every feature is evaluated on the same lattice (same embedding,
+      # same x/y range, same gridsize), so the untrimmed grids line up row
+      # for row. Verify rather than assume: .weighted_kde() short-circuits
+      # to a 0-row frame for a feature that is zero everywhere (within
+      # this group), and multiplying through that would silently drop the
+      # joint panel's meaning.
+      ref <- dens_full[[1]]
+      aligned <- nrow(ref) > 0 && all(vapply(dens_full, function(d) {
+        nrow(d) == nrow(ref) &&
+          isTRUE(all.equal(d$x, ref$x)) && isTRUE(all.equal(d$y, ref$y))
+      }, logical(1)))
+
+      if (!aligned) {
+        warning("Skipping the joint density panel",
+                if (!is.null(split.by)) paste0(" for ", split.by, " = '", g, "'") else "",
+                ": the per-feature density grids don't align (usually ",
+                "because one requested feature is zero in every cell",
+                if (!is.null(split.by)) " of this group" else "",
+                "). The individual panels are unaffected.", call. = FALSE)
+      } else {
+        joint_grid <- ref[, c("x", "y")]
+        joint_grid$density <- Reduce(`*`, lapply(dens_full, `[[`, "density"))
+        if (max(joint_grid$density) > 0) {
+          joint_grid$density <- joint_grid$density / max(joint_grid$density)
+        }
+        joint_grid <- .trim(joint_grid)
+        joint_grid$feature <- paste(features, collapse = " + ")
+        dens_df_g <- rbind(dens_df_g, joint_grid)
       }
-      joint_grid <- .trim(joint_grid)
-      joint_grid$feature <- paste(features, collapse = " + ")
-      dens_df <- rbind(dens_df, joint_grid)
     }
-  }
+
+    dens_df_g$split_group <- g
+    dens_df_g
+  })
+  dens_df <- do.call(rbind, panel_list)
 
   # Fix facet ordering
   facet_levels <- unique(c(features,
@@ -140,7 +213,8 @@ PlotFeatureDensity <- function(obj,
 
   # ---- Build plot ---------------------------------------------------------
   emb_df <- as.data.frame(emb)
-  dim1 <- dim2 <- x <- y <- density <- feature <- NULL  # NSE
+  emb_df$split_group <- as.character(group_f)
+  dim1 <- dim2 <- x <- y <- density <- feature <- split_group <- NULL  # NSE
 
   p <- ggplot2::ggplot()
 
@@ -159,7 +233,11 @@ PlotFeatureDensity <- function(obj,
     ) +
     ggplot2::scale_fill_gradientn(colors = colors, na.value = "transparent",
                                   name = "density") +
-    ggplot2::facet_wrap(~ feature, ncol = ncol) +
+    (if (is.null(split.by)) {
+      ggplot2::facet_wrap(~ feature, ncol = ncol)
+    } else {
+      ggplot2::facet_grid(feature ~ split_group)
+    }) +
     ggplot2::labs(x = paste0(reduction, "_", dims[1]),
                   y = paste0(reduction, "_", dims[2])) +
     ggplot2::coord_fixed() +
@@ -176,18 +254,25 @@ PlotFeatureDensity <- function(obj,
 # Internal: weighted 2D KDE on a set of points, returning a long
 # data frame with columns x, y, density (rescaled to [0, 1]).
 # Uses ks::kde when available; otherwise a scaled MASS::kde2d fallback.
+# x_range/y_range let a caller pin the grid to a fixed extent (e.g. the full
+# embedding's range) rather than auto-deriving it from `emb` -- needed when
+# `emb` is only a subset of cells (one split.by group) but the grid must
+# still span the same area as every other group's panel for the panels to
+# be visually comparable. NULL (the default) reproduces the old
+# behavior: derive the range from whatever `emb` is passed.
 # ============================================================================
 #' @keywords internal
 #' @noRd
-.weighted_kde <- function(emb, weight, n_grid = 200, min_density = 0.02) {
+.weighted_kde <- function(emb, weight, n_grid = 200, min_density = 0.02,
+                          x_range = NULL, y_range = NULL) {
   weight <- pmax(weight, 0)
   # If all zero (unexpressed feature), return an empty grid.
   if (sum(weight) == 0) {
     return(data.frame(x = numeric(0), y = numeric(0), density = numeric(0)))
   }
 
-  x_range <- range(emb[, 1])
-  y_range <- range(emb[, 2])
+  if (is.null(x_range)) x_range <- range(emb[, 1])
+  if (is.null(y_range)) y_range <- range(emb[, 2])
 
   if (requireNamespace("ks", quietly = TRUE)) {
     fit <- ks::kde(x = emb, w = weight * length(weight) / sum(weight),
