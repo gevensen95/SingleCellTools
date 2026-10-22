@@ -109,69 +109,10 @@ MarkerPlot <- function(obj,
                        width            = NULL,
                        height           = NULL) {
 
-  # ---- Validate inputs ----------------------------------------------------
-  if (!inherits(obj, "Seurat")) {
-    stop("`obj` must be a Seurat object.")
-  }
-  if (!is.data.frame(genes) || ncol(genes) < 2) {
-    stop("`genes` must be a data frame with at least two columns ",
-         "(gene name, annotation).")
-  }
-  if (!assay %in% Seurat::Assays(obj)) {
-    stop("Assay '", assay, "' not found in object. Available: ",
-         paste(Seurat::Assays(obj), collapse = ", "))
-  }
-
-  # ---- Normalize the gene table -------------------------------------------
-  genes <- stats::setNames(genes[, 1:2], c("Gene", "Details"))
-  genes$Gene <- as.character(genes$Gene)
-  genes$Details <- as.character(genes$Details)
-
-  # Drop genes not present in the requested assay
-  # ---- Drop duplicate gene entries (keep first occurrence) ----------------
-  # `genes` maps each gene to exactly one Details group. A gene listed under
-  # two different Details groups (e.g. a marker genuinely shared between two
-  # subtypes/cell types) reaches .pull_dotplot_data()'s own
-  # `factor(features.plot, levels = features)` call with a duplicated level
-  # and crashes with a cryptic, hard-to-trace "factor level [n] is
-  # duplicated" error -- fail predictably here instead: keep the first
-  # occurrence (its first-listed Details group) and warn about the rest,
-  # rather than silently guessing or crashing deep inside plot internals.
-  dup_genes <- unique(genes$Gene[duplicated(genes$Gene)])
-  if (length(dup_genes) > 0) {
-    message(sprintf(
-      "  %d gene(s) listed under more than one Details group -- keeping only the first occurrence: %s",
-      length(dup_genes), paste(dup_genes, collapse = ", ")))
-    genes <- genes[!duplicated(genes$Gene), , drop = FALSE]
-  }
-
-  in_assay <- intersect(genes$Gene, rownames(obj[[assay]]))
-  dropped_missing <- setdiff(genes$Gene, in_assay)
-  if (length(dropped_missing)) {
-    message(sprintf("  Dropping %d gene(s) not in assay '%s': %s",
-                    length(dropped_missing), assay,
-                    paste(dropped_missing, collapse = ", ")))
-  }
-  genes <- genes[genes$Gene %in% in_assay, , drop = FALSE]
-
-  # Drop genes with zero expression across the entire object
-  if (nrow(genes) > 0) {
-    expr <- Seurat::FetchData(obj, vars = genes$Gene,
-                              layer = "counts", assay = assay)
-    has_expr <- colnames(expr)[colSums(expr, na.rm = TRUE) > 0]
-    dropped_zero <- setdiff(genes$Gene, has_expr)
-    if (length(dropped_zero)) {
-      message(sprintf("  Dropping %d gene(s) with zero expression: %s",
-                      length(dropped_zero),
-                      paste(dropped_zero, collapse = ", ")))
-    }
-    genes <- genes[genes$Gene %in% has_expr, , drop = FALSE]
-  }
-
-  if (nrow(genes) == 0) {
-    stop("No genes remain after filtering for assay presence and ",
-         "non-zero expression.")
-  }
+  # ---- Validate inputs / normalize the gene table --------------------------
+  # .prepare_marker_gene_table() (dotplot-helpers.R) -- shared with
+  # MarkerPctPlot(), which previously duplicated this verbatim.
+  genes <- .prepare_marker_gene_table(obj, genes, assay)
 
   # ---- Pull dot plot summary data ----------------------------------------
   # Needed for the variance filter below and (optionally) for clustering.

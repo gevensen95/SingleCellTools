@@ -60,6 +60,17 @@
 #'   which to anchor the cell-type annotation labels. Default 1.2.
 #'   Increase to push labels further away from the panel border.
 #'
+#' @param axis_text_size Font size (pt) for the gene-name axis text.
+#'   \code{NULL} (default) auto-scales down as the gene count grows,
+#'   matching \code{\link{MarkerPlot}}'s breakpoints (9pt for <= 30 genes
+#'   down to 5.5pt for > 100).
+#' @param width,height Figure size in inches for the \code{suggested_width}/
+#'   \code{suggested_height} attributes (and for \code{save_path}, if set).
+#'   \code{NULL} (default) auto-computes from gene/identity count, again
+#'   matching \code{\link{MarkerPlot}}.
+#' @param save_path Optional file path (e.g. \code{"markers.pdf"}); if
+#'   supplied, saves the plot via \code{ggplot2::ggsave()} at the
+#'   auto-computed (or explicit \code{width}/\code{height}) figure size.
 #' @return A \code{ggplot} object.
 #'
 #' @examples
@@ -83,7 +94,7 @@
 MarkerPctPlot <- function(obj,
                            genes,
                            margin_factor    = 0.5,
-                           label.fontsize   = 3,
+                           label.fontsize   = NULL,
                            assay            = "RNA",
                            show.annotations = TRUE,
                            cluster          = TRUE,
@@ -92,22 +103,14 @@ MarkerPctPlot <- function(obj,
                            style            = c("tile", "dot"),
                            colors           = c("white", "firebrick"),
                            maxsize          = 5,
-                           label_offset     = 1.2) {
+                           label_offset     = 1.2,
+                           axis_text_size   = NULL,
+                           width            = NULL,
+                           height           = NULL,
+                           save_path        = NULL) {
 
   style <- match.arg(style)
 
-  # ---- Validate inputs ----------------------------------------------------
-  if (!inherits(obj, "Seurat")) {
-    stop("`obj` must be a Seurat object.")
-  }
-  if (!is.data.frame(genes) || ncol(genes) < 2) {
-    stop("`genes` must be a data frame with at least two columns ",
-         "(gene name, annotation).")
-  }
-  if (!assay %in% Seurat::Assays(obj)) {
-    stop("Assay '", assay, "' not found in object. Available: ",
-         paste(Seurat::Assays(obj), collapse = ", "))
-  }
   if (length(colors) != 2) {
     stop("`colors` must be a length-2 character vector (low, high).")
   }
@@ -115,56 +118,10 @@ MarkerPctPlot <- function(obj,
     stop("Need 0 <= min_pct < max_pct <= 100.")
   }
 
-  # ---- Normalize the gene table -------------------------------------------
-  genes <- stats::setNames(genes[, 1:2], c("Gene", "Details"))
-  genes$Gene    <- as.character(genes$Gene)
-  genes$Details <- as.character(genes$Details)
-
-  # Drop genes not present in the requested assay
-  # ---- Drop duplicate gene entries (keep first occurrence) ----------------
-  # `genes` maps each gene to exactly one Details group. A gene listed under
-  # two different Details groups (e.g. a marker genuinely shared between two
-  # subtypes/cell types) reaches .pull_dotplot_data()'s own
-  # `factor(features.plot, levels = features)` call with a duplicated level
-  # and crashes with a cryptic, hard-to-trace "factor level [n] is
-  # duplicated" error -- fail predictably here instead: keep the first
-  # occurrence (its first-listed Details group) and warn about the rest,
-  # rather than silently guessing or crashing deep inside plot internals.
-  dup_genes <- unique(genes$Gene[duplicated(genes$Gene)])
-  if (length(dup_genes) > 0) {
-    message(sprintf(
-      "  %d gene(s) listed under more than one Details group -- keeping only the first occurrence: %s",
-      length(dup_genes), paste(dup_genes, collapse = ", ")))
-    genes <- genes[!duplicated(genes$Gene), , drop = FALSE]
-  }
-
-  in_assay <- intersect(genes$Gene, rownames(obj[[assay]]))
-  dropped_missing <- setdiff(genes$Gene, in_assay)
-  if (length(dropped_missing)) {
-    message(sprintf("  Dropping %d gene(s) not in assay '%s': %s",
-                    length(dropped_missing), assay,
-                    paste(dropped_missing, collapse = ", ")))
-  }
-  genes <- genes[genes$Gene %in% in_assay, , drop = FALSE]
-
-  # Drop genes with zero expression across the entire object
-  if (nrow(genes) > 0) {
-    expr <- Seurat::FetchData(obj, vars = genes$Gene,
-                              layer = "counts", assay = assay)
-    has_expr <- colnames(expr)[colSums(expr, na.rm = TRUE) > 0]
-    dropped_zero <- setdiff(genes$Gene, has_expr)
-    if (length(dropped_zero)) {
-      message(sprintf("  Dropping %d gene(s) with zero expression: %s",
-                      length(dropped_zero),
-                      paste(dropped_zero, collapse = ", ")))
-    }
-    genes <- genes[genes$Gene %in% has_expr, , drop = FALSE]
-  }
-
-  if (nrow(genes) == 0) {
-    stop("No genes remain after filtering for assay presence and ",
-         "non-zero expression.")
-  }
+  # ---- Validate inputs / normalize the gene table --------------------------
+  # .prepare_marker_gene_table() (dotplot-helpers.R) -- shared with
+  # MarkerPlot(), which this previously duplicated verbatim.
+  genes <- .prepare_marker_gene_table(obj, genes, assay)
 
   # ---- Pull per-(ident, gene) percent-positive ----------------------------
   # Reuse the DotPlot data-prep helper so the percent-positive numbers are
@@ -257,6 +214,29 @@ MarkerPctPlot <- function(obj,
   # ---- Build the plot -----------------------------------------------------
   features.plot <- pct.exp <- id <- annot_y <- xpos <- NULL  # NSE
 
+  # ---- Auto-scale text/figure size for large marker panels ----------------
+  # Ported verbatim from MarkerPlot.R's breakpoints -- see its "Auto-sizing"
+  # doc section for the rationale. Not re-derived/re-tuned for this file's
+  # tile/dot geometry specifically (unverified without rendering); if these
+  # look off for your panel, pass axis_text_size/label.fontsize explicitly.
+  n_genes <- nrow(genes)
+  if (is.null(axis_text_size)) {
+    axis_text_size <- if (n_genes <= 30) 9
+                      else if (n_genes <= 60) 7.5
+                      else if (n_genes <= 100) 6.5
+                      else 5.5
+  }
+  if (is.null(label.fontsize)) {
+    label.fontsize <- if (n_genes <= 30) 3.5
+                      else if (n_genes <= 60) 3
+                      else if (n_genes <= 100) 2.6
+                      else 2.2
+  }
+  suggested_width  <- max(6, n_genes * 0.16 + 2)
+  suggested_height <- max(7, n_idents * 0.6 + 3)
+  final_width  <- if (is.null(width)) suggested_width else width
+  final_height <- if (is.null(height)) suggested_height else height
+
   if (style == "tile") {
     p <- ggplot2::ggplot(
       dp_data,
@@ -321,6 +301,7 @@ MarkerPctPlot <- function(obj,
       legend.position = "left",
       legend.title    = ggplot2::element_text(size = 6),
       axis.text.x     = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1),
+      axis.text.y     = ggplot2::element_text(size = axis_text_size),
       plot.title      = ggplot2::element_text(hjust = 0.5, face = "bold"),
       plot.margin     = ggplot2::margin(
         t = 1 * margin_factor,
@@ -343,6 +324,22 @@ MarkerPctPlot <- function(obj,
       vjust   = 0.5,
       inherit.aes = FALSE
     )
+  }
+
+  attr(p, "suggested_width")  <- suggested_width
+  attr(p, "suggested_height") <- suggested_height
+
+  if (!is.null(save_path)) {
+    message(sprintf("  Saving to '%s' at %.1f x %.1f in (width x height)...",
+                    save_path, final_width, final_height))
+    ggplot2::ggsave(save_path, plot = p, width = final_width,
+                    height = final_height, limitsize = FALSE)
+  } else {
+    message(sprintf(
+      paste0("  %d genes across %d identities -- if labels look cramped, ",
+            "try: ggsave(\"markers.pdf\", plot = p, width = %.1f, height = %.1f, ",
+            "limitsize = FALSE)"),
+      n_genes, n_idents, final_width, final_height))
   }
 
   p
