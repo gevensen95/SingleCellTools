@@ -18,7 +18,15 @@ CreateRNAObjectsFilter(
   feature_max = NA,
   percent_mt_max = NA,
   interactive = FALSE,
-  object_names = NULL
+  object_names = NULL,
+  run_doublet_finder = FALSE,
+  doublet_normalization = c("LogNormalize", "SCT"),
+  doublet_vars_to_regress = "percent.mt",
+  doublet_cluster_resolution = 0.1,
+  doublet_rate = 0.075,
+  doublet_pk_sweep_max_cells = 4000,
+  doublet_sweep_cores = 1,
+  filter_doublets = FALSE
 )
 }
 \arguments{
@@ -67,6 +75,35 @@ be shown of the the features and the percent.mt, or you can open the
 automatically saved file}
 
 \item{object_names}{Names for the Seurat objects}
+
+\item{run_doublet_finder}{Logical; if TRUE (default \code{FALSE}, unlike
+\code{\link{CreateRNAObjects}} -- this function predates doublet
+calling and defaults to its old behavior for backward compatibility),
+run \code{\link{calldoublet}} on every object and add a
+\code{doublet_finder} metadata column, matching
+\code{\link{CreateRNAObjects}}/\code{\link{MakeParseObj}}.}
+
+\item{doublet_normalization}{Passed to \code{calldoublet}: one of
+\code{"LogNormalize"} (default) or \code{"SCT"}.}
+
+\item{doublet_vars_to_regress}{Passed to \code{calldoublet} as
+\code{vars.to.regress}. Default \code{"percent.mt"}.}
+
+\item{doublet_cluster_resolution}{Passed to \code{calldoublet} as
+\code{cluster_resolution}. Default \code{0.1}.}
+
+\item{doublet_rate}{Passed to \code{calldoublet} as \code{doublet_rate}.
+Default \code{0.075}.}
+
+\item{doublet_pk_sweep_max_cells}{Passed to \code{calldoublet} as
+\code{pk_sweep_max_cells}. Default \code{4000}.}
+
+\item{doublet_sweep_cores}{Passed to \code{calldoublet} as
+\code{sweep_cores}. Default \code{1}.}
+
+\item{filter_doublets}{Logical; if TRUE, subset each object to
+\code{doublet_finder == "Singlet"} right after doublet calling.
+Default \code{FALSE} so doublet labels are preserved for review.}
 }
 \value{
 A list of filtered Seurat objects

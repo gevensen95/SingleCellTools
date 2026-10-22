@@ -30,7 +30,13 @@ not guaranteed to preserve arbitrary attributes.
 Companion to \code{\link{SaveWithProvenance}}: reads the \code{.rds}, and
 if a \code{<name>_provenance.json} sidecar sits next to it, uses it to
 report what was in the file (\code{saved_at}, package versions at save
-time, git state) without needing to load the object first.
+time, git state) without needing to load the object first. If the
+sidecar has an \code{rds_md5} field (written by
+\code{\link{SaveWithProvenance}}), the \code{.rds}'s current MD5 is
+recomputed and compared, and a mismatch is reported with a warning --
+this catches a \code{.rds} that was modified, re-saved, or corrupted
+since the sidecar was written, which the rest of this function's
+checks (object validity, package versions) wouldn't otherwise notice.
 }
 \details{
 \strong{Why this exists.} SeuratObject occasionally adds slots to its S4

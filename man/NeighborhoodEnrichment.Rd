@@ -16,7 +16,8 @@ NeighborhoodEnrichment(
   niche_method = c("kmeans", "hclust"),
   niche_prefix = "niche_",
   add_to_meta = TRUE,
-  niche_col = "niche"
+  niche_col = "niche",
+  workers = 1
 )
 }
 \arguments{
@@ -58,6 +59,17 @@ FALSE}.}
 
 \item{niche_col}{Name of the metadata column to write niche labels to
 when \code{add_to_meta = TRUE}. Default \code{"niche"}.}
+
+\item{workers}{Number of parallel workers to use (via \code{future.apply})
+for the per-permutation counting within each FOV. Default \code{1}
+(sequential -- the historical, fully reproducible behavior, unchanged
+from before this parameter existed). With \code{workers > 1},
+permutations are drawn using \code{future.seed = TRUE} parallel-safe
+RNG streams rather than the single sequential stream used at
+\code{workers = 1}; results are still reproducible for a fixed
+\code{seed} and \code{workers}, but will not match the
+\code{workers = 1} values exactly. Only worth raising for large
+\code{n_perm} and/or many large FOVs.}
 }
 \value{
 A list with elements:

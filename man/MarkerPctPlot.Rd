@@ -8,7 +8,7 @@ MarkerPctPlot(
   obj,
   genes,
   margin_factor = 0.5,
-  label.fontsize = 3,
+  label.fontsize = NULL,
   assay = "RNA",
   show.annotations = TRUE,
   cluster = TRUE,
@@ -17,7 +17,11 @@ MarkerPctPlot(
   style = c("tile", "dot"),
   colors = c("white", "firebrick"),
   maxsize = 5,
-  label_offset = 1.2
+  label_offset = 1.2,
+  axis_text_size = NULL,
+  width = NULL,
+  height = NULL,
+  save_path = NULL
 )
 }
 \arguments{
@@ -63,6 +67,20 @@ gradient. Default \code{c("white", "firebrick")}.}
 the spacing between adjacent idents) past the rightmost ident at
 which to anchor the cell-type annotation labels. Default 1.2.
 Increase to push labels further away from the panel border.}
+
+\item{axis_text_size}{Font size (pt) for the gene-name axis text.
+\code{NULL} (default) auto-scales down as the gene count grows,
+matching \code{\link{MarkerPlot}}'s breakpoints (9pt for <= 30 genes
+down to 5.5pt for > 100).}
+
+\item{width, height}{Figure size in inches for the \code{suggested_width}/
+\code{suggested_height} attributes (and for \code{save_path}, if set).
+\code{NULL} (default) auto-computes from gene/identity count, again
+matching \code{\link{MarkerPlot}}.}
+
+\item{save_path}{Optional file path (e.g. \code{"markers.pdf"}); if
+supplied, saves the plot via \code{ggplot2::ggsave()} at the
+auto-computed (or explicit \code{width}/\code{height}) figure size.}
 }
 \value{
 A \code{ggplot} object.

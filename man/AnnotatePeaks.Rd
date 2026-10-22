@@ -52,11 +52,19 @@ distal, non-promoter regions instead of treating every accessible peak
 the same way.
 }
 \details{
-\strong{\code{method = "signac"} (default).} Uses
-\code{Signac::ClosestFeature()} against whatever gene annotation is
-already attached to the \code{ChromatinAssay} (\code{Signac::Annotation()}
--- set when the object was built, e.g. via \code{\link{CreateATACObjects}}'s
-\code{genome} argument). No extra package or annotation database needed.
+\strong{\code{method = "signac"} (default).} Finds each peak's nearest
+feature in whatever gene annotation is already attached to the
+\code{ChromatinAssay} (\code{Signac::Annotation()} -- set when the object
+was built, e.g. via \code{\link{CreateATACObjects}}'s \code{genome}
+argument). No extra package or annotation database needed. Uses this
+package's own \code{.closest_feature_unstranded()} (see
+\code{atac-subset-helpers.R}) rather than \code{Signac::ClosestFeature()}
+directly: Signac's version calls \code{distanceToNearest()} with
+\code{ignore.strand} left at its \code{FALSE} default, which throws
+"logical subscript contains NAs" for ATAC peaks (strand \code{"*"})
+against a stranded annotation -- hit on this project's own data.
+\code{ClosestFeature()} has also been removed from Signac's current
+master entirely, so there's no upstream version left to defer to.
 Peaks are classified as \code{"promoter_proximal"} (within
 \code{promoter_window} bp of, but not overlapping, a gene),
 \code{"exonic"}/\code{"intronic"} (overlapping a gene body), or

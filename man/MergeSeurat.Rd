@@ -56,7 +56,9 @@ MergeSeurat(
 \item{file_name}{Optional prefix for the saved RDS (defaults to
 \code{new_reduction}).}
 
-\item{use_elbow_plot}{Logical; show elbow plot and prompt for number of PCs.}
+\item{use_elbow_plot}{Logical; show elbow plot and prompt for number of
+PCs via \code{readline()}. Requires an interactive session -- errors
+immediately (rather than hanging) under \code{Rscript}/\code{sbatch}/\code{knitr}.}
 
 \item{spatial}{One of \code{'no'}, \code{'Visium'}, \code{'Xenium'}.}
 

@@ -14,7 +14,11 @@ MarkerHeatmap(
   scale_rows = TRUE,
   colors = NULL,
   cluster_rows = TRUE,
-  cluster_cols = FALSE
+  cluster_cols = FALSE,
+  axis_text_size = NULL,
+  width = NULL,
+  height = NULL,
+  save_path = NULL
 )
 }
 \arguments{
@@ -49,6 +53,19 @@ instead of \code{AverageExpression}'s per-cell-averaged values. Default
 \item{cluster_rows, cluster_cols}{Logical; hierarchical clustering of
 rows / columns. Defaults: rows = TRUE, cols = FALSE (clusters in factor
 order).}
+
+\item{axis_text_size}{Font size (pt) for the gene-name axis text.
+\code{NULL} (default) auto-scales down as the gene count grows,
+matching \code{\link{MarkerPlot}}/\code{\link{MarkerPctPlot}}'s
+breakpoints (9pt for <= 30 genes down to 5.5pt for > 100).}
+
+\item{width, height}{Figure size in inches for the \code{suggested_width}/
+\code{suggested_height} attributes (and for \code{save_path}, if set).
+\code{NULL} (default) auto-computes from gene/cluster count.}
+
+\item{save_path}{Optional file path (e.g. \code{"heatmap.pdf"}); if
+supplied, saves the plot via \code{ggplot2::ggsave()} at the
+auto-computed (or explicit \code{width}/\code{height}) figure size.}
 }
 \value{
 A \code{ggplot} object.

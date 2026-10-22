@@ -22,3 +22,14 @@ Vector containing child GO terms
 \description{
 This function will get all child GO terms
 }
+\details{
+Results are memoized in a session-scoped cache keyed by GO term
+id. The GO DAG lets a term have more than one parent, so a naive
+recursive walk can revisit -- and fully re-expand -- the same subtree
+many times both within one call (a term reachable from two different
+children of \code{go_term}) and across separate calls (two unrelated
+\code{go_term}s that share descendants). The cache persists for the
+life of the R session and assumes \code{GO.db}'s \code{GOBPCHILDREN}
+mapping doesn't change mid-session, which holds unless the annotation
+package itself is reinstalled/reloaded.
+}

@@ -30,6 +30,15 @@ SHA / dirty flag of the calling script directory. Future-you (or a
 reviewer) can look at the sidecar to understand what was in the RDS
 without loading it into R.
 }
+\details{
+The sidecar also records \code{rds_md5}, the MD5 checksum (via
+\code{tools::md5sum()}) of the just-written \code{.rds} file.
+\code{\link{LoadWithProvenance}} recomputes this at load time and
+warns if it doesn't match, which catches a \code{.rds} that was
+silently re-saved, truncated, or corrupted after the sidecar was
+written (bit rot, an interrupted copy, a stale sidecar left behind by
+a re-run that overwrote the \code{.rds} but not its sidecar, ...).
+}
 \examples{
 \dontrun{
 SaveWithProvenance(obj, file = "results/obj_annotated.rds",
