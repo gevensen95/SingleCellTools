@@ -42,6 +42,27 @@
 #' be shown of the the features and the percent.mt, or you can open the
 #' automatically saved file
 #' @param object_names Names for the Seurat objects
+#' @param run_doublet_finder Logical; if TRUE (default \code{FALSE}, unlike
+#'   \code{\link{CreateRNAObjects}} -- this function predates doublet
+#'   calling and defaults to its old behavior for backward compatibility),
+#'   run \code{\link{calldoublet}} on every object and add a
+#'   \code{doublet_finder} metadata column before integration, matching
+#'   \code{\link{CreateRNAObjects}}/\code{\link{MakeParseObj}}.
+#' @param doublet_normalization Passed to \code{calldoublet}: one of
+#'   \code{"LogNormalize"} (default) or \code{"SCT"}.
+#' @param doublet_vars_to_regress Passed to \code{calldoublet} as
+#'   \code{vars.to.regress}. Default \code{"percent.mt"}.
+#' @param doublet_cluster_resolution Passed to \code{calldoublet} as
+#'   \code{cluster_resolution}. Default \code{0.1}.
+#' @param doublet_rate Passed to \code{calldoublet} as \code{doublet_rate}.
+#'   Default \code{0.075}.
+#' @param doublet_pk_sweep_max_cells Passed to \code{calldoublet} as
+#'   \code{pk_sweep_max_cells}. Default \code{4000}.
+#' @param doublet_sweep_cores Passed to \code{calldoublet} as
+#'   \code{sweep_cores}. Default \code{1}.
+#' @param filter_doublets Logical; if TRUE, subset each object to
+#'   \code{doublet_finder == "Singlet"} right after doublet calling, before
+#'   integration. Default \code{FALSE}.
 #' @param cell_IDs Adds cell identities to the beginning of each barcode
 #' @param to_regress Variable to regress out in normalization
 #' @param cluster_resolution Resolution for cell clustering
@@ -87,6 +108,14 @@ CreateAndIntegrateRNA <-
            feature_min = NA, feature_max = NA,
            percent_mt_max = NA, interactive = FALSE,
            object_names = NULL,
+           run_doublet_finder = FALSE,
+           doublet_normalization = c("LogNormalize", "SCT"),
+           doublet_vars_to_regress = "percent.mt",
+           doublet_cluster_resolution = 0.1,
+           doublet_rate = 0.075,
+           doublet_pk_sweep_max_cells = 4000,
+           doublet_sweep_cores = 1,
+           filter_doublets = FALSE,
            # Relies on R's lazy default-argument evaluation: this default
            # isn't resolved until cell_IDs is first used (at the real merge
            # below, well after `seurat_objects` has been built/filtered in
@@ -118,6 +147,8 @@ CreateAndIntegrateRNA <-
       if (is.numeric(feature_max)) stop("Error: Set quantile=TRUE and specificed hard cut off for max nFeature_RNA Pick only one.")
       if (is.numeric(percent_mt_max)) stop("Error: Set quantile=TRUE and specificed hard cut off for percent.mt. Pick only one.")
     }
+
+    doublet_normalization <- match.arg(doublet_normalization)
 
     if (workers > 1) {
       # See workers_utils.R -- shared by all six workers-taking loaders.
@@ -224,6 +255,37 @@ CreateAndIntegrateRNA <-
       obj[["percent.hb"]] <- Seurat::PercentageFeatureSet(obj, pattern = hb_pattern)
       return(obj)
     })
+
+    # ---- Doublet calling (matching CreateRNAObjects()/MakeParseObj(), off ----
+    # by default here for backward compatibility -- see run_doublet_finder's
+    # doc) -----------------------------------------------------------------
+    if (isTRUE(run_doublet_finder)) {
+      message(sprintf('--- Calling doublets with DoubletFinder (%s) ---',
+                      doublet_normalization))
+      sample_labels <- names(seurat_objects)
+      n_samples     <- length(seurat_objects)
+      .call_one <- function(obj, i, lab) {
+        message(sprintf('  [%d/%d] %s', i, n_samples, lab))
+        out <- calldoublet(obj,
+                           samplenameIndex    = i,
+                           normalization      = doublet_normalization,
+                           vars.to.regress    = doublet_vars_to_regress,
+                           cluster_resolution = doublet_cluster_resolution,
+                           doublet_rate       = doublet_rate,
+                           pk_sweep_max_cells = doublet_pk_sweep_max_cells,
+                           sweep_cores        = doublet_sweep_cores)
+        if (isTRUE(filter_doublets)) {
+          n_before <- ncol(out)
+          out      <- subset(out, doublet_finder == "Singlet")
+          message(sprintf('    %s: dropped %d doublets (%d singlets remaining)',
+                          lab, n_before - ncol(out), ncol(out)))
+        }
+        out
+      }
+      results <- mapply(.call_one, seurat_objects, seq_len(n_samples), sample_labels,
+                        SIMPLIFY = FALSE)
+      seurat_objects <- setNames(results, sample_labels)
+    }
 
     # Add a to_regress to metadata to specify treatment
     if (is.null(treatment) == FALSE){

@@ -62,9 +62,7 @@ RunCellChat <- function(seurat_sub,
 
   # Cheap, local checks first so they surface their own errors even on a
   # machine without CellChat installed.
-  if (!inherits(seurat_sub, "Seurat")) {
-    stop("`seurat_sub` must be a Seurat object.")
-  }
+  .assert_seurat(seurat_sub, "seurat_sub")
   if (!group_col %in% colnames(seurat_sub@meta.data)) {
     stop("`group_col` '", group_col, "' not found in seurat_sub@meta.data.")
   }

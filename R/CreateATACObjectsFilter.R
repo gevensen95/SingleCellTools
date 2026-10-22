@@ -12,13 +12,47 @@
 #'
 #' @param data_dirs Path to the directories with ATAC data
 #' @param treatment Treatment metadata value (vector)
-#' @param genome One of \code{"mm10"} (default) or \code{"hg38"}. Selects the gene
-#'   annotation (\code{EnsDb.Mmusculus.v79} / \code{EnsDb.Hsapiens.v86}) and genome
+#' @param genome One of \code{"mm10"} (default), \code{"hg38"}, or
+#'   \code{"custom"}. \code{"mm10"}/\code{"hg38"} select the gene annotation
+#'   (\code{EnsDb.Mmusculus.v79} / \code{EnsDb.Hsapiens.v86}) and genome
 #'   sequence (\code{BSgenome.Mmusculus.UCSC.mm10} / \code{BSgenome.Hsapiens.UCSC.hg38})
 #'   used for scaffold-chromosome filtering and the \code{ChromatinAssay} annotation.
 #'   Both are optional (Suggests) packages -- only the one matching your chosen
 #'   \code{genome} needs to be installed, and you'll get an actionable error naming
-#'   it if it's missing.
+#'   it if it's missing. For any other species (e.g. rhesus macaque), pass
+#'   \code{genome = "custom"} -- see \code{cellranger_ref}/\code{annotation}/
+#'   \code{main_chroms}/\code{genome_label} below (identical to, and sharing
+#'   its genome-resolution logic with, \code{\link{CreateATACObjects}}'s
+#'   same-named parameters -- see that function's docs for the full
+#'   rationale behind each one).
+#' @param annotation Only used when \code{genome = "custom"} and
+#'   \code{cellranger_ref} is NOT supplied. Either a \code{GRanges} of gene
+#'   annotations directly, or a single file path (\code{character(1)}) to an
+#'   \code{.rds} file containing one (e.g. saved by
+#'   \code{\link{BuildATACAnnotation}}). Must already use the same
+#'   chromosome-naming style as your \code{peaks.bed}/\code{fragments.tsv.gz}
+#'   files -- not auto-converted the way \code{"mm10"}/\code{"hg38"} are.
+#' @param main_chroms Only used when \code{genome = "custom"}. Character
+#'   vector of the standard/main chromosome names to keep when filtering out
+#'   scaffolds. Derived automatically from \code{cellranger_ref} (or from
+#'   the \code{BSgenome} package for \code{"mm10"}/\code{"hg38"}) when not
+#'   supplied; MAY still be passed alongside \code{cellranger_ref} as an
+#'   override (e.g. for accession-style contig names
+#'   \code{GenomeInfoDb::standardChromosomes()} doesn't recognize).
+#' @param genome_label Required when \code{genome = "custom"}. A short
+#'   string identifying the genome build (e.g. \code{"rheMac10"}), used to
+#'   tag the \code{ChromatinAssay}'s own genome slot.
+#' @param cellranger_ref Only used when \code{genome = "custom"}. Path to a
+#'   reference package directory built with \code{cellranger-atac mkref} /
+#'   \code{cellranger-arc mkref} -- the recommended way to supply a custom
+#'   genome, since \code{annotation}/\code{main_chroms} are then both
+#'   derived from the exact files cellranger used, with no risk of a
+#'   genome-build or naming-style mismatch. Requires \code{organism} and
+#'   \code{genome_label}. Mutually exclusive with \code{annotation}
+#'   (\code{main_chroms} MAY still be passed alongside it, as an override).
+#' @param organism Required when \code{genome = "custom"} and
+#'   \code{cellranger_ref} is supplied. A short organism name/label (e.g.
+#'   \code{"Macaca_mulatta"}) -- metadata only, not used for matching.
 #' @param object_names Optional character vector of names for the returned list,
 #'   the same length as \code{data_dirs}. \code{NULL} (default) uses
 #'   \code{basename(data_dirs)}.
@@ -65,7 +99,10 @@
 #' @export
 CreateATACObjectsFilter <-
   function(data_dirs,  treatment = NULL, filter = TRUE, interactive = FALSE,
-           genome = c("mm10", "hg38"), object_names = NULL,
+           genome = c("mm10", "hg38", "custom"),
+           annotation = NULL, main_chroms = NULL, genome_label = NULL,
+           cellranger_ref = NULL, organism = NULL,
+           object_names = NULL,
            peak_region_fragments_min = 3000, peak_region_fragments_max = 100000,
            pct_reads_in_peaks_min = 40, blacklist_ratio_max = 0.025,
            nucleosome_signal_max = 4, TSS.enrichment_min = 2,
@@ -115,26 +152,21 @@ CreateATACObjectsFilter <-
           '), got ', length(object_names), '.')
     }
 
-    # ---- Resolve genome-specific annotation/sequence packages -----------------
-    # Both mouse and human packages are optional (Suggests): only the one
-    # matching the requested `genome` needs to actually be installed.
-    genome_pkgs <- switch(
-      genome,
-      mm10 = list(ensdb = 'EnsDb.Mmusculus.v79', bsgenome = 'BSgenome.Mmusculus.UCSC.mm10'),
-      hg38 = list(ensdb = 'EnsDb.Hsapiens.v86',   bsgenome = 'BSgenome.Hsapiens.UCSC.hg38')
-    )
-    if (!requireNamespace(genome_pkgs$ensdb, quietly = TRUE)) {
-      stop("'", genome_pkgs$ensdb, "' is required for genome = '", genome, "'. ",
-          "Install with: BiocManager::install('", genome_pkgs$ensdb, "')")
-    }
-    if (!requireNamespace(genome_pkgs$bsgenome, quietly = TRUE)) {
-      stop("'", genome_pkgs$bsgenome, "' is required for genome = '", genome, "'. ",
-          "Install with: BiocManager::install('", genome_pkgs$bsgenome, "')")
-    }
-    # Both packages export an object of the same name as the package itself
-    # (the standard Bioconductor EnsDb/BSgenome annotation-package convention).
-    ensdb_obj    <- getExportedValue(genome_pkgs$ensdb, genome_pkgs$ensdb)
-    bsgenome_obj <- getExportedValue(genome_pkgs$bsgenome, genome_pkgs$bsgenome)
+    # ---- Resolve genome-specific annotation/sequence -----------------------
+    # Shared with CreateATACObjects() -- see atac-genome-resolution.R and
+    # that function's `genome`/`annotation`/`main_chroms`/`genome_label`/
+    # `cellranger_ref`/`organism` docs for the full rationale. Produces
+    # `annotations` and `main.chroms` (used below exactly as before) plus
+    # `assay_genome` (used at the CreateChromatinAssay() call site further
+    # down instead of the raw `genome` string -- see the comment there).
+    resolved <- .resolve_atac_genome(genome = genome, annotation = annotation,
+                                     main_chroms = main_chroms,
+                                     genome_label = genome_label,
+                                     cellranger_ref = cellranger_ref,
+                                     organism = organism)
+    annotations  <- resolved$annotations
+    main.chroms  <- resolved$main.chroms
+    assay_genome <- resolved$assay_genome
 
     message(sprintf('--- Reading peak sets (%d directories) ---', length(data_dirs)))
     # Use lapply to read the peak sets for each sample
@@ -166,8 +198,7 @@ CreateATACObjectsFilter <-
                     peakwidths_min, peakwidths_max, length(combined.peaks)))
 
     message('--- Removing peaks on scaffolds (keeping main chromosomes) ---')
-    #remove scaffolds not in genome
-    main.chroms <- GenomeInfoDb::standardChromosomes(bsgenome_obj)
+    # main.chroms already resolved above (shared with CreateATACObjects()).
     # as.character() first, deliberately -- GenomeInfoDb::seqnames() returns
     # an Rle, and the Bioconductor-aware `%in%`/match method that knows how
     # to handle an Rle is only installed as an S4 generic when BiocGenerics/
@@ -183,18 +214,9 @@ CreateATACObjectsFilter <-
     combined.peaks <- combined.peaks[keep.peaks, ]
     message(sprintf('  Peaks after scaffold removal: %d', length(combined.peaks)))
 
-    message(sprintf('--- Loading gene annotations from %s ---', genome_pkgs$ensdb))
-    # extract gene annotations from EnsDb
-    annotations <- Signac::GetGRangesFromEnsDb(ensdb = ensdb_obj)
-
-    # EnsDb annotations come out in Ensembl seqname style ("1", "2", ..., "MT");
-    # ChromatinAssay/fragment data here is UCSC style ("chr1", "chr2", ...,
-    # "chrM"). seqlevelsStyle<- handles the full mapping (including the
-    # MT -> chrM special case), unlike a manual paste0("chr", ...), which
-    # would produce the wrong "chrMT" and leave every other non-numbered
-    # contig unmapped.
-    GenomeInfoDb::seqlevelsStyle(annotations) <- "UCSC"
-    GenomeInfoDb::genome(annotations) <- genome
+    # annotations already resolved above (shared with CreateATACObjects()) --
+    # seqlevelsStyle conversion and genome-tagging for mm10/hg38, or the
+    # custom-genome path, both already done inside .resolve_atac_genome().
 
     message(sprintf('--- Building Seurat ATAC objects per sample%s ---',
                     if (workers > 1) sprintf(' (%d parallel workers)', workers) else ''))
@@ -232,10 +254,15 @@ CreateATACObjectsFilter <-
         cells = rownames(md)
       )
 
-      # Create chromatin assay and final object with QC metrics. `genome`
-      # tags the assay's own seqinfo (previously only `annotations` got a
-      # genome tag, leaving the assay itself untagged).
-      assay <- Signac::CreateChromatinAssay(counts, fragments = frag.obj, genome = genome)
+      # Create chromatin assay and final object with QC metrics. Uses
+      # `assay_genome`, not the raw `genome` string -- CreateChromatinAssay()
+      # resolves a plain-string `genome` via GenomeInfoDb::Seqinfo(genome =
+      # <string>)'s UCSC/NCBI registry lookup, which only works for
+      # registered IDs like "mm10"/"hg38"; `assay_genome` is a full Seqinfo
+      # object (built from `main.chroms` directly) for genome = "custom",
+      # where `genome_label` isn't a registered ID at all -- see
+      # atac-genome-resolution.R.
+      assay <- Signac::CreateChromatinAssay(counts, fragments = frag.obj, genome = assay_genome)
       seurat.obj <- Seurat::CreateSeuratObject(assay, assay = "ATAC", meta.data = md,
                                                project = basename(dir))
 

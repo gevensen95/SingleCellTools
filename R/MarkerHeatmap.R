@@ -29,6 +29,16 @@
 #' @param cluster_rows,cluster_cols Logical; hierarchical clustering of
 #'   rows / columns. Defaults: rows = TRUE, cols = FALSE (clusters in factor
 #'   order).
+#' @param axis_text_size Font size (pt) for the gene-name axis text.
+#'   \code{NULL} (default) auto-scales down as the gene count grows,
+#'   matching \code{\link{MarkerPlot}}/\code{\link{MarkerPctPlot}}'s
+#'   breakpoints (9pt for <= 30 genes down to 5.5pt for > 100).
+#' @param width,height Figure size in inches for the \code{suggested_width}/
+#'   \code{suggested_height} attributes (and for \code{save_path}, if set).
+#'   \code{NULL} (default) auto-computes from gene/cluster count.
+#' @param save_path Optional file path (e.g. \code{"heatmap.pdf"}); if
+#'   supplied, saves the plot via \code{ggplot2::ggsave()} at the
+#'   auto-computed (or explicit \code{width}/\code{height}) figure size.
 #' @return A \code{ggplot} object.
 #' @details
 #' \strong{\code{pseudobulk = TRUE}.} \code{AverageExpression()} (the
@@ -64,7 +74,11 @@ MarkerHeatmap <- function(obj,
                           scale_rows    = TRUE,
                           colors        = NULL,
                           cluster_rows  = TRUE,
-                          cluster_cols  = FALSE) {
+                          cluster_cols  = FALSE,
+                          axis_text_size = NULL,
+                          width          = NULL,
+                          height         = NULL,
+                          save_path      = NULL) {
 
   if (!inherits(obj, "Seurat")) stop("`obj` must be a Seurat object.")
   if (!is.null(markers) && !is.null(genes)) {
@@ -194,13 +208,32 @@ MarkerHeatmap <- function(obj,
     colors <- rev(RColorBrewer::brewer.pal(11, "RdBu"))
   }
 
+  # ---- Auto-scale text/figure size for large marker panels ----------------
+  # Same breakpoints as MarkerPlot.R/MarkerPctPlot.R (see MarkerPlot.R's
+  # "Auto-sizing" doc section) -- not re-derived for a heatmap's geometry
+  # specifically (unverified without rendering); pass axis_text_size/
+  # width/height explicitly if these look off for your panel.
+  n_genes    <- nrow(avg)
+  n_clusters <- ncol(avg)
+  if (is.null(axis_text_size)) {
+    axis_text_size <- if (n_genes <= 30) 9
+                      else if (n_genes <= 60) 7.5
+                      else if (n_genes <= 100) 6.5
+                      else 5.5
+  }
+  suggested_width  <- max(6, n_clusters * 0.6 + 3)
+  suggested_height <- max(6, n_genes * 0.16 + 2)
+  final_width  <- if (is.null(width)) suggested_width else width
+  final_height <- if (is.null(height)) suggested_height else height
+
   cluster_ <- gene_ <- value <- NULL  # NSE
-  ggplot2::ggplot(long, ggplot2::aes(x = cluster, y = gene, fill = value)) +
+  p <- ggplot2::ggplot(long, ggplot2::aes(x = cluster, y = gene, fill = value)) +
     ggplot2::geom_tile() +
     ggplot2::scale_fill_gradientn(colors = colors) +
     Ol_Reliable() +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+      axis.text.y = ggplot2::element_text(size = axis_text_size),
       panel.grid  = ggplot2::element_blank()
     ) +
     ggplot2::labs(x = NULL, y = NULL,
@@ -211,4 +244,22 @@ MarkerHeatmap <- function(obj,
                   } else {
                     "Avg. expr."
                   })
+
+  attr(p, "suggested_width")  <- suggested_width
+  attr(p, "suggested_height") <- suggested_height
+
+  if (!is.null(save_path)) {
+    message(sprintf("  Saving to '%s' at %.1f x %.1f in (width x height)...",
+                    save_path, final_width, final_height))
+    ggplot2::ggsave(save_path, plot = p, width = final_width,
+                    height = final_height, limitsize = FALSE)
+  } else {
+    message(sprintf(
+      paste0("  %d genes across %d clusters -- if labels look cramped, ",
+            "try: ggsave(\"heatmap.pdf\", plot = p, width = %.1f, height = %.1f, ",
+            "limitsize = FALSE)"),
+      n_genes, n_clusters, final_width, final_height))
+  }
+
+  p
 }

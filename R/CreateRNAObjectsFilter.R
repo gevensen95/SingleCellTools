@@ -41,6 +41,27 @@
 #' be shown of the the features and the percent.mt, or you can open the
 #' automatically saved file
 #' @param object_names Names for the Seurat objects
+#' @param run_doublet_finder Logical; if TRUE (default \code{FALSE}, unlike
+#'   \code{\link{CreateRNAObjects}} -- this function predates doublet
+#'   calling and defaults to its old behavior for backward compatibility),
+#'   run \code{\link{calldoublet}} on every object and add a
+#'   \code{doublet_finder} metadata column, matching
+#'   \code{\link{CreateRNAObjects}}/\code{\link{MakeParseObj}}.
+#' @param doublet_normalization Passed to \code{calldoublet}: one of
+#'   \code{"LogNormalize"} (default) or \code{"SCT"}.
+#' @param doublet_vars_to_regress Passed to \code{calldoublet} as
+#'   \code{vars.to.regress}. Default \code{"percent.mt"}.
+#' @param doublet_cluster_resolution Passed to \code{calldoublet} as
+#'   \code{cluster_resolution}. Default \code{0.1}.
+#' @param doublet_rate Passed to \code{calldoublet} as \code{doublet_rate}.
+#'   Default \code{0.075}.
+#' @param doublet_pk_sweep_max_cells Passed to \code{calldoublet} as
+#'   \code{pk_sweep_max_cells}. Default \code{4000}.
+#' @param doublet_sweep_cores Passed to \code{calldoublet} as
+#'   \code{sweep_cores}. Default \code{1}.
+#' @param filter_doublets Logical; if TRUE, subset each object to
+#'   \code{doublet_finder == "Singlet"} right after doublet calling.
+#'   Default \code{FALSE} so doublet labels are preserved for review.
 #' @return A list of filtered Seurat objects
 #' @export
 
@@ -53,7 +74,16 @@ CreateRNAObjectsFilter <-
            use_quantile = TRUE, quantile_value_min = 0.15,
            feature_min = NA, feature_max = NA,
            percent_mt_max = NA, interactive = FALSE,
-           object_names = NULL) {
+           object_names = NULL,
+           run_doublet_finder = FALSE,
+           doublet_normalization = c("LogNormalize", "SCT"),
+           doublet_vars_to_regress = "percent.mt",
+           doublet_cluster_resolution = 0.1,
+           doublet_rate = 0.075,
+           doublet_pk_sweep_max_cells = 4000,
+           doublet_sweep_cores = 1,
+           filter_doublets = FALSE) {
+    doublet_normalization <- match.arg(doublet_normalization)
     # Ensure thresholds are specified if not using quantiles
     if (!use_quantile) {
       if (!is.numeric(feature_min)) stop("Error: Did not specify threshold for feature_min")
@@ -167,6 +197,37 @@ CreateRNAObjectsFilter <-
       obj[["percent.hb"]] <- Seurat::PercentageFeatureSet(obj, pattern = hb_pattern)
       return(obj)
     })
+
+    # ---- Doublet calling (matching CreateRNAObjects()/MakeParseObj(), off ----
+    # by default here for backward compatibility -- see run_doublet_finder's
+    # doc) -----------------------------------------------------------------
+    if (isTRUE(run_doublet_finder)) {
+      message(sprintf('--- Calling doublets with DoubletFinder (%s) ---',
+                      doublet_normalization))
+      sample_labels <- names(seurat_objects)
+      n_samples     <- length(seurat_objects)
+      .call_one <- function(obj, i, lab) {
+        message(sprintf('  [%d/%d] %s', i, n_samples, lab))
+        out <- calldoublet(obj,
+                           samplenameIndex    = i,
+                           normalization      = doublet_normalization,
+                           vars.to.regress    = doublet_vars_to_regress,
+                           cluster_resolution = doublet_cluster_resolution,
+                           doublet_rate       = doublet_rate,
+                           pk_sweep_max_cells = doublet_pk_sweep_max_cells,
+                           sweep_cores        = doublet_sweep_cores)
+        if (isTRUE(filter_doublets)) {
+          n_before <- ncol(out)
+          out      <- subset(out, doublet_finder == "Singlet")
+          message(sprintf('    %s: dropped %d doublets (%d singlets remaining)',
+                          lab, n_before - ncol(out), ncol(out)))
+        }
+        out
+      }
+      results <- mapply(.call_one, seurat_objects, seq_len(n_samples), sample_labels,
+                        SIMPLIFY = FALSE)
+      seurat_objects <- setNames(results, sample_labels)
+    }
 
     message('--- Saving unfiltered Seurat objects ---')
     saveRDS(seurat_objects, 'seurat_objects_unfiltered.rds')
