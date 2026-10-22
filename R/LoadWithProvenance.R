@@ -3,7 +3,13 @@
 #' Companion to \code{\link{SaveWithProvenance}}: reads the \code{.rds}, and
 #' if a \code{<name>_provenance.json} sidecar sits next to it, uses it to
 #' report what was in the file (\code{saved_at}, package versions at save
-#' time, git state) without needing to load the object first.
+#' time, git state) without needing to load the object first. If the
+#' sidecar has an \code{rds_md5} field (written by
+#' \code{\link{SaveWithProvenance}}), the \code{.rds}'s current MD5 is
+#' recomputed and compared, and a mismatch is reported with a warning --
+#' this catches a \code{.rds} that was modified, re-saved, or corrupted
+#' since the sidecar was written, which the rest of this function's
+#' checks (object validity, package versions) wouldn't otherwise notice.
 #'
 #' \strong{Why this exists.} SeuratObject occasionally adds slots to its S4
 #' classes between versions (recent examples: \code{misc} added to
@@ -72,6 +78,16 @@ LoadWithProvenance <- function(file, update = TRUE, verbose = TRUE) {
     }
   } else if (isTRUE(verbose)) {
     message("No provenance sidecar found at ", sidecar, ".")
+  }
+
+  if (!is.null(prov) && !is.null(prov[["rds_md5"]])) {
+    current_md5 <- tryCatch(unname(tools::md5sum(file)),
+                            error = function(e) NA_character_)
+    if (!is.na(current_md5) && !identical(current_md5, prov[["rds_md5"]])) {
+      warning(sprintf(
+        "Checksum mismatch for '%s': current MD5 (%s) does not match the provenance sidecar's recorded MD5 (%s) -- the .rds may have been modified, re-saved, or corrupted since the sidecar was written.",
+        file, current_md5, prov[["rds_md5"]]))
+    }
   }
 
   obj <- readRDS(file)
