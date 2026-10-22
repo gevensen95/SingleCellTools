@@ -44,15 +44,21 @@ package) or \code{annotation}/\code{main_chroms} supplied directly.
 See those parameters' docs below.}
 
 \item{annotation}{Only used when \code{genome = "custom"} and
-\code{cellranger_ref} is NOT supplied. A \code{GRanges} of gene
-annotations, e.g. from \code{Signac::GetGRangesFromEnsDb()} on your own
-\code{EnsDb} (for a species without a dedicated \code{EnsDb.*} package,
-build one from an Ensembl GTF via \code{ensembldb::ensDbFromGtf()}).
-Must already use the same chromosome-naming style (e.g. \code{"chr1"}
-vs \code{"1"}) as your \code{peaks.bed}/\code{fragments.tsv.gz} files
--- unlike the \code{"mm10"}/\code{"hg38"} paths, this is NOT
-auto-converted via \code{seqlevelsStyle()}, since there's no reliable
-way to know which style a custom genome's fragments are in.}
+\code{cellranger_ref} is NOT supplied. Either a \code{GRanges} of gene
+annotations directly (e.g. from \code{Signac::GetGRangesFromEnsDb()} on
+your own \code{EnsDb}, or \code{\link{BuildATACAnnotation}}'s return
+value), OR a single file path (\code{character(1)}) to an \code{.rds}
+file containing one -- e.g. what \code{\link{BuildATACAnnotation}}
+saves via its \code{save_path} argument. Passing a path lets you build
+the annotation once and reuse the saved file across every
+\code{CreateATACObjects()} call for that genome, rather than rebuilding
+it (or re-passing a large in-memory object) each time. Either way, the
+annotation must already use the same chromosome-naming style (e.g.
+\code{"chr1"} vs \code{"1"}) as your \code{peaks.bed}/
+\code{fragments.tsv.gz} files -- unlike the \code{"mm10"}/\code{"hg38"}
+paths, this is NOT auto-converted via \code{seqlevelsStyle()}, since
+there's no reliable way to know which style a custom genome's
+fragments are in.}
 
 \item{main_chroms}{Only used when \code{genome = "custom"}. Character
 vector of the standard/main chromosome names to keep when filtering out
