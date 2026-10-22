@@ -33,8 +33,21 @@ get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
   poly_sf <- sf::st_sfc(sf::st_polygon(list(polygon_matrix)))
 
   # ---- 2) Cell coordinates from Seurat ----
+  # scale = NULL is required here: GetTissueCoordinates.VisiumV1()'s default
+  # is scale = "lowres", which silently multiplies the raw imagecol/imagerow
+  # values by that image's lowres scale factor (e.g. 0.5) before returning
+  # them -- still named "imagecol"/"imagerow", so nothing downstream would
+  # notice, but in a different coordinate space than poly_df is written
+  # against (raw tissue-coordinate pixels, the same space FOV/Centroids-based
+  # images already return with no scale concept at all). Confirmed via
+  # SeuratObject's real GetTissueCoordinates.VisiumV1() source: without this,
+  # a "poly_df" box sized for the full-resolution image comes out too large
+  # relative to the rescaled coordinates and can swallow cells outside the
+  # intended region. scale = NULL is silently ignored (via ...) by every
+  # other GetTissueCoordinates method (FOV/Centroids/SlideSeq/STARmap), so
+  # this is safe for non-Visium images too.
   message(sprintf('--- Pulling tissue coordinates (image: %s) ---', image_name))
-  coords <- Seurat::GetTissueCoordinates(seurat.obj, image = image_name)
+  coords <- Seurat::GetTissueCoordinates(seurat.obj, image = image_name, scale = NULL)
   coords <- as.data.frame(coords)
 
   # Standardize to x/y
