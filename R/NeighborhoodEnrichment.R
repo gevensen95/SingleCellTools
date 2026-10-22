@@ -54,6 +54,16 @@
 #'   FALSE}.
 #' @param niche_col Name of the metadata column to write niche labels to
 #'   when \code{add_to_meta = TRUE}. Default \code{"niche"}.
+#' @param workers Number of parallel workers to use (via \code{future.apply})
+#'   for the per-permutation counting within each FOV. Default \code{1}
+#'   (sequential -- the historical, fully reproducible behavior, unchanged
+#'   from before this parameter existed). With \code{workers > 1},
+#'   permutations are drawn using \code{future.seed = TRUE} parallel-safe
+#'   RNG streams rather than the single sequential stream used at
+#'   \code{workers = 1}; results are still reproducible for a fixed
+#'   \code{seed} and \code{workers}, but will not match the
+#'   \code{workers = 1} values exactly. Only worth raising for large
+#'   \code{n_perm} and/or many large FOVs.
 #'
 #' @return A list with elements:
 #'   \describe{
@@ -93,7 +103,8 @@ NeighborhoodEnrichment <- function(obj,
                                    niche_method  = c("kmeans", "hclust"),
                                    niche_prefix  = "niche_",
                                    add_to_meta   = TRUE,
-                                   niche_col     = "niche") {
+                                   niche_col     = "niche",
+                                   workers       = 1) {
 
   niche_method <- match.arg(niche_method)
   .assert_seurat(obj)
@@ -121,6 +132,30 @@ NeighborhoodEnrichment <- function(obj,
       assign(".Random.seed", old_seed, envir = .GlobalEnv)
     }
   }, add = TRUE)
+
+  # ---- Optional parallel plan for the per-permutation counting below -----
+  # Deliberately not .resolve_workers()/.setup_future_plan()'s usual
+  # "defaults to the sample count" convention (workers_utils.R) -- that
+  # messaging is written for the per-sample loaders (CreateRNAObjects() and
+  # friends), where `workers` defaults to the number of samples. Here
+  # `workers` defaults to 1 (sequential, matching this function's behavior
+  # before this parameter existed) and parallelizes permutations instead,
+  # so a sample-count-flavored error message would be misleading.
+  if (!is.numeric(workers) || length(workers) != 1 || is.na(workers) ||
+      workers < 1 || workers != as.integer(workers)) {
+    stop("`workers` must be a single positive integer.")
+  }
+  workers <- as.integer(workers)
+  if (workers > 1) {
+    n_cores <- suppressWarnings(parallel::detectCores())
+    if (!is.na(n_cores) && workers > n_cores) {
+      stop(sprintf(
+        "workers = %d exceeds the %d core(s) available on this machine. Pass workers = %d (or lower).",
+        workers, n_cores, n_cores))
+    }
+    cleanup <- .setup_future_plan(workers)
+    on.exit(cleanup(), add = TRUE)
+  }
 
   # ---- Collect coords + labels per FOV (single pass) ---------------------
   per_fov <- vector("list", length(fovs))
@@ -182,9 +217,25 @@ NeighborhoodEnrichment <- function(obj,
     k_use <- min(k, nrow(coords) - 1)
     nn <- RANN::nn2(coords, coords, k = k_use + 1)$nn.idx[, -1, drop = FALSE]
     obs <- obs + count_table(labels, nn, labels)
+    # Per-permutation counting is embarrassingly parallel (each permutation
+    # only reads `labels`/`nn`, both fixed for this FOV) -- at workers > 1
+    # this farms the n_perm draws out via future.apply with
+    # future.seed = TRUE for parallel-safe RNG streams, instead of the
+    # single sequential RNG stream used at workers = 1 (the default, and
+    # the only behavior this function had before `workers` existed).
+    perm_mats <- if (workers > 1) {
+      future.apply::future_lapply(seq_len(n_perm), function(p) {
+        shuf <- sample(labels)
+        count_table(shuf, nn, shuf)
+      }, future.seed = TRUE)
+    } else {
+      lapply(seq_len(n_perm), function(p) {
+        shuf <- sample(labels)
+        count_table(shuf, nn, shuf)
+      })
+    }
     for (p in seq_len(n_perm)) {
-      shuf <- sample(labels)
-      perms_array[, , p] <- perms_array[, , p] + count_table(shuf, nn, shuf)
+      perms_array[, , p] <- perms_array[, , p] + perm_mats[[p]]
     }
 
     # Per-cell neighborhood composition for clustering. Vectorized the same

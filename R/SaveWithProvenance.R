@@ -16,6 +16,13 @@
 #' @param extra Optional named list of additional key-value pairs to
 #'   include in the sidecar under \code{extra}.
 #' @return Invisible \code{file} path.
+#' @details The sidecar also records \code{rds_md5}, the MD5 checksum (via
+#'   \code{tools::md5sum()}) of the just-written \code{.rds} file.
+#'   \code{\link{LoadWithProvenance}} recomputes this at load time and
+#'   warns if it doesn't match, which catches a \code{.rds} that was
+#'   silently re-saved, truncated, or corrupted after the sidecar was
+#'   written (bit rot, an interrupted copy, a stale sidecar left behind by
+#'   a re-run that overwrote the \code{.rds} but not its sidecar, ...).
 #' @examples
 #' \dontrun{
 #' SaveWithProvenance(obj, file = "results/obj_annotated.rds",
@@ -43,6 +50,10 @@ SaveWithProvenance <- function(obj,
 
   # Save the object
   saveRDS(obj, file = file)
+
+  # MD5 of the just-written file -- LoadWithProvenance() recomputes this at
+  # load time and warns on mismatch (see @details above).
+  rds_md5 <- unname(tools::md5sum(file))
 
   # Assemble provenance
   layers_by_assay <- lapply(
@@ -81,6 +92,7 @@ SaveWithProvenance <- function(obj,
   prov <- list(
     saved_at        = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
     file            = normalizePath(file, mustWork = FALSE),
+    rds_md5         = rds_md5,
     hostname        = Sys.info()[["nodename"]],
     R_version       = as.character(getRversion()),
     package_versions = versions,

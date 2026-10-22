@@ -4,16 +4,23 @@
 \alias{SetImageBoundary}
 \title{Set Boundary of Images}
 \usage{
-SetImageBoundary(seurat_obj, boundary)
+SetImageBoundary(seurat_obj, boundary, verbose = TRUE)
 }
 \arguments{
 \item{seurat_obj}{Seurat object (spatial)}
 
 \item{boundary}{Boundary name (e.g. "segmentation" or "centroids")}
+
+\item{verbose}{Message progress. Default \code{TRUE}.}
 }
 \value{
 a Seurat object
 }
 \description{
 This function changes the default boundary of a spatial Seurat object with multiple images.
+}
+\examples{
+\dontrun{
+xenium <- SetImageBoundary(xenium, "segmentation")
+}
 }

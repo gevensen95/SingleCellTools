@@ -13,6 +13,12 @@
 #' @param sample_names Character vector of sample names, same length and
 #'   order as \code{data_dirs}. \code{NULL} (default) uses
 #'   \code{basename(data_dirs)}. Must be unique.
+#' @param treatment Optional treatment metadata value (vector), one per
+#'   sample, same length and order as \code{data_dirs} -- matching
+#'   \code{\link{CreateRNAObjects}}/\code{\link{CreateATACObjects}}/
+#'   \code{\link{CreateVisiumObjects}}'s \code{treatment} argument,
+#'   which this function previously lacked. Added as a \code{"Treatment"}
+#'   metadata column on each sample. \code{NULL} (default) adds none.
 #' @param outs,type,mols.qv.threshold,microns_lazy Passed straight through
 #'   to \code{\link{LoadXenium2}} for every sample -- see its docs.
 #' @param on_disk Logical; if \code{TRUE}, move each returned object's
@@ -45,6 +51,7 @@
 #' @export
 CreateXeniumObjects <- function(data_dirs,
                                 sample_names      = NULL,
+                                treatment         = NULL,
                                 outs              = c("matrix", "microns"),
                                 type              = c("centroids", "segmentations"),
                                 mols.qv.threshold = 20,
@@ -64,6 +71,12 @@ CreateXeniumObjects <- function(data_dirs,
   if (anyDuplicated(sample_names)) {
     stop("`sample_names` must be unique: ",
          paste(unique(sample_names[duplicated(sample_names)]), collapse = ", "))
+  }
+  if (!is.null(treatment) && length(treatment) != length(data_dirs)) {
+    stop("`treatment` has length ", length(treatment), " but there are ",
+         length(data_dirs), " `data_dirs` -- these must match one-to-one, ",
+         "or samples would silently get wrong/NA treatment labels via ",
+         "recycling.")
   }
 
   n_samples <- length(data_dirs)
@@ -101,5 +114,14 @@ CreateXeniumObjects <- function(data_dirs,
     mapply(.load_one, data_dirs, sample_names, SIMPLIFY = FALSE)
   }
   names(objs) <- sample_names
+
+  if (!is.null(treatment)) {
+    message('--- Adding Treatment metadata column ---')
+    objs <- setNames(lapply(seq_along(objs), function(i) {
+      objs[[i]][["Treatment"]] <- treatment[i]
+      objs[[i]]
+    }), names(objs))
+  }
+
   objs
 }

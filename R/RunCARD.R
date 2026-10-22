@@ -40,7 +40,7 @@ RunCARD <- function(obj,
                     write_metadata = TRUE,
                     verbose        = TRUE) {
 
-  if (!inherits(reference, "Seurat")) stop("`reference` must be a Seurat object.")
+  .assert_seurat(reference, "reference")
   if (is.null(celltype_col) || !celltype_col %in% colnames(reference@meta.data)) {
     stop("`celltype_col` must name a column of reference@meta.data.")
   }

@@ -9,7 +9,12 @@ CreateATACObjectsFilter(
   treatment = NULL,
   filter = TRUE,
   interactive = FALSE,
-  genome = c("mm10", "hg38"),
+  genome = c("mm10", "hg38", "custom"),
+  annotation = NULL,
+  main_chroms = NULL,
+  genome_label = NULL,
+  cellranger_ref = NULL,
+  organism = NULL,
   object_names = NULL,
   peak_region_fragments_min = 3000,
   peak_region_fragments_max = 1e+05,
@@ -31,13 +36,52 @@ CreateATACObjectsFilter(
 
 \item{interactive}{Whether to run the filtering step in interactive mode}
 
-\item{genome}{One of \code{"mm10"} (default) or \code{"hg38"}. Selects the gene
-annotation (\code{EnsDb.Mmusculus.v79} / \code{EnsDb.Hsapiens.v86}) and genome
+\item{genome}{One of \code{"mm10"} (default), \code{"hg38"}, or
+\code{"custom"}. \code{"mm10"}/\code{"hg38"} select the gene annotation
+(\code{EnsDb.Mmusculus.v79} / \code{EnsDb.Hsapiens.v86}) and genome
 sequence (\code{BSgenome.Mmusculus.UCSC.mm10} / \code{BSgenome.Hsapiens.UCSC.hg38})
 used for scaffold-chromosome filtering and the \code{ChromatinAssay} annotation.
 Both are optional (Suggests) packages -- only the one matching your chosen
 \code{genome} needs to be installed, and you'll get an actionable error naming
-it if it's missing.}
+it if it's missing. For any other species (e.g. rhesus macaque), pass
+\code{genome = "custom"} -- see \code{cellranger_ref}/\code{annotation}/
+\code{main_chroms}/\code{genome_label} below (identical to, and sharing
+its genome-resolution logic with, \code{\link{CreateATACObjects}}'s
+same-named parameters -- see that function's docs for the full
+rationale behind each one).}
+
+\item{annotation}{Only used when \code{genome = "custom"} and
+\code{cellranger_ref} is NOT supplied. Either a \code{GRanges} of gene
+annotations directly, or a single file path (\code{character(1)}) to an
+\code{.rds} file containing one (e.g. saved by
+\code{\link{BuildATACAnnotation}}). Must already use the same
+chromosome-naming style as your \code{peaks.bed}/\code{fragments.tsv.gz}
+files -- not auto-converted the way \code{"mm10"}/\code{"hg38"} are.}
+
+\item{main_chroms}{Only used when \code{genome = "custom"}. Character
+vector of the standard/main chromosome names to keep when filtering out
+scaffolds. Derived automatically from \code{cellranger_ref} (or from
+the \code{BSgenome} package for \code{"mm10"}/\code{"hg38"}) when not
+supplied; MAY still be passed alongside \code{cellranger_ref} as an
+override (e.g. for accession-style contig names
+\code{GenomeInfoDb::standardChromosomes()} doesn't recognize).}
+
+\item{genome_label}{Required when \code{genome = "custom"}. A short
+string identifying the genome build (e.g. \code{"rheMac10"}), used to
+tag the \code{ChromatinAssay}'s own genome slot.}
+
+\item{cellranger_ref}{Only used when \code{genome = "custom"}. Path to a
+reference package directory built with \code{cellranger-atac mkref} /
+\code{cellranger-arc mkref} -- the recommended way to supply a custom
+genome, since \code{annotation}/\code{main_chroms} are then both
+derived from the exact files cellranger used, with no risk of a
+genome-build or naming-style mismatch. Requires \code{organism} and
+\code{genome_label}. Mutually exclusive with \code{annotation}
+(\code{main_chroms} MAY still be passed alongside it, as an override).}
+
+\item{organism}{Required when \code{genome = "custom"} and
+\code{cellranger_ref} is supplied. A short organism name/label (e.g.
+\code{"Macaca_mulatta"}) -- metadata only, not used for matching.}
 
 \item{object_names}{Optional character vector of names for the returned list,
 the same length as \code{data_dirs}. \code{NULL} (default) uses

@@ -14,7 +14,9 @@ columns to join onto each row, matched by cell ID. \code{NULL} (default)
 doesn't join any metadata.}
 }
 \value{
-a data frame
+a data frame with the original per-FOV coordinate columns
+plus canonical \code{x}/\code{y} columns (aliased from \code{imagecol}/\code{imagerow}
+when that's what the FOV's image class provides)
 }
 \description{
 This function collect the coordinates from each FOV and combine them into a single data frame

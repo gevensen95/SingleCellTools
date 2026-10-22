@@ -7,6 +7,7 @@
 CreateXeniumObjects(
   data_dirs,
   sample_names = NULL,
+  treatment = NULL,
   outs = c("matrix", "microns"),
   type = c("centroids", "segmentations"),
   mols.qv.threshold = 20,
@@ -23,6 +24,13 @@ sample.}
 \item{sample_names}{Character vector of sample names, same length and
 order as \code{data_dirs}. \code{NULL} (default) uses
 \code{basename(data_dirs)}. Must be unique.}
+
+\item{treatment}{Optional treatment metadata value (vector), one per
+sample, same length and order as \code{data_dirs} -- matching
+\code{\link{CreateRNAObjects}}/\code{\link{CreateATACObjects}}/
+\code{\link{CreateVisiumObjects}}'s \code{treatment} argument,
+which this function previously lacked. Added as a \code{"Treatment"}
+metadata column on each sample. \code{NULL} (default) adds none.}
 
 \item{outs, type, mols.qv.threshold, microns_lazy}{Passed straight through
 to \code{\link{LoadXenium2}} for every sample -- see its docs.}

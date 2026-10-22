@@ -21,9 +21,32 @@ parse_polygons <- function(df) {
 
   message(sprintf('--- Parsing %d polygon geometries ---', nrow(df)))
 
-  # Clean geometry column
+  # Clean geometry column (strip the outer "POLYGON ((" / "))").
   df$geometry <- substr(df$geometry, 11, nchar(df$geometry))
   df$geometry <- substr(df$geometry, 1, nchar(df$geometry) - 2)
+
+  # The format check above only confirms an outer "POLYGON ((...))" shape;
+  # it also matches a polygon WITH A HOLE, "POLYGON ((ext),(hole))",
+  # because the regex's `.*` is greedy and happily spans the ")," ring
+  # boundary. This function only implements single-ring (no-hole)
+  # parsing, and the substr() stripping above assumes exactly one
+  # "((...))" -- for a multi-ring geometry it would leave a stray "),("
+  # in the cleaned string, which parse_geometry() below would then split
+  # as if it were an ordinary coordinate pair, silently producing NA
+  # coordinates at the ring boundary instead of an error. Reject
+  # multi-ring geometries explicitly: after stripping the outer
+  # parentheses, a single-ring geometry has none left.
+  multi_ring <- grepl("[()]", df$geometry)
+  if (any(multi_ring)) {
+    stop("`df$geometry` has ", sum(multi_ring), " row(s) that look like a ",
+        "polygon with more than one ring (e.g. a hole: 'POLYGON ((ext),",
+        "(hole))') -- row(s): ",
+        paste(head(which(multi_ring), 5), collapse = ", "),
+        if (sum(multi_ring) > 5) ", ..." else "", ". parse_polygons() only ",
+        "supports single-ring polygons; parsing a multi-ring geometry here ",
+        "would silently produce NA coordinates at the ring boundary ",
+        "instead of an error.")
+  }
 
   # Helper to parse one geometry string into a data frame
   parse_geometry <- function(geometry_str) {

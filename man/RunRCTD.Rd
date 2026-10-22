@@ -14,7 +14,8 @@ RunRCTD(
   max_cells_per_ref_celltype = 10000,
   CELL_MIN_INSTANCE = 25,
   write_metadata = TRUE,
-  n_cores = 4
+  n_cores = 4,
+  verbose = TRUE
 )
 }
 \arguments{
@@ -43,6 +44,8 @@ to keep it (passed through to \code{create.RCTD}). Default 25.}
 columns and the derived columns described above into obj@meta.data.}
 
 \item{n_cores}{Number of cores for RCTD. Default 4.}
+
+\item{verbose}{Message progress. Default \code{TRUE}.}
 }
 \value{
 The Visium object (or list of them, matching the shape of

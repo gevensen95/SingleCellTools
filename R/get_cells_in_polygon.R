@@ -5,7 +5,13 @@
 #' @param seurat.obj Seurat object with spatial data
 #' @param poly_df Data frame of polygon coordinates (x & y as columns)
 #' @param image_name Name of image to look for cells in
-#' @return List of data frames
+#' @return A named logical vector, all \code{TRUE}, one entry per cell
+#'   found inside \code{poly_df} (names are cell IDs). This was previously
+#'   documented as "a list of data frames", which never matched what the
+#'   function actually returns. The full inside/outside vector (one entry
+#'   per cell in the image, \code{TRUE}/\code{FALSE}) is attached as the
+#'   \code{"all_cells"} attribute if you need to see which cells were
+#'   excluded too.
 #' @export
 #'
 get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
@@ -27,8 +33,21 @@ get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
   poly_sf <- sf::st_sfc(sf::st_polygon(list(polygon_matrix)))
 
   # ---- 2) Cell coordinates from Seurat ----
+  # scale = NULL is required here: GetTissueCoordinates.VisiumV1()'s default
+  # is scale = "lowres", which silently multiplies the raw imagecol/imagerow
+  # values by that image's lowres scale factor (e.g. 0.5) before returning
+  # them -- still named "imagecol"/"imagerow", so nothing downstream would
+  # notice, but in a different coordinate space than poly_df is written
+  # against (raw tissue-coordinate pixels, the same space FOV/Centroids-based
+  # images already return with no scale concept at all). Confirmed via
+  # SeuratObject's real GetTissueCoordinates.VisiumV1() source: without this,
+  # a "poly_df" box sized for the full-resolution image comes out too large
+  # relative to the rescaled coordinates and can swallow cells outside the
+  # intended region. scale = NULL is silently ignored (via ...) by every
+  # other GetTissueCoordinates method (FOV/Centroids/SlideSeq/STARmap), so
+  # this is safe for non-Visium images too.
   message(sprintf('--- Pulling tissue coordinates (image: %s) ---', image_name))
-  coords <- Seurat::GetTissueCoordinates(seurat.obj, image = image_name)
+  coords <- Seurat::GetTissueCoordinates(seurat.obj, image = image_name, scale = NULL)
   coords <- as.data.frame(coords)
 
   # Standardize to x/y
@@ -62,5 +81,6 @@ get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
   cells_inside <- inside_named[inside_named==TRUE]
   message(sprintf('  Cells inside polygon: %d of %d',
                   length(cells_inside), length(inside_named)))
+  attr(cells_inside, "all_cells") <- inside_named
   return(cells_inside)
 }

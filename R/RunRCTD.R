@@ -7,11 +7,11 @@
 # means every spot/cell outside that one sample would get silently wrong
 # counts. Detect that case and join first instead of letting it happen
 # silently.
-.rctd_get_counts <- function(obj, assay, layer = "counts") {
+.rctd_get_counts <- function(obj, assay, layer = "counts", verbose = TRUE) {
   avail   <- SeuratObject::Layers(obj[[assay]])
   matches <- avail[avail == layer | startsWith(avail, paste0(layer, "."))]
   if (length(matches) > 1) {
-    message(sprintf(
+    if (isTRUE(verbose)) message(sprintf(
       "  Assay '%s' has %d unjoined '%s' layers (%s) -- joining them first ",
       assay, length(matches), layer, paste(matches, collapse = ", ")),
       "so all samples/cells are included (not just the first layer).")
@@ -95,6 +95,7 @@
 #'                        reference    = pbmc_ref,
 #'                        celltype_col = "cell_type")
 #' }
+#' @param verbose Message progress. Default \code{TRUE}.
 #' @importFrom Seurat DefaultAssay GetTissueCoordinates
 #' @importFrom SeuratObject LayerData
 #' @importFrom parallel detectCores
@@ -108,15 +109,14 @@ RunRCTD <- function(obj,
                     max_cells_per_ref_celltype = 10000,
                     CELL_MIN_INSTANCE          = 25,
                     write_metadata             = TRUE,
-                    n_cores                    = 4) {
+                    n_cores                    = 4,
+                    verbose                    = TRUE) {
 
   mode <- match.arg(mode)
   # Cheap argument validation before the (possibly not installed) spacexr
   # dependency check, so bad input fails fast and clearly regardless of
   # whether spacexr happens to be installed.
-  if (!inherits(reference, "Seurat")) {
-    stop("`reference` must be a Seurat object.")
-  }
+  .assert_seurat(reference, "reference")
   if (is.null(celltype_col) ||
       !celltype_col %in% colnames(reference@meta.data)) {
     stop("`celltype_col` must name a column of reference@meta.data.")
@@ -133,7 +133,8 @@ RunRCTD <- function(obj,
   }
 
   # ---- Build RCTD reference once, shared across every sample -------------
-  ref_counts <- .rctd_get_counts(reference, assay = assay_ref, layer = "counts")
+  ref_counts <- .rctd_get_counts(reference, assay = assay_ref, layer = "counts",
+                                 verbose = verbose)
   ref_types  <- factor(as.character(reference@meta.data[[celltype_col]]))
   names(ref_types) <- colnames(reference)
 
@@ -150,8 +151,10 @@ RunRCTD <- function(obj,
     ref_types  <- ref_types[keep]
   }
 
-  message(sprintf("--- Building RCTD reference (%d cells, %d types) ---",
-                  length(ref_types), nlevels(ref_types)))
+  if (isTRUE(verbose)) {
+    message(sprintf("--- Building RCTD reference (%d cells, %d types) ---",
+                    length(ref_types), nlevels(ref_types)))
+  }
   ref_nUMI        <- Matrix::colSums(ref_counts)
   names(ref_nUMI) <- colnames(ref_counts)
   rctd_ref <- spacexr::Reference(
@@ -168,7 +171,8 @@ RunRCTD <- function(obj,
     tag <- if (length(objs) > 1) paste0(" ('", orig_names[i], "')") else ""
     .run_rctd_one(o, rctd_ref = rctd_ref, assay_query = assay_query, mode = mode,
                  CELL_MIN_INSTANCE = CELL_MIN_INSTANCE,
-                 write_metadata = write_metadata, n_cores = n_cores, tag = tag)
+                 write_metadata = write_metadata, n_cores = n_cores, tag = tag,
+                 verbose = verbose)
   })
   names(objs) <- orig_names
 
@@ -188,7 +192,7 @@ RunRCTD <- function(obj,
 #' @keywords internal
 #' @noRd
 .run_rctd_one <- function(obj, rctd_ref, assay_query, mode, CELL_MIN_INSTANCE,
-                          write_metadata, n_cores, tag = "") {
+                          write_metadata, n_cores, tag = "", verbose = TRUE) {
 
   # ---- Build spatial "puck" ------------------------------------------------
   # RCTD wants a Puck object: coords + counts + nUMI. Visium objects merged
@@ -221,9 +225,11 @@ RunRCTD <- function(obj,
   cells_in_both <- intersect(rownames(coords), colnames(obj))
   coords <- coords[cells_in_both, , drop = FALSE]
 
-  q_counts <- .rctd_get_counts(obj, assay = assay_query,
-                               layer = "counts")[, cells_in_both, drop = FALSE]
-  message(sprintf("--- Building query puck%s (%d spots) ---", tag, ncol(q_counts)))
+  q_counts <- .rctd_get_counts(obj, assay = assay_query, layer = "counts",
+                               verbose = verbose)[, cells_in_both, drop = FALSE]
+  if (isTRUE(verbose)) {
+    message(sprintf("--- Building query puck%s (%d spots) ---", tag, ncol(q_counts)))
+  }
   q_nUMI        <- Matrix::colSums(q_counts)
   names(q_nUMI) <- colnames(q_counts)
   puck <- spacexr::SpatialRNA(
@@ -263,8 +269,10 @@ RunRCTD <- function(obj,
       "'nproc' or '/proc/cpuinfo' is available).")
   }
 
-  message(sprintf("--- Running RCTD%s (mode = %s, cores = %d) ---",
-                  tag, mode, n_cores))
+  if (isTRUE(verbose)) {
+    message(sprintf("--- Running RCTD%s (mode = %s, cores = %d) ---",
+                    tag, mode, n_cores))
+  }
   rctd <- spacexr::create.RCTD(
     spatialRNA        = puck,
     reference         = rctd_ref,
@@ -369,8 +377,10 @@ RunRCTD <- function(obj,
 
     obj@meta.data[, colnames(weight_df)] <- weight_df
 
-    message(sprintf("  Wrote %d per-cell-type columns + rctd_dominant/rctd_max_weight%s.",
-                    length(ct_names), if (!is.null(spot_class)) "/rctd_spot_class" else ""))
+    if (isTRUE(verbose)) {
+      message(sprintf("  Wrote %d per-cell-type columns + rctd_dominant/rctd_max_weight%s.",
+                      length(ct_names), if (!is.null(spot_class)) "/rctd_spot_class" else ""))
+    }
   }
 
   obj

@@ -20,7 +20,16 @@ gene expression assay.}
 
 \item{genome}{A \code{BSgenome} object matching the peaks' genome build
 (e.g. \code{BSgenome.Hsapiens.UCSC.hg38::BSgenome.Hsapiens.UCSC.hg38}),
-passed to \code{Signac::RegionStats()}.}
+passed to \code{Signac::RegionStats()}. For a genome with no packaged
+\code{BSgenome} (e.g. a custom macaque T2T assembly built only from a
+cellranger-ref FASTA), pass an \code{Rsamtools::FaFile} instead --
+\code{RegionStats()}'s GC-content step only calls
+\code{Biostrings::getSeq()}/\code{seqlevels()} on \code{genome}, and
+both have \code{FaFile} methods, so no \code{BSgenome} package is
+required for this to work. A plain character path to a FASTA file is
+also accepted directly and wrapped in \code{Rsamtools::FaFile()} for
+you (building its \code{.fai} index if one doesn't already exist
+alongside it).}
 
 \item{peak_assay}{Name of the \code{ChromatinAssay}. \code{NULL}
 (default) auto-detects it -- errors if \code{obj} has zero or more
