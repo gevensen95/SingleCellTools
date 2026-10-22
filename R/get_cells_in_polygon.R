@@ -5,7 +5,13 @@
 #' @param seurat.obj Seurat object with spatial data
 #' @param poly_df Data frame of polygon coordinates (x & y as columns)
 #' @param image_name Name of image to look for cells in
-#' @return List of data frames
+#' @return A named logical vector, all \code{TRUE}, one entry per cell
+#'   found inside \code{poly_df} (names are cell IDs). This was previously
+#'   documented as "a list of data frames", which never matched what the
+#'   function actually returns. The full inside/outside vector (one entry
+#'   per cell in the image, \code{TRUE}/\code{FALSE}) is attached as the
+#'   \code{"all_cells"} attribute if you need to see which cells were
+#'   excluded too.
 #' @export
 #'
 get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
@@ -62,5 +68,6 @@ get_cells_in_polygon <- function(seurat.obj, poly_df, image_name) {
   cells_inside <- inside_named[inside_named==TRUE]
   message(sprintf('  Cells inside polygon: %d of %d',
                   length(cells_inside), length(inside_named)))
+  attr(cells_inside, "all_cells") <- inside_named
   return(cells_inside)
 }

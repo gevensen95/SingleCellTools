@@ -208,3 +208,76 @@
     subset(so, cells = cells)
   }
 }
+
+#' @keywords internal
+#' @noRd
+.closest_feature_unstranded <- function(object, regions, annotation = NULL,
+                                         ignore.strand = TRUE, ...) {
+  # Faithful copy of Signac::ClosestFeature() (confirmed against Signac
+  # 1.13.0's R/utilities.R -- the function was present through at least
+  # that release but has since been removed from Signac's current master,
+  # so this is now SingleCellTools's own copy, not a thin wrapper around an
+  # upstream one), with exactly two changes:
+  #
+  #   1. `ignore.strand = TRUE` is passed through to distanceToNearest().
+  #      Signac's original hardcodes `distanceToNearest(x = regions,
+  #      subject = annotation)` with no strand argument at all, which
+  #      defaults to ignore.strand = FALSE. For ATAC peaks (strand "*")
+  #      queried against a stranded gene annotation, distanceToNearest()'s
+  #      internal .nearest() falls back to precede()/follow() for
+  #      non-overlapping ranges, and
+  #      .GenomicRanges_findPrecedeFollow()'s strand "*" tie-break path can
+  #      return an NA hit -- which GRanges' `[` then refuses as a logical
+  #      subscript ("Error: logical subscript contains NAs"). Confirmed
+  #      against this project's own T2T-MMU8v2 ATAC data (see
+  #      AnnotatePeaks.R, which hit exactly this). ignore.strand = TRUE
+  #      sidesteps that code path entirely, and is what you want anyway --
+  #      ATAC peaks don't carry a meaningful strand to match against.
+  #   2. Signac's internal `SetIfNull()` helper (not exported) is inlined
+  #      as a plain if/else.
+  #
+  # Everything else -- seqlevel-mismatch handling, the returned data
+  # frame's shape (closest_region/query_region/distance plus whatever
+  # metadata columns the annotation GRanges itself carries, e.g.
+  # gene_name/type) -- is unchanged, so this is a drop-in replacement for
+  # any caller of Signac::ClosestFeature() that hits the bug above.
+  if (!methods::is(regions, "GRanges")) {
+    regions <- Signac::StringToGRanges(regions = regions, ...)
+  }
+  if (inherits(object, "Seurat")) {
+    assay <- SeuratObject::DefaultAssay(object)
+    object <- object[[assay]]
+  }
+  if (!inherits(object, "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay.")
+  }
+  if (length(regions) == 0) {
+    stop("No query regions supplied")
+  }
+  annotation <- if (is.null(annotation)) Signac::Annotation(object) else annotation
+  missing_seqlevels <- setdiff(
+    GenomeInfoDb::seqlevels(regions), GenomeInfoDb::seqlevels(annotation)
+  )
+  if (length(missing_seqlevels) > 0) {
+    warning(
+      "The following seqlevels present in query regions are not present\n ",
+      "in the supplied gene annotations and will be removed: ",
+      paste(missing_seqlevels, collapse = ", ")
+    )
+    regions <- GenomeInfoDb::dropSeqlevels(
+      x = regions, value = missing_seqlevels, pruning.mode = "coarse"
+    )
+    if (length(regions) == 0) {
+      stop("None of the supplied regions were found in the supplied annotation")
+    }
+  }
+  nearest_feature <- GenomicRanges::distanceToNearest(
+    x = regions, subject = annotation, ignore.strand = ignore.strand
+  )
+  feature_hits <- annotation[S4Vectors::subjectHits(nearest_feature)]
+  df <- as.data.frame(S4Vectors::mcols(feature_hits))
+  df$closest_region <- Signac::GRangesToString(grange = feature_hits, ...)
+  df$query_region <- Signac::GRangesToString(grange = regions, ...)
+  df$distance <- S4Vectors::mcols(nearest_feature)$distance
+  df
+}

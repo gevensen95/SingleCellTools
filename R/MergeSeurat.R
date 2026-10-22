@@ -38,7 +38,9 @@
 #' @param save_rds_file Logical; save merged object to disk.
 #' @param file_name Optional prefix for the saved RDS (defaults to
 #'   `new_reduction`).
-#' @param use_elbow_plot Logical; show elbow plot and prompt for number of PCs.
+#' @param use_elbow_plot Logical; show elbow plot and prompt for number of
+#'   PCs via `readline()`. Requires an interactive session -- errors
+#'   immediately (rather than hanging) under `Rscript`/`sbatch`/`knitr`.
 #' @param spatial One of `'no'`, `'Visium'`, `'Xenium'`.
 #' @param integration Integration method (e.g. `'HarmonyIntegration'`,
 #'   `'RPCAIntegration'`, `'CCAIntegration'`, `'JointPCAIntegration'`).
@@ -409,6 +411,14 @@ MergeSeurat <- function(seurat_objects,
     }
     elbow_plot <- Seurat::ElbowPlot(obj, reduction = elbow_reduction)
     print(elbow_plot)
+    if (!interactive()) {
+      stop("`use_elbow_plot = TRUE` needs an interactive session to prompt ",
+           "for the number of PCs via readline() -- under Rscript/sbatch/ ",
+           "knit this would otherwise hang indefinitely rather than fail. ",
+           "Either run this interactively, or set `use_elbow_plot = FALSE` ",
+           "and pass `max_dims` directly after inspecting the elbow plot ",
+           "yourself (e.g. save it with ggplot2::ggsave() first).")
+    }
     dims_to_use <- as.numeric(readline(prompt = 'Enter # of PCs: '))
   } else {
     dims_to_use <- max_dims
