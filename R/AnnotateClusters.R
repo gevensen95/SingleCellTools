@@ -91,6 +91,18 @@
 #' @param marker_cell_type_col Only used when \code{markers} is a data
 #'   frame: the column holding cell-type labels. \code{NULL} (default)
 #'   uses the second column.
+#' @param min_gene_match_frac Only used when \code{markers} is a data
+#'   frame: minimum fraction of its (unique) parsed gene names that must
+#'   be found in the assay, checked immediately after parsing. Below this,
+#'   stops with an error rather than silently continuing -- a near-zero
+#'   match rate almost always means \code{marker_gene_col}/
+#'   \code{marker_cell_type_col} (or the data frame's column order) has
+#'   gene and cell-type swapped, which this check catches far earlier and
+#'   more specifically than the existing assay-prefilter below (which
+#'   would otherwise drop every "cell type" for having no matching genes
+#'   and fail with a less specific message). Default \code{0.10}. Pass
+#'   \code{0} or \code{NA} to disable. Has no effect when \code{markers}
+#'   is already a named list.
 #' @param reference A reference for SingleR. Required when
 #'   \code{method = "singler"}.
 #' @param ref_label_col For SingleR: the column in the reference's
@@ -149,6 +161,7 @@ AnnotateClusters <- function(obj,
                              markers                  = NULL,
                              marker_gene_col          = NULL,
                              marker_cell_type_col     = NULL,
+                             min_gene_match_frac      = 0.10,
                              reference                = NULL,
                              ref_label_col            = "label.main",
                              cluster_col              = "seurat_clusters",
@@ -251,8 +264,10 @@ AnnotateClusters <- function(obj,
     # already expected.
     if (is.data.frame(markers)) {
       markers <- .markers_df_to_list(markers,
-                                     gene_col      = marker_gene_col,
-                                     cell_type_col = marker_cell_type_col)
+                                     gene_col            = marker_gene_col,
+                                     cell_type_col       = marker_cell_type_col,
+                                     available_genes     = rownames(obj[[a]]),
+                                     min_gene_match_frac = min_gene_match_frac)
     }
     if (is.null(markers) || !is.list(markers) || is.null(names(markers))) {
       stop("`markers` must be a named list (cell_type -> character vector of ",
@@ -521,7 +536,9 @@ AnnotateClusters <- function(obj,
 
 #' @keywords internal
 #' @noRd
-.markers_df_to_list <- function(df, gene_col = NULL, cell_type_col = NULL) {
+.markers_df_to_list <- function(df, gene_col = NULL, cell_type_col = NULL,
+                                available_genes = NULL,
+                                min_gene_match_frac = 0.10) {
   if (!is.data.frame(df) || ncol(df) < 2) {
     stop("`markers` as a data frame must have at least 2 columns ",
          "(gene, cell_type).")
@@ -553,6 +570,41 @@ AnnotateClusters <- function(obj,
   if (length(genes) == 0) {
     stop("`markers` has no rows with both a gene and a cell_type after ",
          "dropping NA/empty entries.")
+  }
+
+  # ---- Sanity check: do the parsed genes actually look like genes? -------
+  # The most common way to get a long-format `markers` data frame wrong is
+  # marker_gene_col/marker_cell_type_col (or the data frame's own column
+  # order) having gene and cell-type swapped -- in that case `genes` above
+  # actually holds cell-type labels, which essentially never match real
+  # gene symbols in the assay. Checking that right here, immediately after
+  # parsing, catches it with a specific diagnosis; left unchecked, it would
+  # instead surface several steps later as AnnotateClusters()'s own
+  # assay-prefilter dropping every "cell type" for having zero matching
+  # genes and failing with a much less specific message.
+  if (!is.null(available_genes) && !is.na(min_gene_match_frac) &&
+      min_gene_match_frac > 0) {
+    unique_genes <- unique(genes)
+    matched      <- unique_genes %in% available_genes
+    match_frac   <- mean(matched)
+    if (match_frac < min_gene_match_frac) {
+      unmatched_example <- utils::head(unique_genes[!matched], 5)
+      stop(sprintf(
+        "Only %.1f%% of the %d unique gene name(s) parsed from `markers` ",
+        100 * match_frac, length(unique_genes)),
+        sprintf("were found in the object (%d of %d), below min_gene_match_frac = %.2f. ",
+               sum(matched), length(unique_genes), min_gene_match_frac),
+        "A few unmatched value(s): ", paste(unmatched_example, collapse = ", "), ". ",
+        "This usually means either: (1) `markers`'s gene and cell-type columns ",
+        "are in the wrong order -- double check `marker_gene_col`/",
+        "`marker_cell_type_col`, or reorder the data frame (a cell-type column ",
+        "read as genes almost never matches real gene symbols, which looks ",
+        "exactly like this); or (2) `markers` uses the wrong species' gene ",
+        "symbols for this object (e.g. 'Cd3e' vs 'CD3E'). If this match rate ",
+        "is actually expected (e.g. a deliberately small/restrictive marker ",
+        "panel), lower `min_gene_match_frac` or set it to 0/NA to disable ",
+        "this check.")
+    }
   }
 
   lapply(split(genes, cts), unique)
