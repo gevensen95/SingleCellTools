@@ -8,6 +8,9 @@ AnnotateClusters(
   obj,
   method = c("marker", "singler"),
   markers = NULL,
+  marker_gene_col = NULL,
+  marker_cell_type_col = NULL,
+  min_gene_match_frac = 0.1,
   reference = NULL,
   ref_label_col = "label.main",
   cluster_col = "seurat_clusters",
@@ -30,8 +33,35 @@ AnnotateClusters(
 
 \item{method}{\code{"marker"} or \code{"singler"}.}
 
-\item{markers}{Named list of marker gene vectors, one element per cell
-type. Required when \code{method = "marker"}.}
+\item{markers}{Marker genes for \code{method = "marker"}. Either a named
+list of character vectors (\code{cell_type -> genes}), or a data frame
+with one column of gene names and one column of cell-type labels (one
+row per gene/cell-type pair) -- converted internally to the named-list
+form via \code{marker_gene_col}/\code{marker_cell_type_col} below. A
+gene repeated for the same cell type is deduplicated; a gene listed
+under more than one cell type is left as-is (already valid in the
+named-list form). Required when \code{method = "marker"}.}
+
+\item{marker_gene_col}{Only used when \code{markers} is a data frame:
+the column holding gene names. \code{NULL} (default) uses the first
+column.}
+
+\item{marker_cell_type_col}{Only used when \code{markers} is a data
+frame: the column holding cell-type labels. \code{NULL} (default)
+uses the second column.}
+
+\item{min_gene_match_frac}{Only used when \code{markers} is a data
+frame: minimum fraction of its (unique) parsed gene names that must
+be found in the assay, checked immediately after parsing. Below this,
+stops with an error rather than silently continuing -- a near-zero
+match rate almost always means \code{marker_gene_col}/
+\code{marker_cell_type_col} (or the data frame's column order) has
+gene and cell-type swapped, which this check catches far earlier and
+more specifically than the existing assay-prefilter below (which
+would otherwise drop every "cell type" for having no matching genes
+and fail with a less specific message). Default \code{0.10}. Pass
+\code{0} or \code{NA} to disable. Has no effect when \code{markers}
+is already a named list.}
 
 \item{reference}{A reference for SingleR. Required when
 \code{method = "singler"}.}
