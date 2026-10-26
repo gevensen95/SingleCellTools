@@ -77,8 +77,32 @@
 #'
 #' @param obj A Seurat object with clusters already computed.
 #' @param method \code{"marker"} or \code{"singler"}.
-#' @param markers Named list of marker gene vectors, one element per cell
-#'   type. Required when \code{method = "marker"}.
+#' @param markers Marker genes for \code{method = "marker"}. Either a named
+#'   list of character vectors (\code{cell_type -> genes}), or a data frame
+#'   with one column of gene names and one column of cell-type labels (one
+#'   row per gene/cell-type pair) -- converted internally to the named-list
+#'   form via \code{marker_gene_col}/\code{marker_cell_type_col} below. A
+#'   gene repeated for the same cell type is deduplicated; a gene listed
+#'   under more than one cell type is left as-is (already valid in the
+#'   named-list form). Required when \code{method = "marker"}.
+#' @param marker_gene_col Only used when \code{markers} is a data frame:
+#'   the column holding gene names. \code{NULL} (default) uses the first
+#'   column.
+#' @param marker_cell_type_col Only used when \code{markers} is a data
+#'   frame: the column holding cell-type labels. \code{NULL} (default)
+#'   uses the second column.
+#' @param min_gene_match_frac Only used when \code{markers} is a data
+#'   frame: minimum fraction of its (unique) parsed gene names that must
+#'   be found in the assay, checked immediately after parsing. Below this,
+#'   stops with an error rather than silently continuing -- a near-zero
+#'   match rate almost always means \code{marker_gene_col}/
+#'   \code{marker_cell_type_col} (or the data frame's column order) has
+#'   gene and cell-type swapped, which this check catches far earlier and
+#'   more specifically than the existing assay-prefilter below (which
+#'   would otherwise drop every "cell type" for having no matching genes
+#'   and fail with a less specific message). Default \code{0.10}. Pass
+#'   \code{0} or \code{NA} to disable. Has no effect when \code{markers}
+#'   is already a named list.
 #' @param reference A reference for SingleR. Required when
 #'   \code{method = "singler"}.
 #' @param ref_label_col For SingleR: the column in the reference's
@@ -135,6 +159,9 @@
 AnnotateClusters <- function(obj,
                              method                   = c("marker", "singler"),
                              markers                  = NULL,
+                             marker_gene_col          = NULL,
+                             marker_cell_type_col     = NULL,
+                             min_gene_match_frac      = 0.10,
                              reference                = NULL,
                              ref_label_col            = "label.main",
                              cluster_col              = "seurat_clusters",
@@ -230,8 +257,22 @@ AnnotateClusters <- function(obj,
     if (!requireNamespace("UCell", quietly = TRUE)) {
       stop("'UCell' is required for marker-based annotation.")
     }
+    # Accept a long-format data frame (one gene/cell-type pair per row) as
+    # an alternative to the named-list form -- converted up front so
+    # everything below (prefiltering, detection filter, non-specific
+    # filter, UCell scoring) only ever has to deal with the list shape it
+    # already expected.
+    if (is.data.frame(markers)) {
+      markers <- .markers_df_to_list(markers,
+                                     gene_col            = marker_gene_col,
+                                     cell_type_col       = marker_cell_type_col,
+                                     available_genes     = rownames(obj[[a]]),
+                                     min_gene_match_frac = min_gene_match_frac)
+    }
     if (is.null(markers) || !is.list(markers) || is.null(names(markers))) {
-      stop("`markers` must be a named list (cell_type -> character vector of genes).")
+      stop("`markers` must be a named list (cell_type -> character vector of ",
+           "genes), or a data frame with one gene column and one cell-type ",
+           "column (see `marker_gene_col`/`marker_cell_type_col`).")
     }
     not_char <- names(markers)[!vapply(markers, is.character, logical(1))]
     if (length(not_char) > 0) {
@@ -484,6 +525,89 @@ AnnotateClusters <- function(obj,
   }
 
   .maybe_return_scores(obj, vote_frac, cell_scores, return_scores)
+}
+
+
+# ============================================================================
+# Internal helper: convert a long-format (one row per gene/cell-type pair)
+# marker data frame into the named-list (cell_type -> genes) form the rest
+# of AnnotateClusters() expects.
+# ============================================================================
+
+#' @keywords internal
+#' @noRd
+.markers_df_to_list <- function(df, gene_col = NULL, cell_type_col = NULL,
+                                available_genes = NULL,
+                                min_gene_match_frac = 0.10) {
+  if (!is.data.frame(df) || ncol(df) < 2) {
+    stop("`markers` as a data frame must have at least 2 columns ",
+         "(gene, cell_type).")
+  }
+  gcol <- if (is.null(gene_col)) colnames(df)[1] else gene_col
+  ccol <- if (is.null(cell_type_col)) colnames(df)[2] else cell_type_col
+  if (!gcol %in% colnames(df)) {
+    stop("`marker_gene_col` ('", gcol, "') not found in `markers`.")
+  }
+  if (!ccol %in% colnames(df)) {
+    stop("`marker_cell_type_col` ('", ccol, "') not found in `markers`.")
+  }
+  if (identical(gcol, ccol)) {
+    stop("`marker_gene_col` and `marker_cell_type_col` must be different ",
+         "columns (both resolved to '", gcol, "').")
+  }
+
+  genes <- as.character(df[[gcol]])
+  cts   <- as.character(df[[ccol]])
+  keep  <- !is.na(genes) & !is.na(cts) & nzchar(genes) & nzchar(cts)
+  n_dropped <- sum(!keep)
+  if (n_dropped > 0) {
+    message(sprintf(
+      "  Dropping %d row(s) of `markers` with an NA/empty gene or cell_type.",
+      n_dropped))
+  }
+  genes <- genes[keep]
+  cts   <- cts[keep]
+  if (length(genes) == 0) {
+    stop("`markers` has no rows with both a gene and a cell_type after ",
+         "dropping NA/empty entries.")
+  }
+
+  # ---- Sanity check: do the parsed genes actually look like genes? -------
+  # The most common way to get a long-format `markers` data frame wrong is
+  # marker_gene_col/marker_cell_type_col (or the data frame's own column
+  # order) having gene and cell-type swapped -- in that case `genes` above
+  # actually holds cell-type labels, which essentially never match real
+  # gene symbols in the assay. Checking that right here, immediately after
+  # parsing, catches it with a specific diagnosis; left unchecked, it would
+  # instead surface several steps later as AnnotateClusters()'s own
+  # assay-prefilter dropping every "cell type" for having zero matching
+  # genes and failing with a much less specific message.
+  if (!is.null(available_genes) && !is.na(min_gene_match_frac) &&
+      min_gene_match_frac > 0) {
+    unique_genes <- unique(genes)
+    matched      <- unique_genes %in% available_genes
+    match_frac   <- mean(matched)
+    if (match_frac < min_gene_match_frac) {
+      unmatched_example <- utils::head(unique_genes[!matched], 5)
+      stop(sprintf(
+        "Only %.1f%% of the %d unique gene name(s) parsed from `markers` ",
+        100 * match_frac, length(unique_genes)),
+        sprintf("were found in the object (%d of %d), below min_gene_match_frac = %.2f. ",
+               sum(matched), length(unique_genes), min_gene_match_frac),
+        "A few unmatched value(s): ", paste(unmatched_example, collapse = ", "), ". ",
+        "This usually means either: (1) `markers`'s gene and cell-type columns ",
+        "are in the wrong order -- double check `marker_gene_col`/",
+        "`marker_cell_type_col`, or reorder the data frame (a cell-type column ",
+        "read as genes almost never matches real gene symbols, which looks ",
+        "exactly like this); or (2) `markers` uses the wrong species' gene ",
+        "symbols for this object (e.g. 'Cd3e' vs 'CD3E'). If this match rate ",
+        "is actually expected (e.g. a deliberately small/restrictive marker ",
+        "panel), lower `min_gene_match_frac` or set it to 0/NA to disable ",
+        "this check.")
+    }
+  }
+
+  lapply(split(genes, cts), unique)
 }
 
 

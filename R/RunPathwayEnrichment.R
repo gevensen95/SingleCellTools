@@ -80,7 +80,7 @@
 #' # enrichR, needs internet, no gene_sets object required
 #' pe3 <- RunPathwayEnrichment(de, method = "enrichr")
 #' }
-#' @importFrom ggplot2 aes coord_flip element_text geom_col ggplot labs reorder theme
+#' @importFrom ggplot2 aes coord_flip element_text geom_col ggplot labs theme
 #' @export
 RunPathwayEnrichment <- function(de_result,
                                  gene_sets       = NULL,
