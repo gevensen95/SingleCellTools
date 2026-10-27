@@ -35,12 +35,20 @@ list.}
 
 \item{raw_counts}{\code{method = "soupx"} only (required there): the
 raw, unfiltered droplet x gene counts matrix, or a path to a directory
-\code{Seurat::Read10X()} can read. When \code{obj} is a list, this can
-be a single value (used for every object -- unusual, since
-\code{soupx} normally needs one raw matrix per sample) or a list the
-same length as \code{obj}, one entry per object -- matched by name
-when both \code{obj} and this list are fully named, otherwise matched
-positionally.}
+\code{Seurat::Read10X()} can read. If that path resolves to multiple
+feature-type matrices (e.g. a \code{cellranger multi} raw matrix
+bundling Gene Expression with Multiplexing Capture/Antibody Capture
+rows), the \code{"Gene Expression"} matrix is used automatically.
+Whatever the source, it's then subset (and reordered) to the same
+genes as \code{obj}'s filtered counts before being handed to
+\code{SoupX::SoupChannel()}, which requires the two to match exactly
+and does not align them itself -- errors clearly if any gene present
+in the filtered counts is missing from \code{raw_counts} entirely.
+When \code{obj} is a list, this can be a single value (used for every
+object -- unusual, since \code{soupx} normally needs one raw matrix
+per sample) or a list the same length as \code{obj}, one entry per
+object -- matched by name when both \code{obj} and this list are
+fully named, otherwise matched positionally.}
 
 \item{contamination_fraction}{\code{method = "soupx"} only: skip
 \code{autoEstCont()} and use this fixed contamination fraction for
