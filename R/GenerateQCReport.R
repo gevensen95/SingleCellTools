@@ -29,6 +29,19 @@
 #' correlation heatmap. A mixed-modality list (some RNA samples, some ATAC)
 #' is supported -- those three sections just run on the RNA subset.
 #'
+#' \strong{Ambient RNA}: if \code{\link{RemoveAmbientRNA}} has already been
+#' run on (some of) the input, its \code{decontx_contamination} or
+#' \code{soupx_contamination} per-cell metadata column is auto-appended to
+#' \code{metadata_cols} whenever present -- same zero-argument detection as
+#' the ATAC columns above -- so each sample's estimated ambient-RNA
+#' contamination fraction rides through the violin, density, and
+#' suggested-cutoffs sections alongside every other metric. Unlike
+#' \code{TSS.enrichment}/\code{nucleosome_signal} above, this currently gets
+#' the same two-sided \code{median +/- mad_multiplier * MAD} cutoff as
+#' \code{nCount}, not a one-sided "less is better" treatment -- so the
+#' suggested lower bound isn't meaningful for this metric and can be
+#' ignored.
+#'
 #' Sample identification:
 #' \itemize{
 #'   \item If \code{obj} is a single Seurat object, the per-cell
@@ -81,9 +94,11 @@
 #'   objects built before \code{CreateRNAObjects()} started computing these,
 #'   or non-RNA assays). \code{CreateATACObjects()}'s five QC columns
 #'   (\code{TSS.enrichment}, \code{nucleosome_signal}, \code{pct_reads_in_peaks},
-#'   \code{blacklist_ratio}, \code{peak_region_fragments}) are always
-#'   auto-appended when present in the data, regardless of what's passed
-#'   here -- no need to list them explicitly.
+#'   \code{blacklist_ratio}, \code{peak_region_fragments}), and
+#'   \code{\link{RemoveAmbientRNA}}'s \code{decontx_contamination}/
+#'   \code{soupx_contamination} column, are always auto-appended when
+#'   present in the data, regardless of what's passed here -- no need to
+#'   list them explicitly.
 #' @param doublet_col Metadata column holding doublet calls. \code{NULL}
 #'   skips the doublet section.
 #' @param top_n_genes Number of top-expressed genes per sample to display.
@@ -294,6 +309,16 @@ GenerateQCReport <- function(obj,
                     "blacklist_ratio", "peak_region_fragments")
   atac_metrics_present <- intersect(atac_metrics, all_cols)
   resolved <- unique(c(resolved, atac_metrics_present))
+
+  # Same auto-surfacing for RemoveAmbientRNA()'s per-cell contamination
+  # column, whichever method produced it -- it's named after the method
+  # (decontx_contamination / soupx_contamination), so both are checked and
+  # whichever is actually present (if either) gets appended. A sample that
+  # never had RemoveAmbientRNA() run on it just won't have the column, same
+  # as any other metadata_cols entry that doesn't apply to every sample.
+  ambient_rna_metrics <- c("decontx_contamination", "soupx_contamination")
+  ambient_rna_metrics_present <- intersect(ambient_rna_metrics, all_cols)
+  resolved <- unique(c(resolved, ambient_rna_metrics_present))
 
   if (!identical(resolved, metadata_cols)) {
     message("Resolved metadata_cols to: ",

@@ -117,6 +117,34 @@ test_that("RemoveAmbientRNA (method = 'soupx') requires raw_counts", {
   expect_error(RemoveAmbientRNA(obj, method = "soupx"), "raw_counts")
 })
 
+test_that("RemoveAmbientRNA (soupx) errors clearly when raw_counts is missing genes present in counts", {
+  # A real-world mismatch (see github.com/constantAmateur/SoupX/issues/148),
+  # not just a theoretical one: the raw/unfiltered matrix and the filtered
+  # Seurat object's counts don't always carry the exact same gene set.
+  # Passing raw_counts directly as a matrix (rather than a path) keeps this
+  # test filesystem-free and deterministic.
+  testthat::skip_if_not_installed("SoupX")
+  obj <- .make_small_seurat()  # genes: Gene1..Gene30
+  raw <- matrix(1L, nrow = 25, ncol = 5,
+               dimnames = list(paste0("Gene", 1:25), paste0("cell", 1:5)))
+  expect_error(RemoveAmbientRNA(obj, method = "soupx", raw_counts = raw),
+              "not present in")
+})
+
+test_that("RemoveAmbientRNA (soupx) errors clearly when raw_counts is a feature-type list without 'Gene Expression'", {
+  # Seurat::Read10X() returns a *list* (one matrix per feature type) for a
+  # directory with multiple feature types -- common for cellranger multi's
+  # combined raw_feature_bc_matrix. Simulated here directly (rather than via
+  # a real Read10X() call) to stay filesystem-free.
+  testthat::skip_if_not_installed("SoupX")
+  obj <- .make_small_seurat()
+  raw_list <- list(`Antibody Capture` = matrix(
+    1L, nrow = 5, ncol = 5,
+    dimnames = list(paste0("Ab", 1:5), paste0("cell", 1:5))))
+  expect_error(RemoveAmbientRNA(obj, method = "soupx", raw_counts = raw_list),
+              "Gene Expression")
+})
+
 test_that("RemoveAmbientRNA accepts a list of Seurat objects and validates each one", {
   # No celda/SoupX needed -- clusters_col validation happens before either
   # tool is touched, in .remove_ambient_rna_one(), so this exercises the

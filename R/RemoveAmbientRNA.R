@@ -49,12 +49,20 @@
 #'   list.
 #' @param raw_counts \code{method = "soupx"} only (required there): the
 #'   raw, unfiltered droplet x gene counts matrix, or a path to a directory
-#'   \code{Seurat::Read10X()} can read. When \code{obj} is a list, this can
-#'   be a single value (used for every object -- unusual, since
-#'   \code{soupx} normally needs one raw matrix per sample) or a list the
-#'   same length as \code{obj}, one entry per object -- matched by name
-#'   when both \code{obj} and this list are fully named, otherwise matched
-#'   positionally.
+#'   \code{Seurat::Read10X()} can read. If that path resolves to multiple
+#'   feature-type matrices (e.g. a \code{cellranger multi} raw matrix
+#'   bundling Gene Expression with Multiplexing Capture/Antibody Capture
+#'   rows), the \code{"Gene Expression"} matrix is used automatically.
+#'   Whatever the source, it's then subset (and reordered) to the same
+#'   genes as \code{obj}'s filtered counts before being handed to
+#'   \code{SoupX::SoupChannel()}, which requires the two to match exactly
+#'   and does not align them itself -- errors clearly if any gene present
+#'   in the filtered counts is missing from \code{raw_counts} entirely.
+#'   When \code{obj} is a list, this can be a single value (used for every
+#'   object -- unusual, since \code{soupx} normally needs one raw matrix
+#'   per sample) or a list the same length as \code{obj}, one entry per
+#'   object -- matched by name when both \code{obj} and this list are
+#'   fully named, otherwise matched positionally.
 #' @param contamination_fraction \code{method = "soupx"} only: skip
 #'   \code{autoEstCont()} and use this fixed contamination fraction for
 #'   every cell instead. \code{NULL} (default) estimates it automatically.
@@ -242,6 +250,49 @@ RemoveAmbientRNA <- function(obj,
     } else {
       raw_counts
     }
+
+    # Seurat::Read10X() returns a *list* of matrices, one per feature type,
+    # whenever the directory's features.tsv.gz lists more than one type --
+    # common for cellranger multi's combined raw_feature_bc_matrix, which
+    # often bundles Gene Expression together with Multiplexing Capture
+    # (CMO) and/or Antibody Capture rows even when the per-sample filtered
+    # matrix (what `counts`/toc came from) only ever had Gene Expression.
+    # Passing that whole list straight to SoupX::SoupChannel() either
+    # errors opaquely or (if nrow() on the list happens not to error)
+    # compares the wrong thing entirely, so pull out "Gene Expression"
+    # specifically here, where the problem can be named clearly.
+    if (is.list(tod)) {
+      if (!"Gene Expression" %in% names(tod)) {
+        stop("`raw_counts` resolved to multiple feature-type matrices (",
+             paste(names(tod), collapse = ", "), ") but none is named ",
+             "'Gene Expression' -- pass the specific matrix instead, e.g. ",
+             "Seurat::Read10X(data.dir = ...)[['Gene Expression']].")
+      }
+      tod <- tod[["Gene Expression"]]
+    }
+
+    # SoupX::SoupChannel() requires tod and toc to have identical genes in
+    # identical order -- it does not align them by name itself. tod (the
+    # raw/unfiltered matrix) commonly has *more* genes than toc (`counts`,
+    # already gene-filtered by e.g. CreateSeuratObject(min.cells = ...), or
+    # missing probes CellRanger multi drops from the per-sample filtered
+    # matrix but keeps in the pooled raw one) -- confirmed a real-world
+    # mismatch, not just a theoretical one (see
+    # github.com/constantAmateur/SoupX/issues/148). Subsetting tod to toc's
+    # genes, in toc's order, is the fix recommended there; done by name
+    # (not a positional truncation) so a real gene-order difference doesn't
+    # silently miscorrect every count instead of erroring.
+    missing_genes <- setdiff(rownames(counts), rownames(tod))
+    if (length(missing_genes) > 0) {
+      stop(sprintf(
+        paste0("%d of %d gene(s) in the filtered counts (assay = '%s') are ",
+               "not present in `raw_counts` -- cannot align the raw and ",
+               "filtered matrices for SoupX. First missing: %s."),
+        length(missing_genes), nrow(counts), a,
+        paste(utils::head(missing_genes, 5), collapse = ", ")))
+    }
+    tod <- tod[rownames(counts), , drop = FALSE]
+
     if (isTRUE(verbose)) message(sprintf("--- Running SoupX (assay = '%s') ---", a))
     sc <- SoupX::SoupChannel(tod, counts)
     if (!is.null(clusters_col)) {
