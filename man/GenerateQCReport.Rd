@@ -38,9 +38,11 @@ requested column, on samples/objects that don't have them (e.g. older
 objects built before \code{CreateRNAObjects()} started computing these,
 or non-RNA assays). \code{CreateATACObjects()}'s five QC columns
 (\code{TSS.enrichment}, \code{nucleosome_signal}, \code{pct_reads_in_peaks},
-\code{blacklist_ratio}, \code{peak_region_fragments}) are always
-auto-appended when present in the data, regardless of what's passed
-here -- no need to list them explicitly.}
+\code{blacklist_ratio}, \code{peak_region_fragments}), and
+\code{\link{RemoveAmbientRNA}}'s \code{decontx_contamination}/
+\code{soupx_contamination} column, are always auto-appended when
+present in the data, regardless of what's passed here -- no need to
+list them explicitly.}
 
 \item{sample_col}{Metadata column used as the sample identifier when
 \code{obj} is a single Seurat object. Default \code{"orig.ident"}.
@@ -133,6 +135,19 @@ when no \code{Phase} column exists): top expressed genes, the
 \code{log10GenesPerUMI} complexity score, and the pseudobulk sample-sample
 correlation heatmap. A mixed-modality list (some RNA samples, some ATAC)
 is supported -- those three sections just run on the RNA subset.
+
+\strong{Ambient RNA}: if \code{\link{RemoveAmbientRNA}} has already been
+run on (some of) the input, its \code{decontx_contamination} or
+\code{soupx_contamination} per-cell metadata column is auto-appended to
+\code{metadata_cols} whenever present -- same zero-argument detection as
+the ATAC columns above -- so each sample's estimated ambient-RNA
+contamination fraction rides through the violin, density, and
+suggested-cutoffs sections alongside every other metric. Unlike
+\code{TSS.enrichment}/\code{nucleosome_signal} above, this currently gets
+the same two-sided \code{median +/- mad_multiplier * MAD} cutoff as
+\code{nCount}, not a one-sided "less is better" treatment -- so the
+suggested lower bound isn't meaningful for this metric and can be
+ignored.
 
 Sample identification:
 \itemize{
