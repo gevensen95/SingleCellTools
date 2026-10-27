@@ -117,6 +117,43 @@ test_that("RemoveAmbientRNA (method = 'soupx') requires raw_counts", {
   expect_error(RemoveAmbientRNA(obj, method = "soupx"), "raw_counts")
 })
 
+test_that("RemoveAmbientRNA accepts a list of Seurat objects and validates each one", {
+  # No celda/SoupX needed -- clusters_col validation happens before either
+  # tool is touched, in .remove_ambient_rna_one(), so this exercises the
+  # list-plumbing (.as_seurat_list() + per-element dispatch) without
+  # depending on either optional package.
+  objs <- list(a = .make_small_seurat(), b = .make_small_seurat())
+  expect_error(RemoveAmbientRNA(objs, clusters_col = "not_a_real_column"),
+              "not found")
+})
+
+test_that("RemoveAmbientRNA errors when raw_counts (list mode) doesn't match obj's length", {
+  testthat::skip_if_not_installed("SoupX")
+  objs <- list(a = .make_small_seurat(), b = .make_small_seurat())
+  expect_error(
+    RemoveAmbientRNA(objs, method = "soupx",
+                    raw_counts = list("only_one_path/")),
+    "must match one-to-one")
+})
+
+test_that("RemoveAmbientRNA errors when raw_counts (list mode) names don't match obj's names", {
+  testthat::skip_if_not_installed("SoupX")
+  objs <- list(a = .make_small_seurat(), b = .make_small_seurat())
+  expect_error(
+    RemoveAmbientRNA(objs, method = "soupx",
+                    raw_counts = list(x = "path1/", y = "path2/")),
+    "names don't match")
+})
+
+test_that("RemoveAmbientRNA errors when workers exceeds available cores", {
+  objs <- list(a = .make_small_seurat(), b = .make_small_seurat())
+  n_cores <- suppressWarnings(parallel::detectCores())
+  testthat::skip_if(is.na(n_cores), "parallel::detectCores() returned NA on this machine.")
+  expect_error(
+    RemoveAmbientRNA(objs, clusters_col = "not_a_real_column", workers = n_cores + 1L),
+    "exceeds the")
+})
+
 
 # ============================================================================
 # LinkPeaksToGenes()

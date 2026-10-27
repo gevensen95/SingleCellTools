@@ -22,19 +22,44 @@
 #' \code{new_assay} to instead write the corrected counts into a new assay
 #' and leave the original untouched.
 #'
-#' @param obj A Seurat object.
+#' \strong{Multiple samples at once.} \code{obj} may instead be a
+#' (optionally named) list of Seurat objects, same as
+#' \code{\link{RunRCTD}}/\code{\link{RunCARD}}/\code{\link{RunSPOTlight}}
+#' -- each is processed independently and the result comes back in the
+#' same shape as \code{obj} (a bare object in, a bare object out; a list
+#' in, a list out). This is the one lever for parallelizing
+#' \code{RemoveAmbientRNA} itself: there's no per-object loop to
+#' parallelize internally (each call to decontX/SoupX is already one shot
+#' against a whole counts matrix), so parallelism here means farming
+#' independent *objects* out to \code{workers} processes, not splitting
+#' the work within a single object. Errors propagate immediately (no
+#' per-object \code{tryCatch}), matching this package's other
+#' \code{workers}-taking loaders.
+#'
+#' @param obj A Seurat object, or a (optionally named) list of them (see
+#'   Details).
 #' @param method \code{"decontx"} (default) or \code{"soupx"}. See Details.
-#' @param assay Assay to correct. Default \code{DefaultAssay(obj)}.
+#' @param assay Assay to correct. Default \code{DefaultAssay(obj)} (per
+#'   object, when \code{obj} is a list).
 #' @param clusters_col Metadata column of per-cell cluster/cell-type labels.
 #'   Passed to decontX's \code{z} argument, or to SoupX's
 #'   \code{setClusters()}. \code{NULL} (default): decontX clusters
 #'   internally; SoupX runs unclustered (less accurate per its own docs).
+#'   Applied by the same column name to every object when \code{obj} is a
+#'   list.
 #' @param raw_counts \code{method = "soupx"} only (required there): the
-#'   raw, unfiltered droplet x gene counts matrix, or a path to a
-#'   directory \code{Seurat::Read10X()} can read.
+#'   raw, unfiltered droplet x gene counts matrix, or a path to a directory
+#'   \code{Seurat::Read10X()} can read. When \code{obj} is a list, this can
+#'   be a single value (used for every object -- unusual, since
+#'   \code{soupx} normally needs one raw matrix per sample) or a list the
+#'   same length as \code{obj}, one entry per object -- matched by name
+#'   when both \code{obj} and this list are fully named, otherwise matched
+#'   positionally.
 #' @param contamination_fraction \code{method = "soupx"} only: skip
 #'   \code{autoEstCont()} and use this fixed contamination fraction for
 #'   every cell instead. \code{NULL} (default) estimates it automatically.
+#'   Accepts a single value or a per-object list, exactly like
+#'   \code{raw_counts} above, when \code{obj} is a list.
 #' @param new_assay If set, write corrected counts to a new assay of this
 #'   name instead of overwriting \code{assay}'s counts layer in place.
 #'   \code{NULL} (default) overwrites in place.
@@ -44,7 +69,24 @@
 #'   counts.
 #' @param verbose Message progress and the mean estimated contamination
 #'   fraction. Default \code{TRUE}.
-#' @return \code{obj}, with corrected counts (in place or in
+#' @param workers Number of parallel workers to use (via
+#'   \code{future.apply}) when \code{obj} is a list -- the one step this
+#'   parallelizes (see Details); ignored for a single Seurat object.
+#'   Default \code{1} (sequential), matching
+#'   \code{\link{NeighborhoodEnrichment}}'s \code{workers} -- parallelism
+#'   across objects is opt-in rather than automatic, since decontX/SoupX are
+#'   themselves often memory/CPU-heavy, and a per-object default would risk
+#'   oversubscribing a constrained machine (CI runners included) with no way
+#'   to opt back out. Errors up front if an explicit value exceeds
+#'   \code{parallel::detectCores()}, naming the number of cores actually
+#'   available. \code{workers > 1} spins up that many parallel
+#'   workers via \code{future::plan()} -- forked processes
+#'   (\code{future::multicore}) on Unix-likes outside RStudio, or
+#'   background R sessions (\code{future::multisession}) on Windows / in
+#'   RStudio, where forking isn't available -- torn down again before this
+#'   function returns.
+#' @return \code{obj} (or a list of them, matching the shape of \code{obj}
+#'   -- see Details), with corrected counts (in place or in
 #'   \code{new_assay}) and a new \code{<method>_contamination} metadata
 #'   column recording each cell's estimated contamination fraction.
 #' @examples
@@ -56,6 +98,18 @@
 #' obj <- RemoveAmbientRNA(obj, method = "soupx",
 #'                         raw_counts = "raw_feature_bc_matrix/",
 #'                         clusters_col = "seurat_clusters")
+#'
+#' # A list of objects, decontX, in parallel (one worker per object)
+#' obj_list <- RemoveAmbientRNA(obj_list, clusters_col = "seurat_clusters",
+#'                             workers = length(obj_list))
+#'
+#' # A list of objects, SoupX, one raw matrix path per sample (named to
+#' # match obj_list's own names)
+#' obj_list <- RemoveAmbientRNA(
+#'   obj_list, method = "soupx",
+#'   raw_counts = list(sample1 = "data/sample1/raw_feature_bc_matrix/",
+#'                     sample2 = "data/sample2/raw_feature_bc_matrix/"),
+#'   clusters_col = "seurat_clusters")
 #' }
 #' @importFrom Seurat DefaultAssay GetAssayData SetAssayData CreateAssayObject Read10X
 #' @export
@@ -67,10 +121,93 @@ RemoveAmbientRNA <- function(obj,
                              contamination_fraction  = NULL,
                              new_assay               = NULL,
                              round_to_integer        = TRUE,
-                             verbose                 = TRUE) {
+                             verbose                 = TRUE,
+                             workers                 = 1) {
 
   method <- match.arg(method)
-  .assert_seurat(obj)
+
+  parsed     <- .as_seurat_list(obj)
+  objs       <- parsed$objs
+  was_single <- parsed$was_single
+  orig_names <- names(objs)
+  n          <- length(objs)
+
+  if (!was_single) {
+    workers <- .resolve_workers(workers, n_samples = n, was_default = missing(workers))
+  }
+
+  # A single (non-list) raw_counts/contamination_fraction is recycled to
+  # every object; a *list* must match objs one-to-one -- silently
+  # recycling a list element-by-element (R's usual recycling rule) would
+  # risk quietly pairing the wrong sample's raw matrix/fraction with
+  # another sample, which for method = "soupx" (an incorrect background
+  # estimate baked silently into "corrected" counts) is exactly the kind
+  # of mistake this should catch rather than allow.
+  .expand_per_sample <- function(x, arg_name) {
+    if (is.null(x) || !is.list(x)) {
+      return(rep(list(x), n))
+    }
+    if (length(x) != n) {
+      stop(sprintf(
+        "`%s` is a list of length %d but `obj` has %d element%s -- these must match one-to-one.",
+        arg_name, length(x), n, if (n == 1) "" else "s"))
+    }
+    objs_named <- !is.null(orig_names) && all(nzchar(orig_names))
+    x_named    <- !is.null(names(x))   && all(nzchar(names(x)))
+    if (objs_named && x_named) {
+      if (!setequal(names(x), orig_names)) {
+        stop(sprintf("`%s`'s names don't match `obj`'s names.", arg_name))
+      }
+      x <- x[orig_names]
+    }
+    x
+  }
+
+  raw_counts_list <- .expand_per_sample(raw_counts, "raw_counts")
+  contamination_fraction_list <- .expand_per_sample(contamination_fraction, "contamination_fraction")
+
+  if (isTRUE(verbose) && !was_single) {
+    message(sprintf(
+      '--- Running RemoveAmbientRNA (method = "%s") on %d objects%s ---',
+      method, n, if (workers > 1) sprintf(', %d parallel workers', workers) else ''))
+  }
+
+  # Every element is already guaranteed to be a Seurat object here --
+  # .as_seurat_list() validated that above.
+  .process_one <- function(i) {
+    .remove_ambient_rna_one(objs[[i]], method = method, assay = assay,
+                            clusters_col = clusters_col,
+                            raw_counts = raw_counts_list[[i]],
+                            contamination_fraction = contamination_fraction_list[[i]],
+                            new_assay = new_assay,
+                            round_to_integer = round_to_integer,
+                            verbose = verbose)
+  }
+
+  if (!was_single && workers > 1) {
+    cleanup <- .setup_future_plan(workers)
+    on.exit(cleanup(), add = TRUE)
+    objs <- future.apply::future_lapply(seq_len(n), .process_one, future.seed = TRUE)
+  } else {
+    objs <- lapply(seq_len(n), .process_one)
+  }
+  names(objs) <- orig_names
+
+  if (was_single) return(objs[[1]])
+  objs
+}
+
+# Does the actual decontX/SoupX work for exactly one Seurat object --
+# unchanged from RemoveAmbientRNA's own body before it gained list/workers
+# support above, just split out so the exported function can call it once
+# per list element (sequentially, or in parallel via
+# future.apply::future_lapply).
+#' @keywords internal
+#' @noRd
+.remove_ambient_rna_one <- function(obj, method, assay, clusters_col,
+                                    raw_counts, contamination_fraction,
+                                    new_assay, round_to_integer, verbose) {
+
   if (!is.null(clusters_col) && !clusters_col %in% colnames(obj@meta.data)) {
     stop("`clusters_col` ('", clusters_col, "') not found in obj@meta.data.")
   }
