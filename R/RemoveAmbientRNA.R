@@ -14,9 +14,16 @@
 #' data-driven estimate. \code{method = "soupx"} additionally needs the
 #' raw, \emph{unfiltered} droplet matrix (every barcode SoupX should treat
 #' as potential background, not just the cells Cell Ranger/your pipeline
-#' kept) via \code{raw_counts}, and generally benefits more from being
-#' given cluster labels (\code{clusters_col}) to estimate contamination
-#' per cluster rather than globally.
+#' kept) via \code{raw_counts}. Unlike decontX, SoupX's own automatic
+#' contamination estimation (\code{SoupX::autoEstCont()}, used whenever
+#' \code{contamination_fraction} is \code{NULL}) \emph{requires} cluster
+#' labels -- confirmed by its own runtime error ("Clustering information
+#' must be supplied, run setClusters first.") when none are set, not just
+#' a "less accurate" fallback -- so \code{method = "soupx"} needs either
+#' \code{clusters_col} or an explicit \code{contamination_fraction}; this
+#' is checked up front with a clear error rather than left to fail deep
+#' inside SoupX partway through a (possibly long, possibly parallel)
+#' run.
 #'
 #' \strong{This overwrites the assay's counts layer by default.} Pass
 #' \code{new_assay} to instead write the corrected counts into a new assay
@@ -44,9 +51,10 @@
 #' @param clusters_col Metadata column of per-cell cluster/cell-type labels.
 #'   Passed to decontX's \code{z} argument, or to SoupX's
 #'   \code{setClusters()}. \code{NULL} (default): decontX clusters
-#'   internally; SoupX runs unclustered (less accurate per its own docs).
-#'   Applied by the same column name to every object when \code{obj} is a
-#'   list.
+#'   internally. For \code{method = "soupx"}, \code{NULL} is only valid
+#'   together with an explicit \code{contamination_fraction} -- SoupX's
+#'   automatic estimation has no unclustered mode (see Details). Applied
+#'   by the same column name to every object when \code{obj} is a list.
 #' @param raw_counts \code{method = "soupx"} only (required there): the
 #'   raw, unfiltered droplet x gene counts matrix, or a path to a directory
 #'   \code{Seurat::Read10X()} can read. If that path resolves to multiple
@@ -65,9 +73,12 @@
 #'   fully named, otherwise matched positionally.
 #' @param contamination_fraction \code{method = "soupx"} only: skip
 #'   \code{autoEstCont()} and use this fixed contamination fraction for
-#'   every cell instead. \code{NULL} (default) estimates it automatically.
-#'   Accepts a single value or a per-object list, exactly like
-#'   \code{raw_counts} above, when \code{obj} is a list.
+#'   every cell instead. \code{NULL} (default) estimates it automatically
+#'   -- which requires \code{clusters_col} to also be set (see Details);
+#'   supplying \code{contamination_fraction} directly is the way to use
+#'   \code{method = "soupx"} \emph{without} cluster labels. Accepts a
+#'   single value or a per-object list, exactly like \code{raw_counts}
+#'   above, when \code{obj} is a list.
 #' @param new_assay If set, write corrected counts to a new assay of this
 #'   name instead of overwriting \code{assay}'s counts layer in place.
 #'   \code{NULL} (default) overwrites in place.
@@ -240,6 +251,24 @@ RemoveAmbientRNA <- function(obj,
     if (!requireNamespace("SoupX", quietly = TRUE)) {
       stop("'SoupX' is required for method = 'soupx'. Install with ",
            "install.packages('SoupX').")
+    }
+    if (is.null(clusters_col) && is.null(contamination_fraction)) {
+      # SoupX::autoEstCont() (run below whenever contamination_fraction is
+      # NULL) has no unclustered fallback -- confirmed by its own runtime
+      # error ("Clustering information must be supplied, run setClusters
+      # first."), not just reduced accuracy, despite what this function's
+      # own docs used to say before that was confirmed against real SoupX
+      # behavior. Caught here, before SoupChannel()/Read10X() even run, so
+      # a list-mode call with workers > 1 fails immediately for every
+      # object instead of spinning up a whole parallel plan only to have
+      # every worker fail deep inside autoEstCont() with a much less
+      # legible error.
+      stop("method = 'soupx' needs either `clusters_col` (for SoupX's ",
+           "per-cluster automatic contamination estimation) or an ",
+           "explicit `contamination_fraction` -- without clusters, ",
+           "SoupX::autoEstCont() errors internally with 'Clustering ",
+           "information must be supplied, run setClusters first.'; there ",
+           "is no unclustered automatic-estimation fallback.")
     }
     if (is.null(raw_counts)) {
       stop("`raw_counts` (the raw, unfiltered droplet matrix, or a path ",
