@@ -13,28 +13,40 @@ RemoveAmbientRNA(
   contamination_fraction = NULL,
   new_assay = NULL,
   round_to_integer = TRUE,
-  verbose = TRUE
+  verbose = TRUE,
+  workers = 1
 )
 }
 \arguments{
-\item{obj}{A Seurat object.}
+\item{obj}{A Seurat object, or a (optionally named) list of them (see
+Details).}
 
 \item{method}{\code{"decontx"} (default) or \code{"soupx"}. See Details.}
 
-\item{assay}{Assay to correct. Default \code{DefaultAssay(obj)}.}
+\item{assay}{Assay to correct. Default \code{DefaultAssay(obj)} (per
+object, when \code{obj} is a list).}
 
 \item{clusters_col}{Metadata column of per-cell cluster/cell-type labels.
 Passed to decontX's \code{z} argument, or to SoupX's
 \code{setClusters()}. \code{NULL} (default): decontX clusters
-internally; SoupX runs unclustered (less accurate per its own docs).}
+internally; SoupX runs unclustered (less accurate per its own docs).
+Applied by the same column name to every object when \code{obj} is a
+list.}
 
 \item{raw_counts}{\code{method = "soupx"} only (required there): the
-raw, unfiltered droplet x gene counts matrix, or a path to a
-directory \code{Seurat::Read10X()} can read.}
+raw, unfiltered droplet x gene counts matrix, or a path to a directory
+\code{Seurat::Read10X()} can read. When \code{obj} is a list, this can
+be a single value (used for every object -- unusual, since
+\code{soupx} normally needs one raw matrix per sample) or a list the
+same length as \code{obj}, one entry per object -- matched by name
+when both \code{obj} and this list are fully named, otherwise matched
+positionally.}
 
 \item{contamination_fraction}{\code{method = "soupx"} only: skip
 \code{autoEstCont()} and use this fixed contamination fraction for
-every cell instead. \code{NULL} (default) estimates it automatically.}
+every cell instead. \code{NULL} (default) estimates it automatically.
+Accepts a single value or a per-object list, exactly like
+\code{raw_counts} above, when \code{obj} is a list.}
 
 \item{new_assay}{If set, write corrected counts to a new assay of this
 name instead of overwriting \code{assay}'s counts layer in place.
@@ -47,9 +59,27 @@ counts.}
 
 \item{verbose}{Message progress and the mean estimated contamination
 fraction. Default \code{TRUE}.}
+
+\item{workers}{Number of parallel workers to use (via
+\code{future.apply}) when \code{obj} is a list -- the one step this
+parallelizes (see Details); ignored for a single Seurat object.
+Default \code{1} (sequential), matching
+\code{\link{NeighborhoodEnrichment}}'s \code{workers} -- parallelism
+across objects is opt-in rather than automatic, since decontX/SoupX are
+themselves often memory/CPU-heavy, and a per-object default would risk
+oversubscribing a constrained machine (CI runners included) with no way
+to opt back out. Errors up front if an explicit value exceeds
+\code{parallel::detectCores()}, naming the number of cores actually
+available. \code{workers > 1} spins up that many parallel
+workers via \code{future::plan()} -- forked processes
+(\code{future::multicore}) on Unix-likes outside RStudio, or
+background R sessions (\code{future::multisession}) on Windows / in
+RStudio, where forking isn't available -- torn down again before this
+function returns.}
 }
 \value{
-\code{obj}, with corrected counts (in place or in
+\code{obj} (or a list of them, matching the shape of \code{obj}
+-- see Details), with corrected counts (in place or in
 \code{new_assay}) and a new \code{<method>_contamination} metadata
 column recording each cell's estimated contamination fraction.
 }
@@ -76,6 +106,20 @@ per cluster rather than globally.
 \strong{This overwrites the assay's counts layer by default.} Pass
 \code{new_assay} to instead write the corrected counts into a new assay
 and leave the original untouched.
+
+\strong{Multiple samples at once.} \code{obj} may instead be a
+(optionally named) list of Seurat objects, same as
+\code{\link{RunRCTD}}/\code{\link{RunCARD}}/\code{\link{RunSPOTlight}}
+-- each is processed independently and the result comes back in the
+same shape as \code{obj} (a bare object in, a bare object out; a list
+in, a list out). This is the one lever for parallelizing
+\code{RemoveAmbientRNA} itself: there's no per-object loop to
+parallelize internally (each call to decontX/SoupX is already one shot
+against a whole counts matrix), so parallelism here means farming
+independent \emph{objects} out to \code{workers} processes, not splitting
+the work within a single object. Errors propagate immediately (no
+per-object \code{tryCatch}), matching this package's other
+\code{workers}-taking loaders.
 }
 \examples{
 \dontrun{
@@ -86,5 +130,17 @@ obj <- RemoveAmbientRNA(obj, clusters_col = "seurat_clusters")
 obj <- RemoveAmbientRNA(obj, method = "soupx",
                         raw_counts = "raw_feature_bc_matrix/",
                         clusters_col = "seurat_clusters")
+
+# A list of objects, decontX, in parallel (one worker per object)
+obj_list <- RemoveAmbientRNA(obj_list, clusters_col = "seurat_clusters",
+                            workers = length(obj_list))
+
+# A list of objects, SoupX, one raw matrix path per sample (named to
+# match obj_list's own names)
+obj_list <- RemoveAmbientRNA(
+  obj_list, method = "soupx",
+  raw_counts = list(sample1 = "data/sample1/raw_feature_bc_matrix/",
+                    sample2 = "data/sample2/raw_feature_bc_matrix/"),
+  clusters_col = "seurat_clusters")
 }
 }
