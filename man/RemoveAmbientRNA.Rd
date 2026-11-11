@@ -29,9 +29,10 @@ object, when \code{obj} is a list).}
 \item{clusters_col}{Metadata column of per-cell cluster/cell-type labels.
 Passed to decontX's \code{z} argument, or to SoupX's
 \code{setClusters()}. \code{NULL} (default): decontX clusters
-internally; SoupX runs unclustered (less accurate per its own docs).
-Applied by the same column name to every object when \code{obj} is a
-list.}
+internally. For \code{method = "soupx"}, \code{NULL} is only valid
+together with an explicit \code{contamination_fraction} -- SoupX's
+automatic estimation has no unclustered mode (see Details). Applied
+by the same column name to every object when \code{obj} is a list.}
 
 \item{raw_counts}{\code{method = "soupx"} only (required there): the
 raw, unfiltered droplet x gene counts matrix, or a path to a directory
@@ -52,9 +53,12 @@ fully named, otherwise matched positionally.}
 
 \item{contamination_fraction}{\code{method = "soupx"} only: skip
 \code{autoEstCont()} and use this fixed contamination fraction for
-every cell instead. \code{NULL} (default) estimates it automatically.
-Accepts a single value or a per-object list, exactly like
-\code{raw_counts} above, when \code{obj} is a list.}
+every cell instead. \code{NULL} (default) estimates it automatically
+-- which requires \code{clusters_col} to also be set (see Details);
+supplying \code{contamination_fraction} directly is the way to use
+\code{method = "soupx"} \emph{without} cluster labels. Accepts a
+single value or a per-object list, exactly like \code{raw_counts}
+above, when \code{obj} is a list.}
 
 \item{new_assay}{If set, write corrected counts to a new assay of this
 name instead of overwriting \code{assay}'s counts layer in place.
@@ -107,9 +111,16 @@ contamination directly from the filtered counts matrix already in
 data-driven estimate. \code{method = "soupx"} additionally needs the
 raw, \emph{unfiltered} droplet matrix (every barcode SoupX should treat
 as potential background, not just the cells Cell Ranger/your pipeline
-kept) via \code{raw_counts}, and generally benefits more from being
-given cluster labels (\code{clusters_col}) to estimate contamination
-per cluster rather than globally.
+kept) via \code{raw_counts}. Unlike decontX, SoupX's own automatic
+contamination estimation (\code{SoupX::autoEstCont()}, used whenever
+\code{contamination_fraction} is \code{NULL}) \emph{requires} cluster
+labels -- confirmed by its own runtime error ("Clustering information
+must be supplied, run setClusters first.") when none are set, not just
+a "less accurate" fallback -- so \code{method = "soupx"} needs either
+\code{clusters_col} or an explicit \code{contamination_fraction}; this
+is checked up front with a clear error rather than left to fail deep
+inside SoupX partway through a (possibly long, possibly parallel)
+run.
 
 \strong{This overwrites the assay's counts layer by default.} Pass
 \code{new_assay} to instead write the corrected counts into a new assay

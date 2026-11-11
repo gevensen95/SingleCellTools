@@ -1,3 +1,20 @@
+# SingleCellTools (development version)
+
+## New functions
+
+- `SplitSections()` splits each spatial FOV into its separate tissue
+  sections (for slides with several serial sections per region). Pieces are
+  found by DBSCAN on cell centroids with a density-adaptive radius; debris
+  below `min_cells` is dropped and oversized pieces (touching sections) are
+  split at the density gaps between them. A fixes table (`fov`, `from`, `to`) renames, merges,
+  drops or splits pieces on a second pass, and per-FOV check plots can be
+  written to `plot_dir`. Results go to `section_fov`, `section_auto` and
+  `section_id`; an existing `fov` column (e.g. CosMx FOV numbers) is left
+  untouched. Works with FOV-based images and older `VisiumV1` images.
+  Needs the `dbscan` package (Suggests).
+
+---
+
 # SingleCellTools 2.8
 
 Six commits since v2.7; 42 files, +4,040 / −250.

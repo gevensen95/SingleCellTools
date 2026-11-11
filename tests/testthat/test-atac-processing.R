@@ -114,7 +114,24 @@ test_that("RemoveAmbientRNA errors clearly when 'SoupX' isn't installed (method 
 test_that("RemoveAmbientRNA (method = 'soupx') requires raw_counts", {
   testthat::skip_if_not_installed("SoupX")
   obj <- .make_small_seurat()
-  expect_error(RemoveAmbientRNA(obj, method = "soupx"), "raw_counts")
+  # contamination_fraction supplied so this isolates the raw_counts check
+  # from the clusters_col/contamination_fraction check added below.
+  expect_error(
+    RemoveAmbientRNA(obj, method = "soupx", contamination_fraction = 0.1),
+    "raw_counts")
+})
+
+test_that("RemoveAmbientRNA (method = 'soupx') requires clusters_col or contamination_fraction", {
+  # SoupX::autoEstCont() has no unclustered fallback (confirmed by its own
+  # runtime error, "Clustering information must be supplied, run
+  # setClusters first." -- not just reduced accuracy), so RemoveAmbientRNA()
+  # now catches this up front rather than letting SoupX fail deep inside
+  # autoEstCont() partway through a run.
+  testthat::skip_if_not_installed("SoupX")
+  obj <- .make_small_seurat()
+  expect_error(
+    RemoveAmbientRNA(obj, method = "soupx", raw_counts = "some/path/"),
+    "clusters_col.*contamination_fraction")
 })
 
 test_that("RemoveAmbientRNA (soupx) errors clearly when raw_counts is missing genes present in counts", {
@@ -127,8 +144,10 @@ test_that("RemoveAmbientRNA (soupx) errors clearly when raw_counts is missing ge
   obj <- .make_small_seurat()  # genes: Gene1..Gene30
   raw <- matrix(1L, nrow = 25, ncol = 5,
                dimnames = list(paste0("Gene", 1:25), paste0("cell", 1:5)))
-  expect_error(RemoveAmbientRNA(obj, method = "soupx", raw_counts = raw),
-              "not present in")
+  expect_error(
+    RemoveAmbientRNA(obj, method = "soupx", raw_counts = raw,
+                    contamination_fraction = 0.1),
+    "not present in")
 })
 
 test_that("RemoveAmbientRNA (soupx) errors clearly when raw_counts is a feature-type list without 'Gene Expression'", {
@@ -141,8 +160,10 @@ test_that("RemoveAmbientRNA (soupx) errors clearly when raw_counts is a feature-
   raw_list <- list(`Antibody Capture` = matrix(
     1L, nrow = 5, ncol = 5,
     dimnames = list(paste0("Ab", 1:5), paste0("cell", 1:5))))
-  expect_error(RemoveAmbientRNA(obj, method = "soupx", raw_counts = raw_list),
-              "Gene Expression")
+  expect_error(
+    RemoveAmbientRNA(obj, method = "soupx", raw_counts = raw_list,
+                    contamination_fraction = 0.1),
+    "Gene Expression")
 })
 
 test_that("RemoveAmbientRNA accepts a list of Seurat objects and validates each one", {

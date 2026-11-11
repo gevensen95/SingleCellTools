@@ -97,6 +97,7 @@ export(SpatialConcordance)
 export(SpatialDimPlotFixed)
 export(SpatialFeaturePlotFixed)
 export(SpatialObjectInfo)
+export(SplitSections)
 export(StackedViolinPlot)
 export(SubsetAndRecluster)
 export(SubsetSpatial)
@@ -241,6 +242,7 @@ importFrom(magrittr,"%>%")
 importFrom(mclust,mclustBIC)
 importFrom(methods,as)
 importFrom(parallel,detectCores)
+importFrom(rlang,.data)
 importFrom(stats,
   chisq.test,
   complete.cases,
