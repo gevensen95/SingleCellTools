@@ -39,9 +39,22 @@
 #' if you want to drop everything within N rings of either kind of
 #' boundary.
 #'
-#' @param obj A Seurat object with spatial coordinates.
+#' Coordinates are read with the same helper \code{detect_fov_edges()}
+#' uses, so FOV-based images (Xenium, CosMx) and older \code{VisiumV1}
+#' images (\code{imagerow}/\code{imagecol}) both work.
+#'
+#' \strong{Lists of objects.} \code{obj} can also be a list of Seurat
+#' objects (e.g. one per Visium sample, before merging). Each object is
+#' processed on its own and the list is returned with the same names. With
+#' a list, \code{fovs} is matched against each object's own images: objects
+#' holding none of the requested FOVs get \code{0} for every cell, and it is
+#' an error only if a requested FOV is in none of the objects.
+#' \code{exclude_gene} must be present in every object.
+#'
+#' @param obj A Seurat object with spatial coordinates, or a (optionally
+#'   named) list of them.
 #' @param fovs Character vector of FOV / image names. \code{NULL} (default)
-#'   processes every image attached to the object.
+#'   processes every image attached to the object(s).
 #' @param bin_size Edge length of one grid bin in the same units as the
 #'   coordinates. \code{NULL} (default) auto-computes
 #'   \code{2.5 * median nearest-neighbor distance} per FOV.
@@ -70,7 +83,15 @@
 #' @param n_iterations Number of inward-peeling iterations. Default 2.
 #' @param label_col Name of the metadata column to write. Default
 #'   \code{"hole_layer"}.
-#' @return The Seurat object with a new integer metadata column.
+#' @return The Seurat object with a new integer metadata column, or -- when
+#'   \code{obj} is a list -- the list of objects, each with that column.
+#' @examples
+#' \dontrun{
+#' obj <- detect_tissue_holes(obj, n_iterations = 1)
+#'
+#' # A list of per-sample Visium objects, before merging
+#' obj_list <- detect_tissue_holes(obj_list, n_iterations = 1)
+#' }
 #' @importFrom Seurat GetTissueCoordinates FetchData DefaultAssay
 #' @importFrom RANN nn2
 #' @importFrom stats median quantile
@@ -87,16 +108,56 @@ detect_tissue_holes <- function(obj,
                                 n_iterations            = 2,
                                 label_col               = "hole_layer") {
 
-  if (!inherits(obj, "Seurat")) stop("`obj` must be a Seurat object.")
-  if (is.null(fovs)) fovs <- names(obj@images)
-  if (!length(fovs)) stop("No FOVs in obj@images.")
-  missing_fovs <- setdiff(fovs, names(obj@images))
-  if (length(missing_fovs)) {
-    stop("FOV(s) not in obj@images: ", paste(missing_fovs, collapse = ", "))
-  }
+  parsed <- .as_seurat_list(obj)
   if (n_iterations < 1) stop("`n_iterations` must be >= 1.")
   if (sensitivity < 0 || sensitivity > 1) {
     stop("`sensitivity` must be between 0 and 1.")
+  }
+  objs <- parsed$objs
+
+  args <- list(bin_size = bin_size, min_hole_size = min_hole_size,
+               exclude_gene = exclude_gene, sensitivity = sensitivity,
+               exclude_gene_threshold = exclude_gene_threshold,
+               exclude_gene_assay = exclude_gene_assay,
+               exclude_gene_layer = exclude_gene_layer,
+               n_iterations = n_iterations, label_col = label_col)
+
+  if (parsed$was_single) {
+    return(do.call(.detect_tissue_holes_one, c(list(obj = objs[[1]], fovs = fovs), args)))
+  }
+
+  .check_list_fovs(objs, fovs)
+  labels <- .list_labels(objs)
+  out <- lapply(seq_along(objs), function(i) {
+    o <- objs[[i]]
+    message(sprintf("=== %s ===", labels[i]))
+    f <- if (is.null(fovs)) NULL else intersect(fovs, names(o@images))
+    if (!is.null(fovs) && !length(f)) {
+      message("  none of the requested FOVs in this object; all cells set to 0")
+      o[[label_col]] <- stats::setNames(integer(ncol(o)), colnames(o))
+      return(o)
+    }
+    do.call(.detect_tissue_holes_one,
+            c(list(obj = o, fovs = f, who = paste0("[", labels[i], "] ")), args))
+  })
+  names(out) <- names(objs)
+  out
+}
+
+# Single-object worker for detect_tissue_holes(). `who` prefixes error
+# messages with the object's name when processing a list.
+#' @keywords internal
+#' @noRd
+.detect_tissue_holes_one <- function(obj, fovs, bin_size, min_hole_size,
+                                     exclude_gene, sensitivity,
+                                     exclude_gene_threshold,
+                                     exclude_gene_assay, exclude_gene_layer,
+                                     n_iterations, label_col, who = "") {
+  if (is.null(fovs)) fovs <- names(obj@images)
+  if (!length(fovs)) stop(who, "No FOVs in obj@images.")
+  missing_fovs <- setdiff(fovs, names(obj@images))
+  if (length(missing_fovs)) {
+    stop(who, "FOV(s) not in obj@images: ", paste(missing_fovs, collapse = ", "))
   }
 
   use_gene_filter <- !is.null(exclude_gene)
@@ -106,7 +167,7 @@ detect_tissue_holes <- function(obj,
     a <- if (is.null(exclude_gene_assay)) Seurat::DefaultAssay(obj)
                                           else exclude_gene_assay
     if (!exclude_gene %in% rownames(obj[[a]])) {
-      stop("`exclude_gene` ('", exclude_gene, "') not found in assay '",
+      stop(who, "`exclude_gene` ('", exclude_gene, "') not found in assay '",
            a, "'.")
     }
     mode_msg <- if (use_sensitivity) {
@@ -160,15 +221,11 @@ detect_tissue_holes <- function(obj,
   }
 
   for (fov in fovs) {
-    coords <- Seurat::GetTissueCoordinates(obj[[fov]], which = "centroids")
-    if ("cell" %in% colnames(coords)) {
-      rownames(coords) <- coords$cell
-      cells_in_fov <- intersect(coords$cell, colnames(obj))
-      coords_mat   <- as.matrix(coords[cells_in_fov, c("x", "y")])
-    } else {
-      cells_in_fov <- intersect(rownames(coords), colnames(obj))
-      coords_mat   <- as.matrix(coords[cells_in_fov, c("x", "y")])
-    }
+    # .get_fov_coords() handles FOV images (x/y/cell) and VisiumV1 images
+    # (imagerow/imagecol) -- reading x/y directly failed on VisiumV1 with
+    # "undefined columns selected".
+    coords_mat   <- .get_fov_coords(obj, fov, cells = colnames(obj))
+    cells_in_fov <- rownames(coords_mat)
     if (length(cells_in_fov) < 5) {
       message(sprintf("  '%s': only %d cells, skipping",
                       fov, length(cells_in_fov)))

@@ -19,10 +19,11 @@ detect_tissue_holes(
 )
 }
 \arguments{
-\item{obj}{A Seurat object with spatial coordinates.}
+\item{obj}{A Seurat object with spatial coordinates, or a (optionally
+named) list of them.}
 
 \item{fovs}{Character vector of FOV / image names. \code{NULL} (default)
-processes every image attached to the object.}
+processes every image attached to the object(s).}
 
 \item{bin_size}{Edge length of one grid bin in the same units as the
 coordinates. \code{NULL} (default) auto-computes
@@ -62,7 +63,8 @@ data-adaptive path and use a fixed threshold instead.}
 \code{"hole_layer"}.}
 }
 \value{
-The Seurat object with a new integer metadata column.
+The Seurat object with a new integer metadata column, or -- when
+\code{obj} is a list -- the list of objects, each with that column.
 }
 \description{
 Builds a 2D occupancy grid over each FOV's coordinate space, marks any
@@ -104,4 +106,24 @@ Distinct from \code{detect_fov_edges} — that function finds the
 \emph{outer} boundary, this one finds \emph{internal} gaps. Run both
 if you want to drop everything within N rings of either kind of
 boundary.
+
+Coordinates are read with the same helper \code{detect_fov_edges()}
+uses, so FOV-based images (Xenium, CosMx) and older \code{VisiumV1}
+images (\code{imagerow}/\code{imagecol}) both work.
+
+\strong{Lists of objects.} \code{obj} can also be a list of Seurat
+objects (e.g. one per Visium sample, before merging). Each object is
+processed on its own and the list is returned with the same names. With
+a list, \code{fovs} is matched against each object's own images: objects
+holding none of the requested FOVs get \code{0} for every cell, and it is
+an error only if a requested FOV is in none of the objects.
+\code{exclude_gene} must be present in every object.
+}
+\examples{
+\dontrun{
+obj <- detect_tissue_holes(obj, n_iterations = 1)
+
+# A list of per-sample Visium objects, before merging
+obj_list <- detect_tissue_holes(obj_list, n_iterations = 1)
+}
 }
