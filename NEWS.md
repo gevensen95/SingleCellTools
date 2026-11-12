@@ -22,6 +22,15 @@
   `x`/`y` coordinate columns directly and failed with "undefined columns
   selected" on `imagerow`/`imagecol` coordinates; it now uses the same
   coordinate helper as `detect_fov_edges()`.
+- `GenerateQCReport()`'s edge section now reads `detect_fov_edges()`'s
+  ring column (new `edge_col`, default `"edge_layer"`) instead of an
+  `is_edge` column that nothing in the package created, so the section
+  previously never showed anything. It reports spots per ring and the %
+  flagged per sample, with a spatial map coloured by ring. A new tissue
+  holes section does the same for `detect_tissue_holes()` (`hole_col`,
+  default `"hole_layer"`) and, when both columns exist, shows how many
+  spots per sample survive both filters. Set either argument to `NULL` to
+  skip its section.
 
 ---
 

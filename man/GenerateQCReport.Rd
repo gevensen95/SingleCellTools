@@ -12,6 +12,8 @@ GenerateQCReport(
     "percent.hb"),
   sample_col = "orig.ident",
   doublet_col = "doublet_finder",
+  edge_col = "edge_layer",
+  hole_col = "hole_layer",
   top_n_genes = 20,
   mad_multiplier = 3,
   atac_aware_cutoffs = TRUE,
@@ -50,6 +52,16 @@ Ignored when \code{obj} is a list (the list names are used instead).}
 
 \item{doublet_col}{Metadata column holding doublet calls. \code{NULL}
 skips the doublet section.}
+
+\item{edge_col}{Metadata column holding edge rings, as written by
+\code{\link{detect_fov_edges}} (0 = interior, 1 = outermost ring,
+2 = next ring, ...). Default \code{"edge_layer"}, that function's
+default \code{label_col}. \code{NULL} skips the section.}
+
+\item{hole_col}{Metadata column holding hole rings, as written by
+\code{\link{detect_tissue_holes}} (0 = not next to a hole, 1 = ring
+bordering a hole, ...). Default \code{"hole_layer"}. \code{NULL} skips
+the section.}
 
 \item{top_n_genes}{Number of top-expressed genes per sample to display.
 Default 20.}
@@ -108,7 +120,7 @@ Invisibly, the absolute path of the rendered report.
 \description{
 Builds an \code{rmarkdown} report with a comprehensive set of per-sample
 single-cell QC plots and diagnostics. Sections that don't apply to the
-input (cell-cycle phase, spatial maps, edge-spot summary, sample
+input (cell-cycle phase, spatial maps, edge spots, tissue holes, sample
 correlation) are silently skipped.
 }
 \details{
@@ -183,7 +195,13 @@ in this table, and in the violin/density sections above, alongside
 every real \code{metadata_cols} metric.
 \item Cell-cycle phase breakdown (if a \code{Phase} column exists).
 \item Doublet calls (if \code{doublet_col} exists).
-\item Edge-spot summary (if an \code{is_edge} column exists).
+\item Edge spots (if \code{edge_col} exists, e.g. from
+\code{\link{detect_fov_edges}}): per-sample counts in each edge ring
+and the \\% flagged, plus a spatial map coloured by ring.
+\item Tissue holes (if \code{hole_col} exists, e.g. from
+\code{\link{detect_tissue_holes}}): the same table and map for spots
+bordering internal gaps, and -- when both columns exist -- how many
+spots per sample survive both filters.
 \item Sample-sample pseudobulk correlation heatmap (>= 2 samples).
 \item Spatial QC maps per FOV (if \code{obj@images} is populated).
 \item Session info appendix.

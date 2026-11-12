@@ -2,7 +2,7 @@
 #'
 #' Builds an \code{rmarkdown} report with a comprehensive set of per-sample
 #' single-cell QC plots and diagnostics. Sections that don't apply to the
-#' input (cell-cycle phase, spatial maps, edge-spot summary, sample
+#' input (cell-cycle phase, spatial maps, edge spots, tissue holes, sample
 #' correlation) are silently skipped.
 #'
 #' \strong{ATAC (Signac) samples}: detected automatically per sample by
@@ -76,7 +76,13 @@
 #'     every real \code{metadata_cols} metric.
 #'   \item Cell-cycle phase breakdown (if a \code{Phase} column exists).
 #'   \item Doublet calls (if \code{doublet_col} exists).
-#'   \item Edge-spot summary (if an \code{is_edge} column exists).
+#'   \item Edge spots (if \code{edge_col} exists, e.g. from
+#'     \code{\link{detect_fov_edges}}): per-sample counts in each edge ring
+#'     and the \% flagged, plus a spatial map coloured by ring.
+#'   \item Tissue holes (if \code{hole_col} exists, e.g. from
+#'     \code{\link{detect_tissue_holes}}): the same table and map for spots
+#'     bordering internal gaps, and -- when both columns exist -- how many
+#'     spots per sample survive both filters.
 #'   \item Sample-sample pseudobulk correlation heatmap (>= 2 samples).
 #'   \item Spatial QC maps per FOV (if \code{obj@images} is populated).
 #'   \item Session info appendix.
@@ -101,6 +107,14 @@
 #'   list them explicitly.
 #' @param doublet_col Metadata column holding doublet calls. \code{NULL}
 #'   skips the doublet section.
+#' @param edge_col Metadata column holding edge rings, as written by
+#'   \code{\link{detect_fov_edges}} (0 = interior, 1 = outermost ring,
+#'   2 = next ring, ...). Default \code{"edge_layer"}, that function's
+#'   default \code{label_col}. \code{NULL} skips the section.
+#' @param hole_col Metadata column holding hole rings, as written by
+#'   \code{\link{detect_tissue_holes}} (0 = not next to a hole, 1 = ring
+#'   bordering a hole, ...). Default \code{"hole_layer"}. \code{NULL} skips
+#'   the section.
 #' @param top_n_genes Number of top-expressed genes per sample to display.
 #'   Default 20.
 #' @param mad_multiplier Multiplier for MAD when suggesting cutoffs.
@@ -159,6 +173,8 @@ GenerateQCReport <- function(obj,
                                                   "percent.hb"),
                              sample_col       = "orig.ident",
                              doublet_col      = "doublet_finder",
+                             edge_col         = "edge_layer",
+                             hole_col         = "hole_layer",
                              top_n_genes      = 20,
                              mad_multiplier   = 3,
                              atac_aware_cutoffs = TRUE,
@@ -173,6 +189,12 @@ GenerateQCReport <- function(obj,
   }
   if (!requireNamespace("knitr", quietly = TRUE)) {
     stop("Package 'knitr' is required. install.packages('knitr')")
+  }
+  for (nm in c("edge_col", "hole_col")) {
+    v <- get(nm)
+    if (!is.null(v) && !(is.character(v) && length(v) == 1L && nzchar(v))) {
+      stop("`", nm, "` must be a single column name or NULL.")
+    }
   }
 
   # ---- Fail fast if the output file(s) already exist -----------------------
@@ -302,7 +324,7 @@ GenerateQCReport <- function(obj,
   resolved <- unique(na.omit(resolved))
 
   # Auto-surface CreateATACObjects()'s QC columns the same way Phase/
-  # doublet_col/is_edge are auto-detected below, rather than requiring the
+  # doublet_col/edge_col/hole_col are detected below, rather than requiring the
   # caller to pass an ATAC-specific `metadata_cols`. Only appends names that
   # actually appear in at least one sample, so RNA-only input is unaffected.
   atac_metrics <- c("TSS.enrichment", "nucleosome_signal", "pct_reads_in_peaks",
@@ -573,25 +595,16 @@ GenerateQCReport <- function(obj,
     }
   }
 
-  # ---- Edge-spot summary -------------------------------------------------
-  edge_summary <- do.call(rbind, lapply(samples, function(s) {
-    if (!"is_edge" %in% colnames(s$md)) return(NULL)
-    n_total <- nrow(s$md)
-    # isTRUE() isn't vectorized (only ever returns a single TRUE/FALSE for
-    # its whole argument), so `isTRUE(is_edge) | is_edge == TRUE` collapsed
-    # to just `is_edge == TRUE` via OR-with-a-recycled-FALSE anyway -- same
-    # result, but written more directly.
-    n_edge  <- sum(s$md$is_edge == TRUE, na.rm = TRUE)
-    data.frame(
-      sample   = s$name,
-      n_total  = n_total,
-      n_edge   = n_edge,
-      pct_edge = round(100 * n_edge / max(1, n_total), 2),
-      stringsAsFactors = FALSE,
-      row.names = NULL
-    )
-  }))
-  if (!is.null(edge_summary) && nrow(edge_summary) == 0) edge_summary <- NULL
+  # ---- Edge spots / tissue holes ----------------------------------------
+  # Ring columns from detect_fov_edges() / detect_tissue_holes(): 0 = not
+  # flagged, 1 = first ring, 2 = second ring, ...
+  edge_summary <- .qc_layer_summary(samples, edge_col, "edge")
+  hole_summary <- .qc_layer_summary(samples, hole_col, "hole")
+  keep_summary <- .qc_keep_summary(samples, edge_col, hole_col)
+  edge_msg <- if (is.null(edge_col)) "Skipped (edge_col = NULL)." else
+    sprintf("No '%s' column in any sample. Run detect_fov_edges() to add it (or set edge_col).", edge_col)
+  hole_msg <- if (is.null(hole_col)) "Skipped (hole_col = NULL)." else
+    sprintf("No '%s' column in any sample. Run detect_tissue_holes() to add it (or set hole_col).", hole_col)
 
   # ---- Pseudobulk sample-sample correlation -----------------------------
   # ATAC samples excluded -- peak coordinates aren't the same genomic unit
@@ -648,6 +661,12 @@ GenerateQCReport <- function(obj,
         # Attach QC metrics
         for (mc in intersect(metadata_cols, colnames(s$md))) {
           coords[[mc]] <- s$md[coords$cell, mc]
+        }
+        # Edge/hole rings under fixed names (NA when the sample lacks the
+        # column) so rbind() across samples always sees the same columns.
+        for (lc in list(c("qc_edge_layer", edge_col), c("qc_hole_layer", hole_col))) {
+          has <- length(lc) == 2 && lc[2] %in% colnames(s$md)
+          coords[[lc[1]]] <- if (has) suppressWarnings(as.integer(s$md[coords$cell, lc[2]])) else NA_integer_
         }
         coords$sample <- s$name
         coords$image  <- img_name
@@ -714,6 +733,11 @@ GenerateQCReport <- function(obj,
     spatial_strip_size <- max(7, 16 - 2 * spatial_ncol)
   }
 
+  edge_map <- if (!is.null(edge_summary) && !is.null(spatial_df))
+    .qc_layer_map(spatial_df, "qc_edge_layer", "Edge ring", spatial_ncol, spatial_strip_size)
+  hole_map <- if (!is.null(hole_summary) && !is.null(spatial_df))
+    .qc_layer_map(spatial_df, "qc_hole_layer", "Hole ring", spatial_ncol, spatial_strip_size)
+
   # ---- Stash inputs for the Rmd ------------------------------------------
   data_path <- tempfile(fileext = ".rds")
   saveRDS(list(
@@ -729,6 +753,14 @@ GenerateQCReport <- function(obj,
     cc_df              = cc_df,
     doublet_summary    = doublet_summary,
     edge_summary       = edge_summary,
+    hole_summary       = hole_summary,
+    keep_summary       = keep_summary,
+    edge_msg           = edge_msg,
+    hole_msg           = hole_msg,
+    edge_col           = edge_col,
+    hole_col           = hole_col,
+    edge_map           = edge_map,
+    hole_map           = hole_map,
     cor_mat            = cor_mat,
     spatial_df         = spatial_df,
     spatial_ncol       = spatial_ncol,
@@ -885,11 +917,41 @@ GenerateQCReport <- function(obj,
     "",
     "## Edge spots",
     "",
+    "Rings from `detect_fov_edges()`: 0 = interior, 1 = outermost ring, 2 = next ring, ...",
+    "",
     "```{r edges}",
     "if (is.null(b$edge_summary)) {",
-    "  cat('No is_edge column present in any sample (skip if non-Visium).')",
+    "  cat(b$edge_msg)",
     "} else {",
     "  knitr::kable(b$edge_summary, row.names = FALSE)",
+    "}",
+    "```",
+    "",
+    sprintf("```{r edges_map, fig.height=%.1f}", spatial_fig_h),
+    "if (!is.null(b$edge_map)) print(b$edge_map)",
+    "```",
+    "",
+    "## Tissue holes",
+    "",
+    "Rings from `detect_tissue_holes()`: 0 = not next to a hole, 1 = ring bordering a hole, ...",
+    "",
+    "```{r holes}",
+    "if (is.null(b$hole_summary)) {",
+    "  cat(b$hole_msg)",
+    "} else {",
+    "  knitr::kable(b$hole_summary, row.names = FALSE)",
+    "}",
+    "```",
+    "",
+    sprintf("```{r holes_map, fig.height=%.1f}", spatial_fig_h),
+    "if (!is.null(b$hole_map)) print(b$hole_map)",
+    "```",
+    "",
+    "```{r keep, results='asis'}",
+    "if (!is.null(b$keep_summary)) {",
+    "  cat('\\n\\n**Spots kept if both filters are applied** (', b$edge_col, ' == 0 and ',",
+    "      b$hole_col, ' == 0):\\n\\n', sep = '')",
+    "  print(knitr::kable(b$keep_summary, row.names = FALSE))",
     "}",
     "```",
     "",
@@ -1003,4 +1065,99 @@ GenerateQCReport <- function(obj,
   }
 
   invisible(output_file)
+}
+
+
+# ---- Internal helpers: edge / hole sections ------------------------------
+
+# Per-sample summary of a ring column (detect_fov_edges() /
+# detect_tissue_holes() output: 0 = not flagged, k = k-th ring). `samples`
+# is GenerateQCReport()'s internal list (each element has $name and $md).
+# Samples without the column are left out; NULL if none have it (or col is
+# NULL). Columns: sample, n_total, ring_1..ring_K, [n_unscored,] n_<what>,
+# pct_<what>. n_unscored (NA values) only appears if any sample has NAs.
+#' @keywords internal
+#' @noRd
+.qc_layer_summary <- function(samples, col, what) {
+  if (is.null(col)) return(NULL)
+  vals <- lapply(samples, function(s) {
+    if (!col %in% colnames(s$md)) return(NULL)
+    suppressWarnings(as.integer(s$md[[col]]))
+  })
+  keep <- !vapply(vals, is.null, logical(1))
+  if (!any(keep)) return(NULL)
+  vals  <- vals[keep]
+  smps  <- samples[keep]
+  k_max <- max(c(0L, unlist(lapply(vals, function(v) v[!is.na(v)]))))
+
+  out <- do.call(rbind, lapply(seq_along(vals), function(i) {
+    v <- vals[[i]]
+    n <- length(v)
+    flagged <- sum(v > 0, na.rm = TRUE)
+    rings <- if (k_max > 0) {
+      stats::setNames(as.list(tabulate(v[!is.na(v) & v > 0], nbins = k_max)),
+                      paste0("ring_", seq_len(k_max)))
+    } else list()
+    data.frame(c(list(sample = smps[[i]]$name, n_total = n), rings,
+                 list(n_unscored  = sum(is.na(v)),
+                      n_flagged   = flagged,
+                      pct_flagged = round(100 * flagged / max(1, n), 2))),
+               stringsAsFactors = FALSE, check.names = FALSE)
+  }))
+  if (all(out$n_unscored == 0)) out$n_unscored <- NULL
+  names(out)[names(out) == "n_flagged"]   <- paste0("n_", what)
+  names(out)[names(out) == "pct_flagged"] <- paste0("pct_", what)
+  rownames(out) <- NULL
+  out
+}
+
+# Spots per sample that survive both filters (edge ring 0 and hole ring 0).
+# Only samples that have both columns; NULL if none do.
+#' @keywords internal
+#' @noRd
+.qc_keep_summary <- function(samples, edge_col, hole_col) {
+  if (is.null(edge_col) || is.null(hole_col)) return(NULL)
+  out <- do.call(rbind, lapply(samples, function(s) {
+    if (!all(c(edge_col, hole_col) %in% colnames(s$md))) return(NULL)
+    e <- suppressWarnings(as.integer(s$md[[edge_col]]))
+    h <- suppressWarnings(as.integer(s$md[[hole_col]]))
+    n  <- length(e)
+    nk <- sum(e == 0 & h == 0, na.rm = TRUE)
+    data.frame(sample = s$name, n_total = n, n_keep = nk,
+               pct_keep = round(100 * nk / max(1, n), 2),
+               stringsAsFactors = FALSE)
+  }))
+  if (is.null(out) || !nrow(out)) return(NULL)
+  rownames(out) <- NULL
+  out
+}
+
+# Spatial map of a ring column from GenerateQCReport()'s spatial_df:
+# ring 0 in grey, flagged rings in reds (darkest = outermost), flagged spots
+# drawn on top. NULL if the column is all NA.
+#' @keywords internal
+#' @noRd
+.qc_layer_map <- function(spatial_df, col, legend, ncol = 3, strip_size = 11) {
+  d <- spatial_df[!is.na(spatial_df[[col]]), , drop = FALSE]
+  if (!nrow(d)) return(NULL)
+  lv <- as.character(sort(unique(d[[col]])))
+  d$ring <- factor(as.character(d[[col]]), levels = lv)
+  flagged_lv <- setdiff(lv, "0")
+  pal <- c("0" = "grey85")
+  if (length(flagged_lv)) {
+    pal <- c(pal, stats::setNames(
+      grDevices::colorRampPalette(c("#B2182B", "#F4A582"))(length(flagged_lv)), flagged_lv))
+  }
+  d <- d[order(d[[col]] > 0), , drop = FALSE]      # interior first, flagged on top
+  facet_var <- if (length(unique(d$image)) > 1) "image" else "sample"
+  ggplot2::ggplot(d, ggplot2::aes(x = .data$x, y = .data$y, colour = .data$ring)) +
+    ggplot2::geom_point(size = 0.3) +
+    ggplot2::facet_wrap(stats::as.formula(paste("~", facet_var)),
+                        scales = "free", ncol = ncol) +
+    ggplot2::scale_colour_manual(values = pal, drop = FALSE) +
+    ggplot2::guides(colour = ggplot2::guide_legend(override.aes = list(size = 3))) +
+    ggplot2::theme_void() +
+    ggplot2::theme(aspect.ratio = 1,
+                   strip.text = ggplot2::element_text(size = strip_size)) +
+    ggplot2::labs(colour = legend)
 }
