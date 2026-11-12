@@ -5,7 +5,8 @@
 # `truth` records which simulated section each cell came from, and a numeric
 # `fov` column stands in for the CosMx-style column that must not be touched.
 
-.make_sections_obj <- function(seed = 1) {
+# swap = TRUE lays the same sections out along x instead of y.
+.make_sections_obj <- function(seed = 1, swap = FALSE) {
   set.seed(seed)
   disk <- function(n, cx, cy, r, truth) {
     th <- stats::runif(n, 0, 2 * pi); rr <- r * sqrt(stats::runif(n))
@@ -24,6 +25,7 @@
 
   pieces <- lapply(seq_along(layout), function(i) {
     d <- layout[[i]]
+    if (isTRUE(swap)) d[, c("x", "y")] <- d[, c("y", "x")]
     d$cell <- paste0(names(layout)[i], "_c", seq_len(nrow(d)))
     d$fov_num <- i
     d
@@ -181,3 +183,64 @@ test_that("SplitSections writes check plots, with a _final plot only for FOVs in
                                               "fovB.png", "fovB_pieces.png")))))
   expect_false(file.exists(file.path(d, "fovB_final.png")))
 })
+
+# ---- row axis and plot orientation (Seurat 5 vs 6) ----------------------------
+
+test_that("SplitSections follows the FOV's longer axis when sections run along x", {
+  .skip_if_missing("Seurat", "SeuratObject", "dbscan")
+  obj <- suppressMessages(SplitSections(.make_sections_obj(swap = TRUE), min_cells = 50))
+  expect_equal(unname(obj@misc$SplitSections$row_axis[c("fovA", "fovB")]), c("x", "x"))
+  a <- obj@meta.data[obj$section_fov == "fovA", ]
+  expect_true(all(a$section_auto[a$truth == "A1"] == "S01"))
+  expect_true(all(a$section_auto[a$truth == "A3"] == "S03"))
+
+  # same layout along y (default fixture) -> row axis y, same labels
+  obj_y <- suppressMessages(SplitSections(.make_sections_obj(), min_cells = 50))
+  expect_equal(unname(obj_y@misc$SplitSections$row_axis[c("fovA", "fovB")]), c("y", "y"))
+  expect_equal(unname(obj$section_auto), unname(obj_y$section_auto))
+})
+
+test_that("SplitSections splits touching sections along x when the row runs along x", {
+  .skip_if_missing("Seurat", "SeuratObject", "dbscan")
+  fixes <- data.frame(fov = "fovB", from = "S02", to = "b;a")
+  obj <- suppressMessages(SplitSections(.make_sections_obj(swap = TRUE), manual = fixes, min_cells = 50))
+  b <- obj@meta.data[obj$section_fov == "fovB", ]
+  expect_true(all(b$section_id[b$truth == "B2low"]  == "fovB_b"))
+  expect_true(all(b$section_id[b$truth == "B2high"] == "fovB_a"))
+})
+
+test_that("SplitSections honours a fixed axis", {
+  .skip_if_missing("Seurat", "SeuratObject", "dbscan")
+  obj <- suppressMessages(SplitSections(.make_sections_obj(swap = TRUE), min_cells = 50, axis = "y"))
+  expect_equal(unique(unname(obj@misc$SplitSections$row_axis)), "y")
+  expect_error(SplitSections(.make_sections_obj(), axis = "z"))
+})
+
+test_that(".ss_plot_axes matches ImageDimPlot's orientation for Seurat 5 and 6", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_spatial_obj()
+  expect_equal(.ss_plot_axes(obj, "fov1", seurat_version = package_version("5.6.0")),
+               list(h = "y", v = "x", rev_v = FALSE))
+  expect_equal(.ss_plot_axes(obj, "fov1", seurat_version = package_version("6.0.0")),
+               list(h = "x", v = "y", rev_v = TRUE))
+  img <- obj[["fov1"]]
+  if (methods::.hasSlot(img, "coords_x_orientation")) {   # SeuratObject >= 5.3
+    methods::slot(img, "coords_x_orientation") <- "vertical"
+    obj[["fov1"]] <- img
+    expect_equal(.ss_plot_axes(obj, "fov1", seurat_version = package_version("6.0.0")),
+                 list(h = "y", v = "x", rev_v = FALSE))
+  }
+})
+
+test_that(".ss_plot_sections builds with the row across or down the plot", {
+  .skip_if_missing("ggplot2", "dplyr")
+  sec <- data.frame(cell = paste0("c", 1:6), fov = "f",
+                    x = c(0, 1, 0, 1, 0, 1), y = c(0, 0, 10, 10, 20, 20),
+                    section = rep(c("S01", "S02", "S03"), each = 2), stringsAsFactors = FALSE)
+  across <- .ss_plot_sections(sec, "f", list(h = "y", v = "x", rev_v = FALSE), "y")
+  down   <- .ss_plot_sections(sec, "f", list(h = "x", v = "y", rev_v = TRUE),  "y")
+  expect_s3_class(across, "ggplot"); expect_s3_class(down, "ggplot")
+  expect_no_error(ggplot2::ggplot_build(across))
+  expect_no_error(ggplot2::ggplot_build(down))
+})
+

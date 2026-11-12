@@ -511,8 +511,8 @@ MergeSeurat <- function(seurat_objects,
             'thresholds (logfc.threshold, min.pct) don\'t apply to peak ',
             'accessibility. Call Signac::FindMarkers()/FindAllMarkers() ',
             'directly with ATAC-appropriate settings (e.g. ',
-            'test.use = "LR", latent.vars = "peak_region_fragments") if you ',
-            'need differential accessibility. ---')
+            'test.use = "LR", latent.vars = "peak_region_fragments"; needs ',
+            'the lmtest package) if you need differential accessibility. ---')
   } else if (isTRUE(markers)) {
     message('--- Running FindAllMarkers ---')
     marker_results <- Seurat::FindAllMarkers(obj,

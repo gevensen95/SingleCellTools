@@ -32,7 +32,9 @@ SpatialAutocorrelation(
 \item{selection.method}{Passed to
 \code{Seurat::FindSpatiallyVariableFeatures()}. Default
 \code{"moransi"} (fast); \code{"markvariogram"} is the slower
-alternative Seurat also supports.}
+alternative Seurat also supports. \code{"markvariogram"} needs
+\pkg{spatstat.explore} and \pkg{spatstat.geom}, which Seurat >= 6 no
+longer installs automatically.}
 
 \item{top_n}{Cap on genes tested when \code{features} isn't supplied.
 Default 2000.}
