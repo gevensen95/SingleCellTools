@@ -430,3 +430,81 @@ test_that("calldoublet rejects an implausible doublet_rate before doing any work
 test_that("GenerateQCReport errors on non-Seurat, non-list input", {
   expect_error(GenerateQCReport(list(1, 2)), "Seurat object")
 })
+
+
+# ============================================================================
+# GenerateQCReport() edge / hole sections -- internal helpers (the render
+# path itself isn't unit-tested; see above)
+# ============================================================================
+
+.fake_qc_samples <- function() {
+  list(
+    s1 = list(name = "s1", md = data.frame(edge_layer = c(0, 0, 1, 2, 1),
+                                           hole_layer = c(0, 1, 0, 0, 0))),
+    s2 = list(name = "s2", md = data.frame(edge_layer = c(0, 0, 0, 1),
+                                           hole_layer = c(0, 0, 0, 0))),
+    s3 = list(name = "s3", md = data.frame(other = 1:3))          # no ring columns
+  )
+}
+
+test_that(".qc_layer_summary counts each ring and the % flagged, skipping samples without the column", {
+  out <- .qc_layer_summary(.fake_qc_samples(), "edge_layer", "edge")
+  expect_equal(out$sample, c("s1", "s2"))
+  expect_equal(colnames(out), c("sample", "n_total", "ring_1", "ring_2", "n_edge", "pct_edge"))
+  expect_equal(out$ring_1, c(2, 1))
+  expect_equal(out$ring_2, c(1, 0))
+  expect_equal(out$n_edge, c(3, 1))
+  expect_equal(out$pct_edge, c(60, 25))
+
+  holes <- .qc_layer_summary(.fake_qc_samples(), "hole_layer", "hole")
+  expect_equal(colnames(holes), c("sample", "n_total", "ring_1", "n_hole", "pct_hole"))
+  expect_equal(holes$n_hole, c(1, 0))
+})
+
+test_that(".qc_layer_summary returns NULL when the column is NULL or absent everywhere", {
+  expect_null(.qc_layer_summary(.fake_qc_samples(), NULL, "edge"))
+  expect_null(.qc_layer_summary(.fake_qc_samples(), "no_such_col", "edge"))
+})
+
+test_that(".qc_layer_summary reports NA values as n_unscored only when present", {
+  smp <- list(a = list(name = "a", md = data.frame(edge_layer = c(0, 1, NA, NA))))
+  out <- .qc_layer_summary(smp, "edge_layer", "edge")
+  expect_equal(out$n_unscored, 2)
+  expect_equal(out$n_edge, 1)
+  expect_false("n_unscored" %in% colnames(.qc_layer_summary(.fake_qc_samples(), "edge_layer", "edge")))
+})
+
+test_that(".qc_layer_summary handles a column with no flagged spots (no ring columns)", {
+  smp <- list(a = list(name = "a", md = data.frame(edge_layer = c(0, 0, 0))))
+  out <- .qc_layer_summary(smp, "edge_layer", "edge")
+  expect_equal(colnames(out), c("sample", "n_total", "n_edge", "pct_edge"))
+  expect_equal(out$pct_edge, 0)
+})
+
+test_that(".qc_keep_summary counts spots that pass both filters", {
+  out <- .qc_keep_summary(.fake_qc_samples(), "edge_layer", "hole_layer")
+  expect_equal(out$sample, c("s1", "s2"))
+  expect_equal(out$n_keep, c(1, 3))
+  expect_equal(out$pct_keep, c(20, 75))
+  expect_null(.qc_keep_summary(.fake_qc_samples(), "edge_layer", NULL))
+  expect_null(.qc_keep_summary(.fake_qc_samples(), "edge_layer", "no_such_col"))
+})
+
+test_that(".qc_layer_map returns a ggplot coloured by ring, or NULL when all NA", {
+  sdf <- data.frame(x = c(1, 2, 3, 4), y = c(1, 2, 3, 4),
+                    sample = "s1", image = "img1",
+                    qc_edge_layer = c(0L, 1L, 2L, 0L),
+                    qc_hole_layer = NA_integer_)
+  p <- .qc_layer_map(sdf, "qc_edge_layer", "Edge ring")
+  expect_s3_class(p, "ggplot")
+  expect_equal(levels(p$data$ring), c("0", "1", "2"))
+  expect_null(.qc_layer_map(sdf, "qc_hole_layer", "Hole ring"))
+})
+
+test_that("GenerateQCReport validates edge_col / hole_col", {
+  .skip_if_missing("Seurat", "SeuratObject", "rmarkdown", "knitr")
+  obj <- .make_small_seurat()
+  out <- tempfile(fileext = ".html")
+  expect_error(GenerateQCReport(obj, output_file = out, edge_col = c("a", "b")), "single column name")
+  expect_error(GenerateQCReport(obj, output_file = out, hole_col = 1), "single column name")
+})
