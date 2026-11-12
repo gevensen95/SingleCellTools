@@ -11,6 +11,7 @@ SplitSections(
   eps_mult = 4,
   min_cells = 300,
   split_factor = 1.7,
+  axis = c("auto", "y", "x"),
   dorsal_genes = c("Tac1", "Calb2", "Prkcg", "Tac2", "Grp", "Cck"),
   ventral_gene = "Chat",
   seed = 1
@@ -35,6 +36,10 @@ if neighbouring sections are joined.}
 \item{split_factor}{Pieces with more than \code{split_factor} x the median
 piece's cell count are split automatically. \code{Inf} disables.}
 
+\item{axis}{Row axis the sections are laid out along: \code{"auto"}
+(default; each FOV's longer axis), \code{"x"} or \code{"y"}. Labels are
+ordered, and touching sections split, along this axis.}
+
 \item{dorsal_genes, ventral_gene}{Marker genes for the
 \code{<fov>_pieces.png} check plot.}
 
@@ -47,8 +52,8 @@ name), \code{section_auto} (automatic label, \code{NA} for debris) and
 \code{section_id} (\code{"<fov>_<section>"}; \code{NA} for debris,
 dropped pieces, and -- when \code{manual} is given -- FOVs not in it).
 An existing \code{fov} column (e.g. CosMx FOV numbers) is left
-untouched. The fixes applied are stored in
-\code{object@misc$SplitSections}.
+untouched. The fixes applied and the row axis used for each FOV are
+stored in \code{object@misc$SplitSections}.
 }
 \description{
 For slides carrying several serial sections per field of view (e.g. a
@@ -75,10 +80,22 @@ piece's typical density, and every resulting part must hold at least
 needed (sections pressed together with no visible boundary), the cut
 falls halfway between k-means centres instead.
 
-Automatic labels (\code{S01}, \code{S02}, ...) run left to right in
-\code{ImageDimPlot()} (i.e. by increasing y coordinate). Torn sections,
-sections split into halves and touching sections are common, so the
-intended workflow is two passes:
+\strong{Row axis.} Sections are assumed to be laid out in a row. The row
+axis (\code{axis = "auto"}, default) is the FOV's longer axis -- whichever
+of x or y the cells spread further along -- and can be fixed with
+\code{axis = "x"} or \code{"y"}. Splits cut along it, and automatic labels
+(\code{S01}, \code{S02}, ...) follow it in increasing order.
+
+\strong{Orientation in plots.} Where the row appears depends on the Seurat
+version: Seurat 5's \code{ImageDimPlot()} draws FOVs with y horizontal, so
+a row along y reads left to right; Seurat 6 draws x horizontal with y
+increasing downward, so the same row reads top to bottom. Stored
+coordinates, and therefore the labels, are the same either way. The check
+plots below are drawn the way the installed Seurat's \code{ImageDimPlot()}
+draws each FOV.
+
+Torn sections, sections split into halves and touching sections are
+common, so the intended workflow is two passes:
 \enumerate{
 \item Run with \code{manual = NULL}; inspect the check plots in
 \code{plot_dir}.
@@ -94,7 +111,8 @@ same name to merge them (e.g. two halves of one section);
 \item \code{NA} / blank -- drop the piece (\code{section_id} = \code{NA});
 \item names separated by \code{;} (\code{"sec2;sec1"}) -- split one piece
 holding touching sections at the gaps between them; names are assigned
-left to right as in \code{ImageDimPlot()}.
+in increasing order along the row axis, i.e. in the same order as the
+automatic labels.
 }
 Each row refers to the automatic labels, so rows never interact. Pieces of
 a listed FOV that no row mentions keep their automatic label. Only FOVs

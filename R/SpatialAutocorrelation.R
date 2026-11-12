@@ -16,7 +16,9 @@
 #' @param selection.method Passed to
 #'   \code{Seurat::FindSpatiallyVariableFeatures()}. Default
 #'   \code{"moransi"} (fast); \code{"markvariogram"} is the slower
-#'   alternative Seurat also supports.
+#'   alternative Seurat also supports. \code{"markvariogram"} needs
+#'   \pkg{spatstat.explore} and \pkg{spatstat.geom}, which Seurat >= 6 no
+#'   longer installs automatically.
 #' @param top_n Cap on genes tested when \code{features} isn't supplied.
 #'   Default 2000.
 #' @param plot Logical; if \code{TRUE} (default), also return a spatial
@@ -48,6 +50,11 @@ SpatialAutocorrelation <- function(obj,
                                    verbose          = TRUE) {
 
   .assert_seurat(obj)
+  if (identical(selection.method, "markvariogram")) {
+    # Seurat >= 6 no longer installs spatstat, which markvariogram needs.
+    .require_suggested(c("spatstat.explore", "spatstat.geom"),
+                       "SpatialAutocorrelation(selection.method = 'markvariogram')")
+  }
   a <- if (is.null(assay)) Seurat::DefaultAssay(obj) else assay
 
   feats <- features

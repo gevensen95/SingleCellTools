@@ -435,3 +435,34 @@ test_that("workers defaults to the sample-count expression in all six loader fun
   expect_equal(deparse(formals(CreateATACObjectsFilter)$workers), "length(data_dirs)")
   expect_equal(deparse(formals(MakeParseObj)$workers), "length(paths)")
 })
+
+
+# ============================================================================
+# .require_suggested() -- up-front checks for packages Seurat 6 moved to
+# Suggests (fitdistrplus, spatstat.*, lmtest, ...)
+# ============================================================================
+
+test_that(".require_suggested passes for installed packages and names missing ones", {
+  expect_true(.require_suggested("stats", "test"))
+  expect_error(.require_suggested("notARealPackage123", "MyFun()"),
+               "MyFun\\(\\) needs the package 'notARealPackage123'")
+  expect_error(.require_suggested(c("stats", "notARealPackage123", "alsoNotReal456"), "MyFun()"),
+               "packages 'notARealPackage123', 'alsoNotReal456'")
+})
+
+test_that("DemultiplexHashtags / SpatialAutocorrelation check their optional packages up front", {
+  .skip_if_missing("Seurat", "SeuratObject")
+  obj <- .make_small_seurat()
+  # Only meaningful where the package is missing; where it's installed the
+  # check passes and the call fails later for other reasons (no HTO assay).
+  if (!requireNamespace("fitdistrplus", quietly = TRUE)) {
+    expect_error(DemultiplexHashtags(obj, method = "htodemux"), "fitdistrplus")
+  } else {
+    expect_error(DemultiplexHashtags(obj, method = "htodemux"), "Assay 'HTO' not found")
+  }
+  if (!all(vapply(c("spatstat.explore", "spatstat.geom"), requireNamespace,
+                  logical(1), quietly = TRUE))) {
+    expect_error(SpatialAutocorrelation(obj, selection.method = "markvariogram"), "spatstat")
+  }
+})
+

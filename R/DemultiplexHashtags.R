@@ -23,6 +23,8 @@
 #'   normalizes it internally.
 #' @param hto_assay Name of the hashtag assay. Default \code{"HTO"}.
 #' @param method \code{"htodemux"} (default) or \code{"multiseqdemux"}.
+#'   \code{"htodemux"} needs the \pkg{fitdistrplus} package, which
+#'   Seurat >= 6 no longer installs automatically.
 #' @param positive_quantile \code{method = "htodemux"} only: passed to
 #'   \code{Seurat::HTODemux()}. Default 0.99.
 #' @param autoThresh,maxiter,qrange \code{method = "multiseqdemux"} only:
@@ -64,6 +66,10 @@ DemultiplexHashtags <- function(obj,
 
   method <- match.arg(method)
   .assert_seurat(obj)
+  if (method == "htodemux") {
+    # Seurat >= 6 no longer installs fitdistrplus, which HTODemux() needs.
+    .require_suggested("fitdistrplus", "DemultiplexHashtags(method = 'htodemux')")
+  }
   if (!hto_assay %in% Seurat::Assays(obj)) {
     stop("Assay '", hto_assay, "' not found in `obj`. Available: ",
          paste(Seurat::Assays(obj), collapse = ", "))

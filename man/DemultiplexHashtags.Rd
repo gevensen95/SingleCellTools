@@ -26,7 +26,9 @@ normalizes it internally.}
 
 \item{hto_assay}{Name of the hashtag assay. Default \code{"HTO"}.}
 
-\item{method}{\code{"htodemux"} (default) or \code{"multiseqdemux"}.}
+\item{method}{\code{"htodemux"} (default) or \code{"multiseqdemux"}.
+\code{"htodemux"} needs the \pkg{fitdistrplus} package, which
+Seurat >= 6 no longer installs automatically.}
 
 \item{positive_quantile}{\code{method = "htodemux"} only: passed to
 \code{Seurat::HTODemux()}. Default 0.99.}

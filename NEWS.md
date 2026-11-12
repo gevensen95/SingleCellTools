@@ -32,6 +32,26 @@
   spots per sample survive both filters. Set either argument to `NULL` to
   skip its section.
 
+## Seurat 6 compatibility
+
+- No changes are needed for SingleCellTools to run on Seurat 6.0.0: no
+  function it uses was removed or renamed, and R / SeuratObject
+  requirements are unchanged.
+- `SplitSections()` check plots now match the installed Seurat's
+  `ImageDimPlot()` orientation. Seurat 6 draws FOVs with x horizontal and y
+  increasing downward (Seurat 5 drew y horizontally), so a row of sections
+  along y now reads top to bottom. Stored coordinates and labels are
+  unchanged.
+- `SplitSections()` gains `axis = c("auto", "y", "x")`. Labels are ordered,
+  and touching sections split, along the row axis; `"auto"` uses each FOV's
+  longer axis. Slides laid out along y give the same results as before;
+  set `axis = "y"` to force the old behaviour for FOVs wider in x.
+- Seurat 6 no longer installs several packages its functions use. Added to
+  Suggests and checked up front with a clear error: `fitdistrplus`
+  (`DemultiplexHashtags(method = "htodemux")`), `spatstat.explore` and
+  `spatstat.geom` (`SpatialAutocorrelation(selection.method =
+  "markvariogram")`), and `lmtest` (mentioned for `test.use = "LR"`).
+
 ---
 
 # SingleCellTools 2.8
