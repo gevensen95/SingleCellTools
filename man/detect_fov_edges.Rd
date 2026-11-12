@@ -17,10 +17,11 @@ detect_fov_edges(
 )
 }
 \arguments{
-\item{obj}{A Seurat object with spatial coordinates.}
+\item{obj}{A Seurat object with spatial coordinates, or a (optionally
+named) list of them.}
 
 \item{fovs}{Character vector of FOV / image names. \code{NULL} (default)
-processes every image attached to the object.}
+processes every image attached to the object(s).}
 
 \item{method}{\code{"bbox"} (default) or \code{"angular"}. See Details.}
 
@@ -47,7 +48,8 @@ distance for the density check. Default 1. Set <= 0 to disable.}
 \code{2} = next ring, ...}
 }
 \value{
-The Seurat object with a new integer metadata column.
+The Seurat object with a new integer metadata column, or -- when
+\code{obj} is a list -- the list of objects, each with that column.
 }
 \description{
 Two methods are supported, chosen by \code{method}:
@@ -67,7 +69,8 @@ convex within each FOV — e.g. CosMx / Xenium tiles.}
 exceeds \code{gap_threshold} AND its mean k-NN distance exceeds
 \code{density_factor * median(mean_nn_dist)}. Catches concave tissue
 edges, tear margins, and internal sparse regions that the bbox
-method misses. Slower and noisier.}
+method misses. Slower and noisier. Usually the better choice for
+Visium sections, whose outlines are irregular.}
 }
 
 Detection is run iteratively in both modes. Pass 1 identifies the outer
@@ -77,4 +80,20 @@ new outer boundary, etc. The output metadata column records the
 iteration in which each cell was caught:
 \code{0} for interior, \code{1} for the outermost ring, \code{2} for
 the next ring, ...
+
+\strong{Lists of objects.} \code{obj} can also be a list of Seurat
+objects (e.g. one per Visium sample, before merging). Each object is
+processed on its own and the list is returned with the same names. With
+a list, \code{fovs} is matched against each object's own images: objects
+holding none of the requested FOVs get \code{0} for every cell, and it is
+an error only if a requested FOV is in none of the objects.
+}
+\examples{
+\dontrun{
+obj <- detect_fov_edges(obj, method = "angular", n_iterations = 2)
+
+# A list of per-sample Visium objects, before merging
+obj_list <- detect_fov_edges(obj_list, method = "angular", n_iterations = 2)
+obj_list <- lapply(obj_list, function(o) subset(o, subset = edge_layer == 0))
+}
 }

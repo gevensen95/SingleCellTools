@@ -13,6 +13,16 @@
   untouched. Works with FOV-based images and older `VisiumV1` images.
   Needs the `dbscan` package (Suggests).
 
+## Changes
+
+- `detect_fov_edges()` and `detect_tissue_holes()` accept a list of Seurat
+  objects as well as a single object, and return the same shape (names
+  kept). With a list, `fovs` is matched against each object's own images.
+- `detect_tissue_holes()` now works on older `VisiumV1` images. It read
+  `x`/`y` coordinate columns directly and failed with "undefined columns
+  selected" on `imagerow`/`imagecol` coordinates; it now uses the same
+  coordinate helper as `detect_fov_edges()`.
+
 ---
 
 # SingleCellTools 2.8
